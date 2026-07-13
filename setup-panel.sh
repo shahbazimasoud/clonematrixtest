@@ -196,7 +196,30 @@ fi
 # 4. Dependency installation & Build
 # ------------------------------------------------------------------------------
 log_step "Installing NPM dependencies..."
-npm install
+
+# Configure NPM settings to be highly resilient
+log_info "Configuring NPM with resilient timeouts and retry settings..."
+npm config set fetch-retry-maxtimeout 180000
+npm config set fetch-retry-mintimeout 30000
+npm config set fetch-retries 10
+npm config set maxsockets 5
+
+# Try standard npm installation first
+log_info "Attempt 1: Installing dependencies using standard npm registry..."
+if ! npm install; then
+  log_warning "Standard npm install timed out or failed. Attempt 2: Switching to high-speed mirror registry (registry.npmmirror.com)..."
+  npm config set registry https://registry.npmmirror.com
+  
+  log_info "Retrying npm installation via mirror..."
+  if ! npm install; then
+    log_error "NPM installation failed even with the high-speed mirror registry."
+    log_error "Please check your server's network connection, firewall rules, or DNS settings."
+    exit 1
+  fi
+fi
+
+# Restore default registry configuration to avoid any downstream issues for other tasks
+npm config delete registry
 
 log_step "Generating password hashes and seeding database..."
 # Use npm installed bcryptjs to hash password securely
