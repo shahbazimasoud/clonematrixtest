@@ -42,7 +42,8 @@ import {
   Activity,
   HardDriveUpload,
   Zap,
-  Network
+  Network,
+  Cpu
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -59,6 +60,7 @@ const faTranslations = {
   tabRooms: "مدیریت اتاق‌ها",
   tabMedia: "پاکسازی رسانه (Media Cache)",
   tabTokens: "توکن‌های ثبت‌نام",
+  tabInstaller: "نصب و مدیریت پشته",
   
   // Users
   searchUsers: "جستجوی کاربر (MXID)...",
@@ -160,6 +162,7 @@ const enTranslations = {
   tabRooms: "Room Management",
   tabMedia: "Media Cache Cleanup",
   tabTokens: "Registration Tokens",
+  tabInstaller: "Stack Installer & Manager",
   
   // Users
   searchUsers: "Search users by MXID...",
@@ -261,8 +264,108 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const isRtl = lang === 'fa';
   const hasWriteAccess = currentUser?.role !== 'Viewer';
 
-  const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'media' | 'tokens'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer'>('users');
   const [loading, setLoading] = useState(true);
+
+  // Custom Installer & System Maintenance States
+  const [installerConfig, setInstallerConfig] = useState<any>({
+    HS_DOMAIN: 'matrix.company.local',
+    ELEMENT_DOMAIN: 'chat.company.local',
+    BASE_DOMAIN: 'company.local',
+    PUBLIC_IP: '192.168.1.100',
+    LE_EMAIL: 'admin@company.local',
+    SSL_MODE: 'selfsigned',
+    PG_DB: 'synapse',
+    PG_USER: 'synapse_user',
+    PG_HOST: 'localhost',
+    PG_PORT: '5432'
+  });
+  const [installerMode, setInstallerMode] = useState<'online' | 'offline'>('online');
+  const [selectedComponents, setSelectedComponents] = useState<string[]>(['synapse', 'element', 'postgres', 'coturn', 'nginx']);
+  const [installLogs, setInstallLogs] = useState<string[]>([
+    '# Matrix Custom Installer console ready.',
+    '# Select installation mode, toggle components and click "Launch Installation".'
+  ]);
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [installerWs, setInstallerWs] = useState<WebSocket | null>(null);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('/api/matrix/config', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) {
+          setInstallerConfig((prev: any) => ({
+            ...prev,
+            ...data.config
+          }));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch stack config", e);
+    }
+  };
+
+  const runInstallerAction = (command: 'custom_install' | 'uninstall_stack' | 'purge_database') => {
+    if (isInstalling) return;
+    setIsInstalling(true);
+    setInstallLogs([`[EXEC] Starting command: ${command}...`]);
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', token: authToken }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'auth_ok') {
+          ws.send(JSON.stringify({
+            type: 'execute_command',
+            command,
+            args: {
+              mode: installerMode,
+              components: selectedComponents,
+              config: installerConfig
+            }
+          }));
+        } else if (msg.type === 'cmd_stdout') {
+          setInstallLogs(prev => [...prev, msg.text]);
+        } else if (msg.type === 'cmd_err') {
+          setInstallLogs(prev => [...prev, `❌ ERROR: ${msg.text}`]);
+          setIsInstalling(false);
+          ws.close();
+        } else if (msg.type === 'cmd_end') {
+          setInstallLogs(prev => [...prev, `\n✅ Process terminated with exit code: ${msg.code || 0}`]);
+          setIsInstalling(false);
+          ws.close();
+          fetchAll();
+        } else if (msg.type === 'error') {
+          setInstallLogs(prev => [...prev, `❌ ERROR: ${msg.message}`]);
+          setIsInstalling(false);
+          ws.close();
+        }
+      } catch (err) {
+        console.error("Failed to parse websocket message", err);
+      }
+    };
+
+    ws.onerror = () => {
+      setInstallLogs(prev => [...prev, '❌ ERROR: WebSocket connection failed.']);
+      setIsInstalling(false);
+    };
+
+    ws.onclose = () => {
+      setIsInstalling(false);
+    };
+
+    setInstallerWs(ws);
+  };
 
   // States
   const [users, setUsers] = useState<MatrixUser[]>([]);
@@ -322,8 +425,10 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   // Advanced Ketesa helper functions
-  const fetchUserDetails = async (mxid: string, resetTab = false) => {
-    setUserDetailsLoading(true);
+  const fetchUserDetails = async (mxid: string, resetTab = false, silent = false) => {
+    if (!silent) {
+      setUserDetailsLoading(true);
+    }
     setSelectedUserMxid(mxid);
     if (resetTab) {
       setActiveUserDetailTab('user');
@@ -346,7 +451,9 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     } catch (e) {
       showToast('error', t.errorAction);
     } finally {
-      setUserDetailsLoading(false);
+      if (!silent) {
+        setUserDetailsLoading(false);
+      }
     }
   };
 
@@ -365,7 +472,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
         fetchAll();
       } else {
         showToast('error', t.errorAction);
@@ -392,7 +499,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       if (res.ok) {
         showToast('success', t.successAction);
         setNewPassword('');
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
       }
@@ -418,7 +525,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       if (res.ok) {
         showToast('success', t.successAction);
         setNewEmail('');
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         const err = await res.json();
         showToast('error', err.error || t.errorAction);
@@ -443,7 +550,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
       }
@@ -469,7 +576,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       if (res.ok) {
         showToast('success', t.successAction);
         setNewPhone('');
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         const err = await res.json();
         showToast('error', err.error || t.errorAction);
@@ -494,7 +601,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
       }
@@ -518,7 +625,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
       }
@@ -542,7 +649,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
         const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
         if (roomsRes.ok) setRooms(await roomsRes.json());
       } else {
@@ -573,7 +680,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
       }
@@ -605,7 +712,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid);
+        fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
       }
@@ -1164,6 +1271,25 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           <span>{t.tabTokens}</span>
           <span className="text-[10px] px-1.5 py-0.5 bg-slate-800 rounded-full font-mono text-emerald-300">
             {tokens.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('installer');
+            fetchConfig();
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+            activeTab === 'installer'
+              ? 'bg-gradient-to-r from-red-500/20 to-amber-500/20 border border-red-500/30 text-red-200 shadow-md'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border border-transparent'
+          }`}
+          id="tab-installer-btn"
+        >
+          <Cpu className="h-4 w-4" />
+          <span>{t.tabInstaller || 'Stack Installer'}</span>
+          <span className="text-[10px] px-1.5 py-0.5 bg-slate-800 rounded-full font-mono text-rose-400">
+            v1.12
           </span>
         </button>
       </div>
@@ -1782,6 +1908,383 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
             </div>
           </motion.div>
         )}
+
+        {/* TAB 5: INSTALLER & SYSTEM MAINTENANCE */}
+        {activeTab === 'installer' && (
+          <motion.div
+            key="installer-tab"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.25 }}
+            className="grid grid-cols-1 xl:grid-cols-3 gap-6 text-xs"
+          >
+            {/* Left Column: Form & Component Options */}
+            <div className="xl:col-span-1 space-y-6">
+              {/* Configuration Panel */}
+              <div className={`p-5 rounded-2xl border ${
+                isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/50 border-white/5'
+              }`}>
+                <div className="flex items-center gap-2 mb-4 border-b pb-3">
+                  <Sliders className="h-5 w-5 text-indigo-400 animate-pulse" />
+                  <h3 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-gray-100'}`}>
+                    {isRtl ? 'تنظیمات اولیه پشته ماتریکس' : 'Matrix Stack Initial Settings'}
+                  </h3>
+                </div>
+
+                <div className="space-y-4">
+                  {/* HS Domain */}
+                  <div className="space-y-1">
+                    <label className={`block font-semibold ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                      {isRtl ? 'دامنه سرور ماتریکس (HS_DOMAIN)' : 'Homeserver Domain (HS_DOMAIN)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={installerConfig.HS_DOMAIN || ''}
+                      onChange={(e) => setInstallerConfig((prev: any) => ({ ...prev, HS_DOMAIN: e.target.value }))}
+                      placeholder="e.g. matrix.company.local"
+                      className={`w-full border rounded-lg p-2.5 outline-none font-mono transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                          : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Element Domain */}
+                  <div className="space-y-1">
+                    <label className={`block font-semibold ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                      {isRtl ? 'دامنه کلاینت المنت (ELEMENT_DOMAIN)' : 'Element Client Domain (ELEMENT_DOMAIN)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={installerConfig.ELEMENT_DOMAIN || ''}
+                      onChange={(e) => setInstallerConfig((prev: any) => ({ ...prev, ELEMENT_DOMAIN: e.target.value }))}
+                      placeholder="e.g. chat.company.local"
+                      className={`w-full border rounded-lg p-2.5 outline-none font-mono transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                          : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Base Domain */}
+                  <div className="space-y-1">
+                    <label className={`block font-semibold ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                      {isRtl ? 'دامنه پایه (BASE_DOMAIN)' : 'Base Domain (BASE_DOMAIN)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={installerConfig.BASE_DOMAIN || ''}
+                      onChange={(e) => setInstallerConfig((prev: any) => ({ ...prev, BASE_DOMAIN: e.target.value }))}
+                      placeholder="e.g. company.local"
+                      className={`w-full border rounded-lg p-2.5 outline-none font-mono transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                          : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Public IP */}
+                  <div className="space-y-1">
+                    <label className={`block font-semibold ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                      {isRtl ? 'آدرس آی‌پی عمومی سرور' : 'Public IP Address'}
+                    </label>
+                    <input
+                      type="text"
+                      value={installerConfig.PUBLIC_IP || ''}
+                      onChange={(e) => setInstallerConfig((prev: any) => ({ ...prev, PUBLIC_IP: e.target.value }))}
+                      placeholder="e.g. 192.168.1.100"
+                      className={`w-full border rounded-lg p-2.5 outline-none font-mono transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                          : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Let's Encrypt Email */}
+                  <div className="space-y-1">
+                    <label className={`block font-semibold ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                      {isRtl ? 'ایمیل مدیر برای گواهی SSL' : 'SSL Cert Admin Email (LE_EMAIL)'}
+                    </label>
+                    <input
+                      type="email"
+                      value={installerConfig.LE_EMAIL || ''}
+                      onChange={(e) => setInstallerConfig((prev: any) => ({ ...prev, LE_EMAIL: e.target.value }))}
+                      placeholder="e.g. admin@company.local"
+                      className={`w-full border rounded-lg p-2.5 outline-none font-mono transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                          : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* SSL Mode */}
+                  <div className="space-y-1">
+                    <label className={`block font-semibold ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                      {isRtl ? 'حالت رمزگذاری SSL/TLS' : 'SSL/TLS Encryption Mode'}
+                    </label>
+                    <select
+                      value={installerConfig.SSL_MODE || 'selfsigned'}
+                      onChange={(e) => setInstallerConfig((prev: any) => ({ ...prev, SSL_MODE: e.target.value }))}
+                      className={`w-full border rounded-lg p-2.5 outline-none transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                          : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                      }`}
+                    >
+                      <option value="selfsigned">{isRtl ? 'گواهی داخلی خودامضا (پیش‌فرض)' : 'Self-Signed Certificate (Default)'}</option>
+                      <option value="letsencrypt">{isRtl ? 'دریافت گواهی معتبر Let\'s Encrypt' : 'Let\'s Encrypt Certificate'}</option>
+                      <option value="custom">{isRtl ? 'استفاده از گواهی‌های سفارشی (PEM)' : 'Use Custom PEM Certificates'}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Component Toggles */}
+              <div className={`p-5 rounded-2xl border space-y-4 ${
+                isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/50 border-white/5'
+              }`}>
+                <div className="flex items-center gap-2 border-b pb-3">
+                  <Layers className="h-5 w-5 text-purple-400" />
+                  <h3 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-gray-100'}`}>
+                    {isRtl ? 'انتخاب اجزای پشته ماتریکس' : 'Matrix Stack Component Selection'}
+                  </h3>
+                </div>
+
+                <div className="space-y-2.5">
+                  {[
+                    { id: 'synapse', name: 'Synapse Core Server', desc: 'Python-based Matrix main daemon' },
+                    { id: 'element', name: 'Element Web Client', desc: 'HTML/JS static instant messaging web client' },
+                    { id: 'postgres', name: 'PostgreSQL Database', desc: 'Secure relational database for system events' },
+                    { id: 'coturn', name: 'Coturn TURN Server', desc: 'STUN/TURN voice/video calling media relay' },
+                    { id: 'nginx', name: 'Nginx Reverse Proxy', desc: 'SSL termination and port 80/443 routing upstream' }
+                  ].map(comp => (
+                    <div 
+                      key={comp.id}
+                      onClick={() => {
+                        if (selectedComponents.includes(comp.id)) {
+                          setSelectedComponents(prev => prev.filter(c => c !== comp.id));
+                        } else {
+                          setSelectedComponents(prev => [...prev, comp.id]);
+                        }
+                      }}
+                      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
+                        selectedComponents.includes(comp.id)
+                          ? isLightMode 
+                            ? 'bg-purple-50/50 border-purple-300/60 text-purple-900' 
+                            : 'bg-purple-950/20 border-purple-500/30 text-purple-200'
+                          : isLightMode 
+                            ? 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300' 
+                            : 'bg-slate-950/20 border-white/5 text-gray-500 hover:border-white/10'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedComponents.includes(comp.id)}
+                        onChange={() => {}} // handled by click-container
+                        className="h-4 w-4 text-purple-600 rounded focus:ring-0 mt-0.5"
+                      />
+                      <div>
+                        <div className="font-semibold">{comp.name}</div>
+                        <div className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-gray-500'}`}>{comp.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Execution Terminal & Information */}
+            <div className="xl:col-span-2 space-y-6 flex flex-col justify-between">
+              {/* Terminal View Container */}
+              <div className={`p-5 rounded-2xl border flex-1 flex flex-col min-h-[480px] ${
+                isLightMode ? 'bg-slate-900 border-slate-900 text-slate-100 shadow-lg' : 'bg-slate-950 border-white/5 text-slate-100'
+              }`}>
+                {/* Terminal Header */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                      <span className="w-3 h-3 rounded-full bg-red-500 block"></span>
+                      <span className="w-3 h-3 rounded-full bg-yellow-500 block"></span>
+                      <span className="w-3 h-3 rounded-full bg-green-500 block"></span>
+                    </div>
+                    <span className="text-xs font-mono text-slate-400">root@synapse-installer-panel:~</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Installer Mode Toggle */}
+                    <div className="flex bg-slate-800 p-0.5 rounded-lg border border-white/5 text-[10px] font-mono select-none">
+                      <button
+                        onClick={() => setInstallerMode('online')}
+                        className={`px-2.5 py-1 rounded-md transition-colors ${
+                          installerMode === 'online' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        ONLINE
+                      </button>
+                      <button
+                        onClick={() => setInstallerMode('offline')}
+                        className={`px-2.5 py-1 rounded-md transition-colors ${
+                          installerMode === 'offline' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        OFFLINE
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => setInstallLogs(['# Console logs cleared.'])}
+                      className="p-1 hover:bg-white/5 rounded text-slate-400 hover:text-white transition-colors"
+                      title="Clear console"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Simulated Offline Cache Packages Box */}
+                {installerMode === 'offline' && (
+                  <div className="mb-4 p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl flex items-center justify-between text-xs font-mono shrink-0">
+                    <div className="flex items-center gap-2 text-indigo-300">
+                      <HardDrive className="h-4 w-4 animate-pulse text-indigo-400" />
+                      <span>{isRtl ? 'پکیج‌های کش شده در پوشه matrix_package معتبر است.' : 'Local packages cached in matrix_package are valid.'}</span>
+                    </div>
+                    <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full uppercase font-bold">Cache Active</span>
+                  </div>
+                )}
+
+                {/* Terminal Logs Output */}
+                <div className="flex-1 p-4 bg-black/40 rounded-xl font-mono text-[11px] leading-relaxed overflow-y-auto space-y-1.5 border border-white/5 min-h-[300px] max-h-[500px]">
+                  {installLogs.map((log, index) => {
+                    let color = 'text-slate-300';
+                    if (log.includes('✔') || log.includes('✅') || log.includes('SUCCESS') || log.includes('COMPLETED')) {
+                      color = 'text-emerald-400 font-bold';
+                    } else if (log.includes('❌') || log.includes('ERROR') || log.includes('Failed')) {
+                      color = 'text-red-400 font-bold';
+                    } else if (log.includes('⚠️') || log.includes('WARNING') || log.includes('[INFO]')) {
+                      color = 'text-amber-400 font-semibold';
+                    } else if (log.includes('[STEP') || log.includes('STEP')) {
+                      color = 'text-cyan-400 font-semibold';
+                    } else if (log.startsWith('#')) {
+                      color = 'text-slate-500 italic';
+                    }
+                    return (
+                      <div key={index} className={`whitespace-pre-wrap ${color}`}>
+                        {log}
+                      </div>
+                    );
+                  })}
+                  {isInstalling && (
+                    <div className="flex items-center gap-2 text-indigo-400 mt-2 font-semibold animate-pulse">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Streaming installation stdout...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Operations Buttons */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 shrink-0">
+                  <button
+                    disabled={isInstalling || !hasWriteAccess}
+                    onClick={() => runInstallerAction('custom_install')}
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold transition-all duration-200 shadow-md ${
+                      isInstalling 
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                        : !hasWriteAccess
+                          ? 'bg-red-500/10 text-red-400 border border-red-500/10 cursor-not-allowed'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-[1.01] active:scale-[0.99]'
+                    }`}
+                  >
+                    <Zap className={`h-4 w-4 ${isInstalling ? 'animate-bounce' : ''}`} />
+                    <span>{isRtl ? 'شروع نصب و پیکربندی' : 'Launch Custom Install'}</span>
+                  </button>
+
+                  <button
+                    disabled={isInstalling || !hasWriteAccess}
+                    onClick={() => {
+                      const msg = isRtl 
+                        ? 'آیا از راه اندازی مجدد دیتابیس اطمینان دارید؟ تمام جداول ماتریکس پاکسازی خواهد شد.' 
+                        : 'Are you absolutely sure you want to wipe the relational database? This deletes all Matrix tables!';
+                      if (window.confirm(msg)) {
+                        runInstallerAction('purge_database');
+                      }
+                    }}
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                      isInstalling 
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent'
+                        : !hasWriteAccess
+                          ? 'border-red-500/10 text-red-400 bg-red-500/5 cursor-not-allowed'
+                          : 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 active:scale-[0.99]'
+                    }`}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span>{isRtl ? 'پاکسازی کامل دیتابیس' : 'Wipe Database Tables'}</span>
+                  </button>
+
+                  <button
+                    disabled={isInstalling || !hasWriteAccess}
+                    onClick={() => {
+                      const msg = isRtl 
+                        ? 'آیا از حذف کامل پشته ماتریکس اطمینان دارید؟ تمامی پکیج‌ها و تنظیمات حذف خواهند شد.' 
+                        : 'Are you absolutely sure you want to completely uninstall the Matrix stack? This purges all configurations and packages!';
+                      if (window.confirm(msg)) {
+                        runInstallerAction('uninstall_stack');
+                      }
+                    }}
+                    className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                      isInstalling 
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent'
+                        : !hasWriteAccess
+                          ? 'border-red-500/10 text-red-400 bg-red-500/5 cursor-not-allowed'
+                          : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 active:scale-[0.99]'
+                    }`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>{isRtl ? 'حذف کامل کل پشته' : 'Uninstall Entire Stack'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Documentation / Guidance Card */}
+              <div className={`p-5 rounded-2xl border space-y-4 ${
+                isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-700' : 'bg-slate-900/50 border-white/5 text-gray-300'
+              }`}>
+                <div className="flex items-center gap-2 border-b pb-3">
+                  <FileText className="h-5 w-5 text-indigo-400" />
+                  <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-gray-100'}`}>
+                    {isRtl ? 'راهنمای راه‌اندازی و سیستم توزیع آفلاین' : 'DNS & Offline Installation Guild'}
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-indigo-400 uppercase tracking-wider">DNS Records Layout</h5>
+                    <ul className="list-disc pl-4 space-y-1 leading-relaxed">
+                      <li><strong>A Record:</strong> <code className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-indigo-300">chat.company.local</code> → Server IP</li>
+                      <li><strong>A Record:</strong> <code className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-indigo-300">matrix.company.local</code> → Server IP</li>
+                      <li><strong>SRV Record:</strong> <code className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-indigo-300">_matrix._tcp</code> (priority 10, weight 0, port 8448, target matrix)</li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-purple-400 uppercase tracking-wider">Port Bindings Required</h5>
+                    <ul className="list-disc pl-4 space-y-1 leading-relaxed">
+                      <li><strong>Port 80 & 443:</strong> HTTP/HTTPS Web Client & Reverse Proxy Routing</li>
+                      <li><strong>Port 8448:</strong> Matrix Federation server communication channel</li>
+                      <li><strong>Port 3478 (UDP/TCP):</strong> Coturn STUN/TURN voice/video calling media relay</li>
+                      <li><strong>Port 5349 (TLS):</strong> Secure voice/video transport channel</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* ========================================== */}
@@ -1789,13 +2292,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showAddUserModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
               id="add-user-modal"
             >
@@ -1898,13 +2401,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showReactivateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
               id="reactivate-modal"
             >
@@ -2002,13 +2505,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showCreateRoomModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
               id="create-room-modal"
             >
@@ -2147,13 +2650,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showRoomMembersModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full max-w-lg p-6 rounded-2xl shadow-2xl relative space-y-4 ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
               id="room-members-modal"
             >
@@ -2242,13 +2745,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showShutdownRoomModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
               id="shutdown-room-modal"
             >
@@ -2362,13 +2865,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showCreateTokenModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
               id="create-token-modal"
             >
@@ -2465,13 +2968,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {selectedUserMxid && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.96, opacity: 0 }}
               className={`w-full max-w-5xl h-[85vh] flex flex-col rounded-2xl shadow-2xl relative overflow-hidden ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
             >
               {/* Header */}
@@ -3336,13 +3839,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {activeRoomChatId && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               className={`w-full max-w-2xl h-[75vh] flex flex-col rounded-2xl shadow-2xl relative overflow-hidden ${
-                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900/95 backdrop-blur-2xl border border-white/10'
               }`}
             >
               {/* Header */}

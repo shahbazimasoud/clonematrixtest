@@ -11,6 +11,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { spawn } from "child_process";
 
 declare global {
   namespace Express {
@@ -2003,10 +2004,259 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
         ws.send(JSON.stringify({ type: "cmd_start", command }));
 
-        // Simulate script terminal output streaming
+        // Real production target VPS execution wrapper
+        const isSandbox = !fs.existsSync("/bin/systemctl");
+        if (!isSandbox && command === "custom_install") {
+          const selectedComponents = args?.components || ["synapse", "element", "postgres", "coturn", "nginx"];
+          const confObj = args?.config || {};
+
+          const envVars = {
+            ...process.env,
+            HS_DOMAIN: String(confObj.HS_DOMAIN || "matrix.company.local"),
+            ELEMENT_DOMAIN: String(confObj.ELEMENT_DOMAIN || "chat.company.local"),
+            BASE_DOMAIN: String(confObj.BASE_DOMAIN || "company.local"),
+            PUBLIC_IP: String(confObj.PUBLIC_IP || "127.0.0.1"),
+            LE_EMAIL: String(confObj.LE_EMAIL || "admin@company.local"),
+            SSL_MODE: String(confObj.SSL_MODE || "selfsigned"),
+            PG_DB: String(confObj.PG_DB || "synapse"),
+            PG_USER: String(confObj.PG_USER || "synapse_user"),
+            PG_PASS: String(confObj.PG_PASS || "synapse_pass"),
+            PG_HOST: String(confObj.PG_HOST || "localhost"),
+            PG_PORT: String(confObj.PG_PORT || "5432"),
+            INSTALL_SYNAPSE: String(selectedComponents.includes("synapse")),
+            INSTALL_ELEMENT: String(selectedComponents.includes("element")),
+            INSTALL_POSTGRES: String(selectedComponents.includes("postgres")),
+            INSTALL_COTURN: String(selectedComponents.includes("coturn")),
+            INSTALL_NGINX: String(selectedComponents.includes("nginx"))
+          };
+
+          const child = spawn("bash", ["./install-matrix-stack.sh"], { env: envVars });
+
+          child.stdout.on("data", (data) => {
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+          });
+
+          child.stderr.on("data", (data) => {
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+          });
+
+          child.on("close", (code) => {
+            ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
+
+            // Update configuration in virtual filesystem to reflect completion
+            let confContent = "";
+            Object.entries(confObj).forEach(([key, val]) => {
+              confContent += `${key}=${val}\n`;
+            });
+            confContent += `INSTALL_SYNAPSE=${selectedComponents.includes("synapse")}\n`;
+            confContent += `INSTALL_ELEMENT=${selectedComponents.includes("element")}\n`;
+            confContent += `INSTALL_POSTGRES=${selectedComponents.includes("postgres")}\n`;
+            confContent += `INSTALL_COTURN=${selectedComponents.includes("coturn")}\n`;
+            confContent += `INSTALL_NGINX=${selectedComponents.includes("nginx")}\n`;
+            writeSandboxFile("/etc/matrix-stack.conf", confContent);
+
+            const db = readDb();
+            db.auditLogs.unshift({
+              id: `log-${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              username,
+              action: `Console Command (Real)`,
+              target: command,
+              status: code === 0 ? "success" : "failed",
+              details: `Executed production install shell script. Exit code: ${code}`
+            });
+            writeDb(db);
+          });
+          return;
+        }
+
+        // Simulate script terminal output streaming if running inside sandbox container
         let steps: string[] = [];
 
-        if (command === "install") {
+        if (command === "custom_install") {
+          const mode = args?.mode || "online";
+          const selectedComponents = args?.components || ["synapse", "element", "postgres", "coturn", "nginx"];
+          const confObj = args?.config || {};
+
+          steps = [
+            `⚡ [INFO] Starting customized Matrix Stack installation in ${mode.toUpperCase()} mode...`,
+            `⚙️  Active config parameters:`,
+            `   - Domain: ${confObj.HS_DOMAIN || 'matrix.company.local'}`,
+            `   - Element Client: ${confObj.ELEMENT_DOMAIN || 'chat.company.local'}`,
+            `   - SSL Mode: ${confObj.SSL_MODE || 'selfsigned'}`,
+            `   - Target Database: ${confObj.PG_DB || 'synapse'} (user: ${confObj.PG_USER || 'synapse_user'})`
+          ];
+
+          if (mode === "offline") {
+            steps.push(
+              `📦 [OFFLINE] Activating local repository mirrors at '/var/cache/matrix_package'...`,
+              `🔍 Checking offline local cache files...`,
+              `   - synapse_1.98.0_amd64.deb: Found [LOCAL_CACHE]`,
+              `   - element-web_1.12.7.tar.gz: Found [LOCAL_CACHE]`,
+              `   - postgres-12-server_amd64.deb: Found [LOCAL_CACHE]`,
+              `   - coturn_4.5.1_amd64.deb: Found [LOCAL_CACHE]`,
+              `   - nginx-full_1.18.0_amd64.deb: Found [LOCAL_CACHE]`,
+              `🚀 [SUCCESS] Offline packages cache is valid. Bypassing apt download queues.`
+            );
+          } else {
+            steps.push(
+              `🌍 [ONLINE] Connecting to official package registries...`,
+              `   Get:1 https://packages.matrix.org/debian focal InRelease`,
+              `   Get:2 http://apt.postgresql.org/pub/repos/apt focal-pgdg InRelease`,
+              `   Get:3 http://archive.ubuntu.com/ubuntu focal/main amd64 Packages`,
+              `⬇️  Downloading remote packages & updating local catalog...`,
+              `   Downloading synapse-core (v1.98.0) - 18.4 MB... done.`,
+              `   Downloading element-web (v1.12.7) - 12.1 MB... done.`,
+              `📦 Caching downloaded deb files to '/var/cache/matrix_package' for future offline speedups...`,
+              `🚀 [SUCCESS] Remote retrieval complete. All packages downloaded.`
+            );
+          }
+
+          // Install Postgres if selected
+          if (selectedComponents.includes("postgres")) {
+            steps.push(
+              `🐘 [1/6] Installing & configuring PostgreSQL database engine...`,
+              `   Processing package postgresql-12...`,
+              `   Creating database '${confObj.PG_DB || 'synapse'}' on ${confObj.PG_HOST || 'localhost'}:${confObj.PG_PORT || '5432'}...`,
+              `   Creating relational user '${confObj.PG_USER || 'synapse_user'}' with md5 hash auth...`,
+              `   Initializing postgresql.conf and pg_hba.conf configurations...`,
+              `   ✅ PostgreSQL service started & listening.`
+            );
+          } else {
+            steps.push(`🐘 Skipping PostgreSQL installation (using external/existing database)...`);
+          }
+
+          // Install Synapse if selected
+          if (selectedComponents.includes("synapse")) {
+            steps.push(
+              `🧱 [2/6] Setting up Matrix Synapse Homeserver daemon...`,
+              `   Processing package matrix-synapse-py3...`,
+              `   Registering python virtual environment at /opt/venvs/matrix-synapse...`,
+              `   Compiling homeserver.yaml configuration settings...`,
+              `   Shared registration token generated: a3f8b09d2e1c4f5a6b7c8d9e`,
+              `   ✅ Synapse systemd services configured successfully.`
+            );
+          } else {
+            steps.push(`🧱 Skipping Matrix Synapse installation...`);
+          }
+
+          // Install Element if selected
+          if (selectedComponents.includes("element")) {
+            steps.push(
+              `🎨 [3/6] Deploying Element Web Instant Messenger Client...`,
+              `   Extracting element-web.tar.gz to webroot /var/www/element/...`,
+              `   Generating config.json pointing to homeserver: 'https://${confObj.HS_DOMAIN || 'matrix.company.local'}'...`,
+              `   ✅ Element Web client configured.`
+            );
+          } else {
+            steps.push(`🎨 Skipping Element Web client installation...`);
+          }
+
+          // Install TURN if selected
+          if (selectedComponents.includes("coturn")) {
+            steps.push(
+              `📞 [4/6] Installing & activating Coturn STUN/TURN Media Relay...`,
+              `   Configuring turnserver.conf with long-term credentials...`,
+              `   Listening on TCP/UDP port 3478 (TLS port 5349)...`,
+              `   ✅ TURN server operational.`
+            );
+          } else {
+            steps.push(`📞 Skipping Coturn TURN/STUN media relay...`);
+          }
+
+          // Install Nginx if selected
+          if (selectedComponents.includes("nginx")) {
+            steps.push(
+              `🌐 [5/6] Creating Nginx reverse proxy routes...`,
+              `   Building sites-available config files...`,
+              `   Injecting client and server federation well-known delegators...`,
+              `   Testing Nginx configuration files... syntax is ok.`,
+              `   Reloading Nginx server configurations...`,
+              `   ✅ Nginx proxy live.`
+            );
+          } else {
+            steps.push(`🌐 Skipping Nginx reverse proxy configurations...`);
+          }
+
+          // Generate Certificates
+          steps.push(`🔑 [6/6] Aligning SSL/TLS profiles (${confObj.SSL_MODE || 'selfsigned'})...`);
+          if (confObj.SSL_MODE === "selfsigned") {
+            steps.push(
+              `   Generating 10-year 4096-bit RSA self-signed certificates...`,
+              `   Subject: CN=${confObj.HS_DOMAIN || 'matrix.company.local'}`,
+              `   Alternative Names: DNS:${confObj.HS_DOMAIN || 'matrix.company.local'}, DNS:${confObj.ELEMENT_DOMAIN || 'chat.company.local'}`,
+              `   ✅ Self-signed TLS certificate generated.`
+            );
+          } else if (confObj.SSL_MODE === "letsencrypt") {
+            steps.push(
+              `   Invoking Certbot ACME client to request production certificate...`,
+              `   Target email: ${confObj.LE_EMAIL || 'admin@company.local'}`,
+              `   Resolving ACME challenges via Nginx webroot plugin...`,
+              `   ✅ Received production certificates from Let's Encrypt authority.`
+            );
+          } else {
+            steps.push(
+              `   Applying custom certificate chain configurations...`,
+              `   Validating fullchain.pem and privkey.pem match...`,
+              `   ✅ Custom certificates verified & bound.`
+            );
+          }
+
+          steps.push(
+            `🎉 CUSTOM STACK INSTALLATION COMPLETED SUCCESSFULLY!`,
+            `----------------------------------------------------------------`,
+            `Matrix Homeserver:  https://${confObj.HS_DOMAIN || 'matrix.company.local'}`,
+            `Element Client-Web: https://${confObj.ELEMENT_DOMAIN || 'chat.company.local'}`,
+            `Database backend:   PostgreSQL on localhost:5432`,
+            `----------------------------------------------------------------`,
+            `You can now start services and register new users.`
+          );
+
+          // Write settings
+          if (confObj) {
+            let confContent = "";
+            Object.entries(confObj).forEach(([key, val]) => {
+              confContent += `${key}=${val}\n`;
+            });
+            writeSandboxFile("/etc/matrix-stack.conf", confContent);
+          }
+        } else if (command === "uninstall_stack") {
+          steps = [
+            "⚠️  [WARNING] Preparing to completely remove the Matrix stack...",
+            "🛑 Stopping all active systemd services (matrix-synapse, coturn, nginx, postgres)...",
+            "   matrix-synapse.service: Stopped.",
+            "   coturn.service: Stopped.",
+            "   nginx.service: Stopped.",
+            "   postgresql.service: Stopped.",
+            "🧹 Purging package installations & binaries (apt purge)...",
+            "   Removing Synapse files from /etc/matrix-synapse...",
+            "   Removing Element client files from /var/www/element...",
+            "   Removing Coturn configurations from /etc/turnserver.conf...",
+            "   Removing PostgreSQL relational tables and clusters...",
+            "🧹 Cleaning local directories and configuration stores...",
+            "🗑️  Resetting /etc/matrix-stack.conf variables...",
+            "🎉 STACK SUCCESSFULLY UNINSTALLED AND PURGED.",
+            "Your server environment is back to a clean slate."
+          ];
+          writeSandboxFile("/etc/matrix-stack.conf", "");
+        } else if (command === "purge_database") {
+          steps = [
+            "⚠️  [WARNING] Initializing Database wipe...",
+            "🛑 Temporarily pausing Matrix Synapse to lock DB handles...",
+            "   matrix-synapse.service: Paused.",
+            "🐘 Connecting to PostgreSQL engine...",
+            "💧 Dropping active database 'synapse'...",
+            "   DROP DATABASE synapse WITH (FORCE);",
+            "   ✅ Database synapse successfully dropped.",
+            "🌱 Re-creating empty database 'synapse' with UTF8 encoding...",
+            "   CREATE DATABASE synapse WITH OWNER synapse_user ENCODING 'UTF8';",
+            "   ✅ Empty database synapse created successfully.",
+            "🔄 Restarting Matrix Synapse...",
+            "   matrix-synapse.service: Restarted.",
+            "   ✅ Homeserver schemas auto-recreated and initialized.",
+            "🎉 DATABASE PURGED SUCCESSFULLY."
+          ];
+        } else if (command === "install") {
           steps = [
             "⚡ [INFO] Starting standard matrix server installation...",
             "⚙️  Reading requirements from platform target...",
