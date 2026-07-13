@@ -130,6 +130,7 @@ export interface MatrixConfig {
   PG_USER?: string;
   PG_HOST?: string;
   PG_PORT?: string;
+  PG_PASS?: string;
   
   // New configurations matching the bash script
   LIMIT_MB?: string;

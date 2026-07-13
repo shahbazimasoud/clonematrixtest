@@ -70,6 +70,7 @@ export default function ConfigForms({
   const [pgUser, setPgUser] = useState('');
   const [pgHost, setPgHost] = useState('');
   const [pgPort, setPgPort] = useState('');
+  const [pgPass, setPgPass] = useState('');
 
   // 2. LDAP Config State
   const [ldapEnabled, setLdapEnabled] = useState(false);
@@ -144,6 +145,7 @@ export default function ConfigForms({
       setPgUser(config.PG_USER || 'synapse_user');
       setPgHost(config.PG_HOST || 'localhost');
       setPgPort(config.PG_PORT || '5432');
+      setPgPass(config.PG_PASS || '');
       
       setLimitMb(config.LIMIT_MB || '50');
       setRegEnabled(config.REGISTRATION_ENABLED !== false);
@@ -214,7 +216,8 @@ export default function ConfigForms({
         PG_DB: pgDb,
         PG_USER: pgUser,
         PG_HOST: pgHost,
-        PG_PORT: pgPort
+        PG_PORT: pgPort,
+        PG_PASS: pgPass
       }
     });
   };
@@ -548,7 +551,7 @@ export default function ConfigForms({
                 PostgreSQL Relational DB Settings
               </h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Database Host</label>
                   <input
@@ -587,6 +590,17 @@ export default function ConfigForms({
                     onChange={(e) => setPgUser(e.target.value)}
                     disabled={isReadOnly}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={pgPass}
+                    onChange={(e) => setPgPass(e.target.value)}
+                    disabled={isReadOnly}
+                    placeholder="••••••••"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500/50 transition-colors"
                   />
                 </div>
               </div>

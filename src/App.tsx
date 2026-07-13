@@ -150,7 +150,8 @@ export default function App() {
     PG_DB: 'synapse',
     PG_USER: 'synapse_user',
     PG_HOST: 'localhost',
-    PG_PORT: '5432'
+    PG_PORT: '5432',
+    PG_PASS: ''
   });
   const [ldap, setLdap] = useState<LDAPConfig>({
     enabled: false,
@@ -229,6 +230,12 @@ export default function App() {
 
       if (data.type === 'metrics') {
         setStats(data.stats);
+        if (data.stats && data.stats.services) {
+          setServices(prev => prev.map(s => {
+            const updated = data.stats.services.find((us: any) => us.id === s.id);
+            return updated ? { ...s, status: updated.status } : s;
+          }));
+        }
       } else if (data.type === 'cmd_stdout') {
         setTerminalLogs(prev => [...prev, data.text]);
       } else if (data.type === 'cmd_start') {
