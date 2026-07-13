@@ -16,6 +16,28 @@ import os from "os";
 import { Client } from "pg";
 import { Client as SSHClient } from "ssh2";
 
+// Import modular DB and Agent services
+import {
+  initializeSandbox,
+  readDb,
+  writeDb,
+  getRealPath,
+  writeSandboxFile,
+  readSandboxFile,
+  getActiveConnection,
+  executeSSHCommand,
+  queryRemotePostgres,
+  ConnectionProfile
+} from "./server/db";
+
+import {
+  serveInstallerScript,
+  registerAgent,
+  pingAgent,
+  receiveResults,
+  executeRemoteAgentTask
+} from "./server/agent";
+
 declare global {
   namespace Express {
     interface Request {
@@ -32,162 +54,36 @@ const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "spatial-matrix-secret-key-9988";
 const SANDBOX_DIR = path.join(process.cwd(), "sandbox");
 
-interface ConnectionProfile {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  password?: string;
-  privateKey?: string;
-  authType: 'password' | 'key';
-  
-  // Database configuration
-  dbHost?: string;
-  dbPort?: number;
-  dbName?: string;
-  dbUser?: string;
-  dbPass?: string;
-  
-  // Config paths
-  configPath?: string;
-  homeserverYamlPath?: string;
-  elementConfigPath?: string;
-  homeserverLogPath?: string;
-  
-  isActive: boolean;
-}
-
-function getActiveConnection(): ConnectionProfile {
-  try {
-    const db = readDb();
-    if (!db.connections) {
-      return {
-        id: "local",
-        name: "Local Server (This Machine)",
-        host: "localhost",
-        port: 22,
-        username: "",
-        authType: "key",
-        isActive: true
-      };
-    }
-    return db.connections.find((c: any) => c.isActive) || db.connections[0];
-  } catch (e) {
-    return {
-      id: "local",
-      name: "Local Server (This Machine)",
-      host: "localhost",
-      port: 22,
-      username: "",
-      authType: "key",
-      isActive: true
-    };
-  }
-}
-
-function executeSSHCommand(config: ConnectionProfile, cmd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const conn = new SSHClient();
-    conn.on("ready", () => {
-      conn.exec(cmd, (err, stream) => {
-        if (err) {
-          conn.end();
-          return reject(err);
-        }
-        let stdout = "";
-        let stderr = "";
-        stream.on("close", (code, signal) => {
-          conn.end();
-          if (code !== 0 && code !== null) {
-            reject(new Error(stderr || `Command failed with exit code ${code}`));
-          } else {
-            resolve(stdout);
-          }
-        }).on("data", (data: any) => {
-          stdout += data.toString();
-        }).stderr.on("data", (data: any) => {
-          stderr += data.toString();
-        });
-      });
-    }).on("error", (err) => {
-      reject(err);
-    });
-
-    const connOpts: any = {
-      host: config.host,
-      port: config.port || 22,
-      username: config.username,
-      readyTimeout: 10000
-    };
-    if (config.authType === "password") {
-      connOpts.password = config.password;
-    } else {
-      connOpts.privateKey = config.privateKey;
-    }
-    conn.connect(connOpts);
-  });
-}
-
-function interpolateQueryParams(queryStr: string, params: any[]): string {
-  if (!params || params.length === 0) return queryStr;
-  
-  let interpolated = queryStr;
-  params.forEach((param, i) => {
-    const placeholder = `$${i + 1}`;
-    let formattedParam = "";
-    if (typeof param === "string") {
-      formattedParam = `'${param.replace(/'/g, "''")}'`;
-    } else if (param === null || param === undefined) {
-      formattedParam = "NULL";
-    } else if (param instanceof Date) {
-      formattedParam = `'${param.toISOString()}'`;
-    } else {
-      formattedParam = String(param);
-    }
-    interpolated = interpolated.split(placeholder).join(formattedParam);
-  });
-  return interpolated;
-}
-
-async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: string, params: any[] = []): Promise<any[]> {
-  const interpolatedSql = interpolateQueryParams(sqlQuery, params);
-  const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${interpolatedSql.replace(/"/g, '\\"')}) t;`;
-  
-  const dbUser = config.dbUser || "synapse_user";
-  const dbPass = config.dbPass || "";
-  const dbName = config.dbName || "synapse";
-  const dbHost = config.dbHost || "localhost";
-  const dbPort = config.dbPort || 5432;
-  
-  const cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`;
-  
-  const jsonStr = await executeSSHCommand(config, cmd);
-  return JSON.parse(jsonStr.trim() || "[]");
-}
-
 async function readConfigContent(filePath: string, defaultContent: string = ""): Promise<string> {
   const activeConn = getActiveConnection();
   if (activeConn && activeConn.id !== "local") {
-    try {
-      let targetPath = filePath;
-      if (filePath === "/etc/matrix-stack.conf" && activeConn.configPath) {
-        targetPath = activeConn.configPath;
-      } else if (filePath === "/etc/matrix-synapse/homeserver.yaml" && activeConn.homeserverYamlPath) {
-        targetPath = activeConn.homeserverYamlPath;
-      } else if (filePath === "/var/www/element/config.json" && activeConn.elementConfigPath) {
-        targetPath = activeConn.elementConfigPath;
-      } else if (filePath === "/var/log/matrix-synapse/homeserver.log" && activeConn.homeserverLogPath) {
-        targetPath = activeConn.homeserverLogPath;
-      }
-      
-      const content = await executeSSHCommand(activeConn, `cat "${targetPath}" 2>/dev/null || echo "__NOT_FOUND__"`);
-      if (content.trim() === "__NOT_FOUND__") {
+    let targetPath = filePath;
+    if (filePath === "/etc/matrix-stack.conf" && activeConn.configPath) {
+      targetPath = activeConn.configPath;
+    } else if (filePath === "/etc/matrix-synapse/homeserver.yaml" && activeConn.homeserverYamlPath) {
+      targetPath = activeConn.homeserverYamlPath;
+    } else if (filePath === "/var/www/element/config.json" && activeConn.elementConfigPath) {
+      targetPath = activeConn.elementConfigPath;
+    } else if (filePath === "/var/log/matrix-synapse/homeserver.log" && activeConn.homeserverLogPath) {
+      targetPath = activeConn.homeserverLogPath;
+    }
+
+    if (activeConn.authType === "agent") {
+      try {
+        return await executeRemoteAgentTask(activeConn.id, "read_file", { path: targetPath });
+      } catch (err) {
         return defaultContent;
       }
-      return content;
-    } catch (err) {
-      return defaultContent;
+    } else {
+      try {
+        const content = await executeSSHCommand(activeConn, `cat "${targetPath}" 2>/dev/null || echo "__NOT_FOUND__"`);
+        if (content.trim() === "__NOT_FOUND__") {
+          return defaultContent;
+        }
+        return content;
+      } catch (err) {
+        return defaultContent;
+      }
     }
   } else {
     return readSandboxFile(filePath, defaultContent);
@@ -197,22 +93,32 @@ async function readConfigContent(filePath: string, defaultContent: string = ""):
 async function writeConfigContent(filePath: string, content: string): Promise<boolean> {
   const activeConn = getActiveConnection();
   if (activeConn && activeConn.id !== "local") {
-    try {
-      let targetPath = filePath;
-      if (filePath === "/etc/matrix-stack.conf" && activeConn.configPath) {
-        targetPath = activeConn.configPath;
-      } else if (filePath === "/etc/matrix-synapse/homeserver.yaml" && activeConn.homeserverYamlPath) {
-        targetPath = activeConn.homeserverYamlPath;
-      } else if (filePath === "/var/www/element/config.json" && activeConn.elementConfigPath) {
-        targetPath = activeConn.elementConfigPath;
+    let targetPath = filePath;
+    if (filePath === "/etc/matrix-stack.conf" && activeConn.configPath) {
+      targetPath = activeConn.configPath;
+    } else if (filePath === "/etc/matrix-synapse/homeserver.yaml" && activeConn.homeserverYamlPath) {
+      targetPath = activeConn.homeserverYamlPath;
+    } else if (filePath === "/var/www/element/config.json" && activeConn.elementConfigPath) {
+      targetPath = activeConn.elementConfigPath;
+    }
+
+    if (activeConn.authType === "agent") {
+      try {
+        await executeRemoteAgentTask(activeConn.id, "write_file", { path: targetPath, content });
+        return true;
+      } catch (err) {
+        console.error(`Failed to write agent config:`, err);
+        return false;
       }
-      
-      const cmd = `cat << 'EOF' > "${targetPath}"\n${content}\nEOF`;
-      await executeSSHCommand(activeConn, cmd);
-      return true;
-    } catch (err) {
-      console.error(`Failed to write remote config:`, err);
-      return false;
+    } else {
+      try {
+        const cmd = `cat << 'EOF' > "${targetPath}"\n${content}\nEOF`;
+        await executeSSHCommand(activeConn, cmd);
+        return true;
+      } catch (err) {
+        console.error(`Failed to write remote config:`, err);
+        return false;
+      }
     }
   } else {
     writeSandboxFile(filePath, content);
@@ -255,11 +161,25 @@ let lastPostgresCheckTime = 0;
 async function queryPostgres(queryStr: string, params: any[] = []): Promise<any[]> {
   const activeConn = getActiveConnection();
   if (activeConn && activeConn.id !== "local") {
-    try {
-      return await queryRemotePostgres(activeConn, queryStr, params);
-    } catch (err: any) {
-      console.error("Remote Postgres Query Error:", err);
-      throw err;
+    if (activeConn.authType === "agent") {
+      try {
+        const res = await executeRemoteAgentTask(activeConn.id, "postgres_query", {
+          query: queryStr,
+          dbUser: activeConn.dbUser || "synapse_user",
+          dbName: activeConn.dbName || "synapse"
+        });
+        return JSON.parse(res || "[]");
+      } catch (err: any) {
+        console.error("Agent Postgres Query Error:", err);
+        throw err;
+      }
+    } else {
+      try {
+        return await queryRemotePostgres(activeConn, queryStr, params);
+      } catch (err: any) {
+        console.error("Remote Postgres Query Error:", err);
+        throw err;
+      }
     }
   }
 
@@ -524,406 +444,6 @@ async function getRemoteServicesStatus(config: ConnectionProfile) {
 }
 
 // -------------------------------------------------------------
-// Virtual Sandbox Filesystem Helpers
-// -------------------------------------------------------------
-function getRealPath(targetPath: string): string {
-  const relative = targetPath.startsWith("/") ? targetPath.slice(1) : targetPath;
-  return path.join(SANDBOX_DIR, relative);
-}
-
-function ensureDirExists(filePath: string) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-function writeSandboxFile(filePath: string, content: string) {
-  const realPath = getRealPath(filePath);
-  ensureDirExists(realPath);
-  fs.writeFileSync(realPath, content, "utf8");
-}
-
-function readSandboxFile(filePath: string, defaultContent: string = ""): string {
-  const realPath = getRealPath(filePath);
-  if (!fs.existsSync(realPath)) {
-    writeSandboxFile(filePath, defaultContent);
-    return defaultContent;
-  }
-  return fs.readFileSync(realPath, "utf8");
-}
-
-// -------------------------------------------------------------
-// Pre-populate Sandbox with Realistic Matrix Configurations
-// -------------------------------------------------------------
-function initializeSandbox() {
-  if (!fs.existsSync(SANDBOX_DIR)) {
-    fs.mkdirSync(SANDBOX_DIR, { recursive: true });
-  }
-
-  // 1. matrix-stack.conf
-  readSandboxFile("/etc/matrix-stack.conf", [
-    "HS_DOMAIN=matrix.company.local",
-    "ELEMENT_DOMAIN=chat.company.local",
-    "BASE_DOMAIN=company.local",
-    "PUBLIC_IP=192.168.1.100",
-    "LE_EMAIL=admin@company.local",
-    "PG_DB=synapse",
-    "PG_USER=synapse_user",
-    "PG_PASS=a3f8b09d2e1c4f5a6b7c8d9e",
-    "PG_HOST=localhost",
-    "PG_PORT=5432",
-    "SSL_MODE=selfsigned",
-    "LIMIT_MB=50",
-    "REGISTRATION_ENABLED=true",
-    "MESSAGE_RETENTION_DAYS=0",
-    "MEDIA_RETENTION_LOCAL_DAYS=0",
-    "MEDIA_RETENTION_REMOTE_DAYS=0",
-    "PRESENCE_ENABLED=true",
-    "ROOM_CREATION_ALLOW=true",
-    "DIRECTORY_SEARCH_ENABLED=true",
-    "SMTP_HOST=smtp.company.local",
-    "SMTP_PORT=587",
-    "SMTP_USER=smtp_user",
-    "SMTP_PASS=smtp_pass",
-    "NOTIF_FROM=Matrix <noreply@company.local>",
-    "APP_NAME=Matrix",
-    "ELEMENT_CALL_URL=https://call.element.io",
-    "INTEGRATIONS_UI_URL=https://scalar.vector.im",
-    "INTEGRATIONS_REST_URL=https://scalar.vector.im/api",
-    "TYPING_NOTIFS_ENABLED=true",
-    "READ_RECEIPTS_ENABLED=true",
-    "PROFILE_EDIT_NAME_ENABLED=true",
-    "PROFILE_EDIT_AVATAR_ENABLED=true"
-  ].join("\n"));
-
-  // 2. homeserver.yaml
-  readSandboxFile("/etc/matrix-synapse/homeserver.yaml", [
-    "# Matrix Synapse Homeserver Configuration",
-    "server_name: \"matrix.company.local\"",
-    "public_baseurl: \"https://matrix.company.local/\"",
-    "registration_shared_secret: \"99f8c0b2d3e4f5a6a7b8c9d0e1f2a3b4\"",
-    "turn_shared_secret: \"a8b9c1d2e3f4a5b6c7d8e9f0a1b2c3d4\"",
-    "enable_registration: true",
-    "enable_registration_without_verification: true",
-    "max_upload_size: \"50M\"",
-    "database:",
-    "  name: \"psycopg2\"",
-    "  args:",
-    "    user: \"synapse_user\"",
-    "    password: \"a3f8b09d2e1c4f5a6b7c8d9e\"",
-    "    database: \"synapse\"",
-    "    host: \"localhost\"",
-    "    port: 5432",
-    "    cp_min: 5",
-    "    cp_max: 10",
-    "turn_uris:",
-    "  - \"turn:matrix.company.local:3478?transport=udp\"",
-    "  - \"turns:matrix.company.local:5349?transport=tcp\"",
-    "presence:",
-    "  enabled: true",
-    "rc_message:",
-    "  per_second: 0.2",
-    "  burst_count: 10",
-    "rc_login:",
-    "  address:",
-    "    per_second: 0.17",
-    "    burst_count: 5",
-    "  failed_attempts:",
-    "    per_second: 0.17",
-    "    burst_count: 5",
-    "modules: []"
-  ].join("\n"));
-
-  // 3. Element Web config.json
-  readSandboxFile("/var/www/element/config.json", JSON.stringify({
-    "default_server_config": {
-      "m.homeserver": {
-        "base_url": "https://matrix.company.local",
-        "server_name": "matrix.company.local"
-      }
-    },
-    "disable_custom_urls": false,
-    "disable_guests": true,
-    "brand": "Element",
-    "settingDefaults": {
-      "features": {
-        "feature_e2ee": false,
-        "feature_video_rooms": "enable"
-      },
-      "sendTypingNotifications": true,
-      "showTypingNotifications": true,
-      "sendReadReceipts": true
-    },
-    "jitsi": {
-      "preferredDomain": "meet.jit.si"
-    }
-  }, null, 2));
-
-  // 4. pgAdmin Servers configuration
-  readSandboxFile("/etc/matrix-pgadmin/servers.json", JSON.stringify({
-    "Servers": {
-      "1": {
-        "Name": "Matrix Synapse DB",
-        "Group": "Servers",
-        "Host": "localhost",
-        "Port": 5432,
-        "MaintenanceDB": "synapse",
-        "Username": "synapse_user",
-        "SSLMode": "prefer"
-      }
-    }
-  }, null, 2));
-
-  // 5. Nginx Sites Config
-  readSandboxFile("/etc/nginx/sites-available/matrix.conf", [
-    "server {",
-    "    listen 443 ssl http2;",
-    "    server_name matrix.company.local;",
-    "    ssl_certificate /etc/letsencrypt/live/matrix.company.local/fullchain.pem;",
-    "    ssl_certificate_key /etc/letsencrypt/live/matrix.company.local/privkey.pem;",
-    "    location / {",
-    "        proxy_pass http://127.0.0.1:8008;",
-    "    }",
-    "}"
-  ].join("\n"));
-
-  // 6. DB files for Panel Database (local persistent mock DB)
-  readSandboxFile("/db/panel_data.json", JSON.stringify({
-    users: [
-      {
-        id: "usr-1",
-        username: "admin",
-        email: "admin@company.local",
-        // Bcrypt hash for "admin1234"
-        passwordHash: "$2b$10$oX6HHsc3BDS.vH9aE/vzOek0uXuYFV22mSTl9OMk0QroZlkGqRIae",
-        role: "Owner",
-        isActive: true,
-        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=admin"
-      },
-      {
-        id: "usr-2",
-        username: "masoud",
-        email: "masoud.shahbazii@gmail.com",
-        // Bcrypt hash for "masoud1234"
-        passwordHash: "$2b$10$QPE6t1v41RcL0A9LA5pGsu56Ti2he3s.k8AJWI8vOeJy.Or9iafBS",
-        role: "Super Admin",
-        isActive: true,
-        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=masoud"
-      },
-      {
-        id: "usr-3",
-        username: "moderator",
-        email: "mod@company.local",
-        // Bcrypt hash for "mod1234"
-        passwordHash: "$2b$10$TBrHPNVEOqZnBxTknN0MeO.6/DX864MJ8.2iFyuIV5M4Uw07Hackm",
-        role: "Moderator",
-        isActive: true,
-        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=moderator"
-      },
-      {
-        id: "usr-4",
-        username: "viewer",
-        email: "viewer@company.local",
-        // Bcrypt hash for "viewer1234"
-        passwordHash: "$2b$10$kK4vi/4n6y0I3SLkVphmeuMbd3o7sY0TgSS8apm8SDXeI7U62Xwly",
-        role: "Viewer",
-        isActive: true,
-        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=viewer"
-      }
-    ],
-    matrixUsers: [
-      { mxid: "@masoud:matrix.company.local", isAdmin: true, isDeactivated: false },
-      { mxid: "@alice:matrix.company.local", isAdmin: false, isDeactivated: false },
-      { mxid: "@bob:matrix.company.local", isAdmin: false, isDeactivated: false },
-      { mxid: "@welcome:matrix.company.local", isAdmin: false, isDeactivated: true }
-    ],
-    auditLogs: [
-      { id: "log-1", timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), username: "system", action: "Server Booted", target: "Server", status: "success", details: "Matrix Stack Manager Web Panel initiated successfully." },
-      { id: "log-2", timestamp: new Date(Date.now() - 3600000).toISOString(), username: "admin", action: "Configure LDAP", target: "LDAP Auth", status: "success", details: "Tested LDAP connection and saved changes." }
-    ],
-    backups: [
-      { id: "bak-1", filename: "matrix-backup-20260710-120000.tar.gz", size: "142.8 MB", timestamp: "2026-07-10T12:00:00.000Z", hasSSL: true },
-      { id: "bak-2", filename: "matrix-backup-20260711-120000.tar.gz", size: "143.2 MB", timestamp: "2026-07-11T12:00:00.000Z", hasSSL: true }
-    ],
-    undoHistory: [
-      { id: "undo-1", timestamp: new Date(Date.now() - 3600000).toISOString(), description: "Update LDAP Settings", files: ["/etc/matrix-stack-ldap.conf", "/etc/matrix-synapse/homeserver.yaml"] }
-    ],
-    ldapConfig: {
-      enabled: false,
-      uri: "ldap://ldap.company.local:389",
-      base: "ou=users,dc=company,dc=local",
-      mode: "search",
-      start_tls: false,
-      bind_dn: "cn=svc-matrix,dc=company,dc=local",
-      uid_attr: "sAMAccountName",
-      mail_attr: "mail",
-      name_attr: "cn"
-    },
-    workersConfig: {
-      enabled: false,
-      count: 2,
-      federationSender: false,
-      basePort: 8083
-    }
-  }, null, 2));
-
-  // Logs
-  readSandboxFile("/var/log/matrix_stack_install.log", [
-    "[2026-07-12 10:00:00] Starting Matrix Synapse Installer v3.0...",
-    "[2026-07-12 10:00:05] [STEP 1/17] Updating repositories & installing prerequisites (apt)... success.",
-    "[2026-07-12 10:00:20] [STEP 2/17] Adding Matrix Synapse repository... success.",
-    "[2026-07-12 10:00:30] [STEP 3/17] Pre-configuring Synapse (debconf)... success.",
-    "[2026-07-12 10:00:45] [STEP 4/17] Installing Matrix Synapse... success.",
-    "[2026-07-12 10:01:10] [STEP 5/17] Centralizing YAML settings into homeserver.yaml... success.",
-    "[2026-07-12 10:01:25] [STEP 6/17] Setting up PostgreSQL database... success.",
-    "[2026-07-12 10:01:30] [STEP 7/17] Configuring SSL certificates... success. Self-signed certificate generated.",
-    "[2026-07-12 10:01:35] [STEP 8/17] Saving configuration... success.",
-    "[2026-07-12 10:01:40] [STEP 9/17] Configuring Synapse registration & uploads... success.",
-    "[2026-07-12 10:01:45] [STEP 10/17] Configuring TURN for Synapse... success.",
-    "[2026-07-12 10:01:50] [STEP 11/17] Configuring coturn & firewall... success.",
-    "[2026-07-12 10:01:55] [STEP 12/17] Starting TURN & Synapse... success.",
-    "[2026-07-12 10:02:10] [STEP 13/17] Installing Element Web... success.",
-    "[2026-07-12 10:02:15] [STEP 14/17] Creating Element config.json... success.",
-    "[2026-07-12 10:02:20] [STEP 15/17] Creating Nginx virtual hosts... success.",
-    "[2026-07-12 10:02:25] [STEP 16/17] Testing & reloading Nginx... success.",
-    "[2026-07-12 10:02:30] [STEP 17/17] Setting up internal domain resolution (/etc/hosts)... success.",
-    "[2026-07-12 10:02:35] INSTALLATION COMPLETE. Matrix Synapse & Element Web fully operational."
-  ].join("\n"));
-
-  readSandboxFile("/var/log/matrix-synapse/homeserver.log", [
-    "2026-07-12 22:30:15,312 - synapse.app.homeserver - 355 - INFO - - Synapse version 1.98.0 starting...",
-    "2026-07-12 22:30:16,110 - synapse.storage.SQL - 88 - INFO - - Checking database schema...",
-    "2026-07-12 22:30:17,450 - synapse.app.homeserver - 410 - INFO - - Database schema is up to date.",
-    "2026-07-12 22:30:18,912 - synapse.handlers.auth - 102 - INFO - - Loaded LDAP Authentication Module successfully.",
-    "2026-07-12 22:30:19,102 - synapse.app.homeserver - 501 - INFO - - Listening on port 8008 (HTTP)...",
-    "2026-07-12 22:31:00,459 - synapse.access.http.8008 - 210 - INFO - - 127.0.0.1 - - POST /_matrix/client/v3/login - 200 - OK",
-    "2026-07-12 22:32:45,112 - synapse.access.http.8008 - 210 - INFO - - 192.168.1.150 - - GET /_matrix/client/v3/sync - 200 - OK"
-  ].join("\n"));
-}
-
-initializeSandbox();
-
-// -------------------------------------------------------------
-// Read / Write Database Helpers
-// -------------------------------------------------------------
-function readDb() {
-  const content = readSandboxFile("/db/panel_data.json", "{}");
-  const data = JSON.parse(content);
-  
-  let updated = false;
-  if (!data.matrixRooms) {
-    data.matrixRooms = [
-      {
-        id: "!room1:matrix.company.local",
-        name: "General Organization Chat",
-        alias: "#general:matrix.company.local",
-        topic: "Welcome to our central Matrix server! Let's collaborate.",
-        creator: "@masoud:matrix.company.local",
-        membersCount: 3,
-        joinedMembers: [
-          { mxid: "@masoud:matrix.company.local", role: "Creator", powerLevel: 100 },
-          { mxid: "@alice:matrix.company.local", role: "Admin", powerLevel: 100 },
-          { mxid: "@bob:matrix.company.local", role: "Default", powerLevel: 0 }
-        ],
-        version: "10",
-        isFederated: true,
-        isPublic: true,
-        createdAt: "2026-07-12T12:00:00.000Z"
-      },
-      {
-        id: "!room2:matrix.company.local",
-        name: "Infrastructure & Security",
-        alias: "#infra:matrix.company.local",
-        topic: "Critical server updates, TLS reissues, and docker configurations discussion.",
-        creator: "@masoud:matrix.company.local",
-        membersCount: 2,
-        joinedMembers: [
-          { mxid: "@masoud:matrix.company.local", role: "Creator", powerLevel: 100 },
-          { mxid: "@alice:matrix.company.local", role: "Moderator", powerLevel: 50 }
-        ],
-        version: "10",
-        isFederated: false,
-        isPublic: false,
-        createdAt: "2026-07-12T13:30:00.000Z"
-      },
-      {
-        id: "!room3:matrix.company.local",
-        name: "Marketing & Outreach",
-        alias: "#marketing:matrix.company.local",
-        topic: "Federated communications for campaign coordination.",
-        creator: "@alice:matrix.company.local",
-        membersCount: 1,
-        joinedMembers: [
-          { mxid: "@alice:matrix.company.local", role: "Creator", powerLevel: 100 }
-        ],
-        version: "11",
-        isFederated: true,
-        isPublic: true,
-        createdAt: "2026-07-13T01:15:00.000Z"
-      }
-    ];
-    updated = true;
-  }
-  
-  if (!data.matrixMedia) {
-    data.matrixMedia = [
-      { id: "mxc://matrix.company.local/img9988ff", fileName: "corporate_logo.png", fileSize: 1542000, mimeType: "image/png", uploadedBy: "@masoud:matrix.company.local", uploadedAt: "2026-07-12T12:10:00.000Z", isCached: false },
-      { id: "mxc://matrix.company.local/doc1122xx", fileName: "onboarding_guide.pdf", fileSize: 4521000, mimeType: "application/pdf", uploadedBy: "@alice:matrix.company.local", uploadedAt: "2026-07-12T14:05:00.000Z", isCached: false },
-      { id: "mxc://matrix.org/avatar8822", fileName: "remote_alice_avatar.jpg", fileSize: 35000, mimeType: "image/jpeg", uploadedBy: "@alice:matrix.company.local", uploadedAt: "2026-07-12T14:10:00.000Z", isCached: true },
-      { id: "mxc://matrix.company.local/media999", fileName: "meeting_recording.mp4", fileSize: 48200000, mimeType: "video/mp4", uploadedBy: "@bob:matrix.company.local", uploadedAt: "2026-07-13T02:00:00.000Z", isCached: false }
-    ];
-    updated = true;
-  }
-  
-  if (!data.registrationTokens) {
-    data.registrationTokens = [
-      { token: "ORG-STAFF-PROMO-2026", usesAllowed: 50, usesCount: 12, expiryTime: "2026-12-31T23:59:59.000Z", isActive: true },
-      { token: "INFRA-DEV-ROOT-KEY", usesAllowed: 5, usesCount: 5, expiryTime: "2026-08-15T00:00:00.000Z", isActive: false },
-      { token: "TEMP-GUEST-TOKEN", usesAllowed: 1, usesCount: 0, expiryTime: "2026-07-20T12:00:00.000Z", isActive: true }
-    ];
-    updated = true;
-  }
-
-  if (data.matrixUsers && data.matrixUsers.length > 0 && !data.matrixUsers[0].displayName) {
-    data.matrixUsers = data.matrixUsers.map((mu: any) => {
-      const username = mu.mxid.split(":")[0].replace("@", "");
-      return {
-        ...mu,
-        displayName: username.charAt(0).toUpperCase() + username.slice(1),
-        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`
-      };
-    });
-    updated = true;
-  }
-
-  if (!data.connections) {
-    data.connections = [
-      {
-        id: "local",
-        name: "Local Server (This Machine)",
-        host: "localhost",
-        port: 22,
-        username: "",
-        authType: "key",
-        isActive: true
-      }
-    ];
-    updated = true;
-  }
-
-  if (updated) {
-    writeSandboxFile("/db/panel_data.json", JSON.stringify(data, null, 2));
-  }
-
-  return data;
-}
-
-function writeDb(data: any) {
-  writeSandboxFile("/db/panel_data.json", JSON.stringify(data, null, 2));
-}
-
-// -------------------------------------------------------------
 // Authentication Middleware
 // -------------------------------------------------------------
 function authenticateToken(req: any, res: any, next: any) {
@@ -1025,10 +545,14 @@ app.post("/api/connections", authenticateToken, checkPermission(["Owner", "Super
     ];
   }
   
+  const isAgent = profile.authType === "agent";
   const newProfile = {
     ...profile,
     id: `remote-${Date.now()}`,
-    isActive: false
+    isActive: false,
+    status: isAgent ? "pending" : "offline",
+    token: isAgent ? `reg-${Math.random().toString(36).substring(2, 11)}` : undefined,
+    createdAt: new Date().toISOString()
   };
   
   db.connections.push(newProfile);
@@ -1093,6 +617,17 @@ app.post("/api/connections/select", authenticateToken, checkPermission(["Owner",
 
 app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const profile = req.body;
+  if (profile.authType === "agent") {
+    // Agent connection checks status and heartbeat
+    const db = readDb();
+    const existing = (db.connections || []).find((c: any) => c.id === profile.id || c.host === profile.host);
+    if (existing && existing.status === "online" && existing.lastSeen && (Date.now() - new Date(existing.lastSeen).getTime() < 45000)) {
+      return res.json({ success: true, agent: true, status: "online", systemInfo: existing.systemInfo });
+    } else {
+      return res.status(400).json({ error: "Agent is offline, pending, or not yet registered." });
+    }
+  }
+
   try {
     // 1. Test SSH Connection
     const testResult = await executeSSHCommand(profile, "echo 'SSH_OK'");
@@ -1115,6 +650,13 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
     res.status(400).json({ error: `SSH Connection Failed: ${err.message}` });
   }
 });
+
+// Agent Management endpoints (served by modular agent.ts controller)
+app.get("/install-agent.sh", serveInstallerScript);
+app.get("/api/agent/install", serveInstallerScript);
+app.post("/api/agent/register", registerAgent);
+app.post("/api/agent/ping", pingAgent);
+app.post("/api/agent/results", receiveResults);
 
 // Panel Users management
 app.get("/api/users", authenticateToken, (req, res) => {
@@ -2596,7 +2138,7 @@ app.post("/api/matrix/e2ee", authenticateToken, checkPermission(["Owner", "Super
 });
 
 // Service Actions API (Start, Stop, Restart)
-app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { serviceId, action } = req.body;
   if (!serviceId || !action) return res.status(400).json({ error: "Service ID and action are required" });
 
@@ -2613,34 +2155,58 @@ app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "S
   const systemdName = serviceMap[serviceId];
   if (!systemdName) return res.status(400).json({ error: "Unknown service" });
 
-  const hasSystemctl = fs.existsSync("/bin/systemctl") || fs.existsSync("/usr/bin/systemctl");
+  const activeConn = getActiveConnection();
   let success = true;
   let errMsg = "";
 
   const db = readDb();
 
-  if (hasSystemctl) {
-    try {
-      execSync(`systemctl ${action} ${systemdName}`);
-    } catch (e: any) {
-      success = false;
-      errMsg = e.message || "Execution error";
+  if (activeConn && activeConn.id !== "local") {
+    if (activeConn.authType === "agent") {
+      try {
+        await executeRemoteAgentTask(activeConn.id, "restart_service", {
+          service_name: systemdName,
+          action: action // "start", "stop", "restart"
+        });
+      } catch (err: any) {
+        success = false;
+        errMsg = err.message || "Agent task failed";
+      }
+    } else {
+      // Remote SSH command execution
+      try {
+        await executeSSHCommand(activeConn, `sudo systemctl ${action} ${systemdName}`);
+      } catch (err: any) {
+        success = false;
+        errMsg = err.message || "SSH command failed";
+      }
     }
   } else {
-    // Save simulated state
-    if (!db.servicesStatus) {
-      db.servicesStatus = {
-        synapse: "active",
-        element: "active",
-        postgres: "active",
-        coturn: "active",
-        nginx: "active",
-        redis: "inactive",
-        fail2ban: "active",
-        prometheus: "inactive"
-      };
+    // Local / Sandbox execution
+    const hasSystemctl = fs.existsSync("/bin/systemctl") || fs.existsSync("/usr/bin/systemctl");
+    if (hasSystemctl) {
+      try {
+        execSync(`systemctl ${action} ${systemdName}`);
+      } catch (e: any) {
+        success = false;
+        errMsg = e.message || "Execution error";
+      }
+    } else {
+      // Save simulated state
+      if (!db.servicesStatus) {
+        db.servicesStatus = {
+          synapse: "active",
+          element: "active",
+          postgres: "active",
+          coturn: "active",
+          nginx: "active",
+          redis: "inactive",
+          fail2ban: "active",
+          prometheus: "inactive"
+        };
+      }
+      db.servicesStatus[serviceId] = (action === "start" || action === "restart") ? "active" : "inactive";
     }
-    db.servicesStatus[serviceId] = (action === "start" || action === "restart") ? "active" : "inactive";
   }
 
   db.auditLogs.unshift({
@@ -2651,7 +2217,7 @@ app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "S
     target: serviceId,
     status: success ? "success" : "failed",
     details: success 
-      ? `Triggered service action ${action} on ${serviceId}.`
+      ? `Triggered service action ${action} on ${serviceId} (${activeConn ? activeConn.name : "local"}).`
       : `Failed to trigger service action ${action} on ${serviceId}: ${errMsg}`
   });
   writeDb(db);
