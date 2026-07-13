@@ -683,6 +683,615 @@ app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Ow
 });
 
 // -------------------------------------------------------------
+// Advanced Matrix User Profile & Ketesa Administration
+// -------------------------------------------------------------
+app.get("/api/matrix/users/details", authenticateToken, (req, res) => {
+  const { mxid } = req.query;
+  if (!mxid) return res.status(400).json({ error: "MXID is required" });
+
+  const db = readDb();
+  const userIndex = db.matrixUsers.findIndex((u: any) => u.mxid === mxid);
+  if (userIndex === -1) return res.status(404).json({ error: "Matrix user not found" });
+
+  const user = db.matrixUsers[userIndex];
+  const username = mxid.toString().split(":")[0].replace("@", "");
+
+  // Ensure advanced properties exist with realistic defaults if missing
+  let updated = false;
+  if (!user.createdAt) {
+    user.createdAt = new Date(Date.now() - 3600000 * 24 * (30 + Math.floor(Math.random() * 90))).toISOString();
+    updated = true;
+  }
+  if (!user.userType) {
+    user.userType = user.isAdmin ? "admin" : "normal";
+    updated = true;
+  }
+  if (!user.emails) {
+    user.emails = [`${username}@matrix.kheilisabz.local`];
+    updated = true;
+  }
+  if (!user.phones) {
+    user.phones = ["+98912" + Math.floor(1000000 + Math.random() * 9000000)];
+    updated = true;
+  }
+  if (!user.sso) {
+    user.sso = [
+      { provider: "LDAP Integration", externalId: username, linkedAt: user.createdAt }
+    ];
+    updated = true;
+  }
+  if (!user.devices) {
+    user.devices = [
+      { id: "DEV-IOS-" + Math.floor(1000 + Math.random() * 9000), name: "Masoud's iPhone 15 Pro", lastSeenIp: "192.168.1.112", lastSeenAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(), userAgent: "Element iOS / Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)" },
+      { id: "DEV-WEB-" + Math.floor(1000 + Math.random() * 9000), name: "Chrome macOS - Element Web", lastSeenIp: "192.168.1.100", lastSeenAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(), userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0.0.0" }
+    ];
+    updated = true;
+  }
+  if (!user.connections) {
+    user.connections = [
+      { ip: "192.168.1.112", timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(), userAgent: "Element iOS" },
+      { ip: "192.168.1.100", timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(), userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0.0.0" },
+      { ip: "10.0.4.52", timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), userAgent: "Element Desktop" }
+    ];
+    updated = true;
+  }
+  if (!user.pushers) {
+    user.pushers = [
+      { appId: "im.vector.app.android", pushKey: "APA91bEy..." + Math.floor(100 + Math.random() * 900), kind: "http", data: { url: "https://matrix.org/_matrix/push/v1/notify" }, profileTag: "mobile-pusher" }
+    ];
+    updated = true;
+  }
+  if (!user.experimental) {
+    user.experimental = [
+      { key: "m.relates_to.stable", value: "true" },
+      { key: "org.matrix.msc3026", value: "enabled" }
+    ];
+    updated = true;
+  }
+  if (!user.rateLimits) {
+    user.rateLimits = { perSecond: 2, burstCount: 10 };
+    updated = true;
+  }
+  if (!user.accountData) {
+    user.accountData = {
+      "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" }
+    };
+    updated = true;
+  }
+  if (user.isSuspended === undefined) {
+    user.isSuspended = false;
+    updated = true;
+  }
+  if (user.isShadowBanned === undefined) {
+    user.isShadowBanned = false;
+    updated = true;
+  }
+  if (user.isLocked === undefined) {
+    user.isLocked = false;
+    updated = true;
+  }
+  if (user.isErased === undefined) {
+    user.isErased = false;
+    updated = true;
+  }
+
+  // Populate dynamic memberships history if missing
+  if (!user.memberships) {
+    user.memberships = [
+      { roomId: "!room1:matrix.company.local", roomName: "General Organization Chat", state: "join", timestamp: user.createdAt, handler: "synapse.join" },
+      { roomId: "!room2:matrix.company.local", roomName: "Infrastructure & Security", state: "join", timestamp: new Date(Date.now() - 3600000 * 48).toISOString(), handler: "synapse.join" }
+    ];
+    updated = true;
+  }
+
+  if (updated) {
+    writeDb(db);
+  }
+
+  // Build the user's specific uploaded media files filtered from global DB
+  const userMedia = (db.matrixMedia || []).filter((m: any) => m.uploadedBy === mxid);
+
+  // Build room details for rooms the user is involved in
+  const userRooms = (db.matrixRooms || []).map((r: any) => {
+    const isMember = r.joinedMembers.some((m: any) => m.mxid === mxid);
+    const memberObj = r.joinedMembers.find((m: any) => m.mxid === mxid);
+    const isBanned = r.bannedMembers && r.bannedMembers.includes(mxid);
+    return {
+      roomId: r.id,
+      name: r.name,
+      alias: r.alias || "",
+      isJoined: isMember,
+      isBanned: !!isBanned,
+      powerLevel: memberObj ? memberObj.powerLevel : 0,
+      role: memberObj ? memberObj.role : "None"
+    };
+  });
+
+  res.json({
+    ...user,
+    media: userMedia,
+    rooms: userRooms
+  });
+});
+
+// Save updated user parameters (Suspended, Shadow Banned, Locked, GDPR Erased, Admin, UserType)
+app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, isSuspended, isShadowBanned, isLocked, isErased, isAdmin, userType, displayName } = req.body;
+  if (!mxid) return res.status(400).json({ error: "MXID is required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  if (isSuspended !== undefined) user.isSuspended = !!isSuspended;
+  if (isShadowBanned !== undefined) user.isShadowBanned = !!isShadowBanned;
+  if (isLocked !== undefined) user.isLocked = !!isLocked;
+  if (isErased !== undefined) user.isErased = !!isErased;
+  if (isAdmin !== undefined) user.isAdmin = !!isAdmin;
+  if (userType !== undefined) user.userType = userType;
+  if (displayName !== undefined) user.displayName = displayName;
+
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Update User Parameters",
+    target: mxid,
+    status: "success",
+    details: `Updated administrative flags for ${mxid}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, user });
+});
+
+// Password change (will log user out of all sessions/devices)
+app.post("/api/matrix/users/password", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { mxid, password } = req.body;
+  if (!mxid || !password) return res.status(400).json({ error: "MXID and password are required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  // Reset devices (log out of all sessions)
+  user.devices = [];
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Reset User Password",
+    target: mxid,
+    status: "success",
+    details: `Reset password for user ${mxid} and force-terminated all device sessions.`
+  });
+  writeDb(db);
+
+  res.json({ success: true, message: "Password reset successfully. All devices logged out." });
+});
+
+// Emails and Phones management
+app.post("/api/matrix/users/emails/add", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, email } = req.body;
+  if (!mxid || !email) return res.status(400).json({ error: "MXID and email are required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  if (!user.emails) user.emails = [];
+  if (user.emails.includes(email)) return res.status(400).json({ error: "Email already exists" });
+
+  user.emails.push(email);
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Add User Email",
+    target: mxid,
+    status: "success",
+    details: `Linked email ${email} to ${mxid}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, emails: user.emails });
+});
+
+app.post("/api/matrix/users/emails/delete", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, email } = req.body;
+  if (!mxid || !email) return res.status(400).json({ error: "MXID and email are required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  if (user.emails) {
+    user.emails = user.emails.filter((e: string) => e !== email);
+    writeDb(db);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Remove User Email",
+    target: mxid,
+    status: "success",
+    details: `Removed email ${email} from ${mxid}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, emails: user.emails || [] });
+});
+
+app.post("/api/matrix/users/phones/add", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, phone } = req.body;
+  if (!mxid || !phone) return res.status(400).json({ error: "MXID and phone are required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  if (!user.phones) user.phones = [];
+  if (user.phones.includes(phone)) return res.status(400).json({ error: "Phone already exists" });
+
+  user.phones.push(phone);
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Add User Phone",
+    target: mxid,
+    status: "success",
+    details: `Linked phone ${phone} to ${mxid}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, phones: user.phones });
+});
+
+app.post("/api/matrix/users/phones/delete", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, phone } = req.body;
+  if (!mxid || !phone) return res.status(400).json({ error: "MXID and phone are required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  if (user.phones) {
+    user.phones = user.phones.filter((p: string) => p !== phone);
+    writeDb(db);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Remove User Phone",
+    target: mxid,
+    status: "success",
+    details: `Removed phone ${phone} from ${mxid}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, phones: user.phones || [] });
+});
+
+// Force logout/delete user device
+app.post("/api/matrix/users/devices/delete", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, deviceId } = req.body;
+  if (!mxid || !deviceId) return res.status(400).json({ error: "MXID and device ID are required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  if (user.devices) {
+    user.devices = user.devices.filter((d: any) => d.id !== deviceId);
+    writeDb(db);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Terminate Device Session",
+    target: mxid,
+    status: "success",
+    details: `Force logged out device ${deviceId} for user ${mxid}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, devices: user.devices || [] });
+});
+
+// Kick / Ban user from room
+app.post("/api/matrix/users/rooms/kick", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, roomId } = req.body;
+  if (!mxid || !roomId) return res.status(400).json({ error: "MXID and roomId are required" });
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+
+  const memberIdx = room.joinedMembers.findIndex((m: any) => m.mxid === mxid);
+  if (memberIdx !== -1) {
+    room.joinedMembers.splice(memberIdx, 1);
+    room.membersCount = room.joinedMembers.length;
+  }
+
+  // Update memberships list for user if exists
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (user) {
+    if (!user.memberships) user.memberships = [];
+    user.memberships.unshift({
+      roomId,
+      roomName: room.name,
+      state: "leave",
+      timestamp: new Date().toISOString(),
+      handler: `kicked_by_${req.user.username}`
+    });
+  }
+
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Kick User from Room",
+    target: mxid,
+    status: "success",
+    details: `Kicked ${mxid} from room: ${room.name}`
+  });
+  writeDb(db);
+
+  res.json({ success: true });
+});
+
+app.post("/api/matrix/users/rooms/ban", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, roomId } = req.body;
+  if (!mxid || !roomId) return res.status(400).json({ error: "MXID and roomId are required" });
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+
+  // Kick if joined
+  const memberIdx = room.joinedMembers.findIndex((m: any) => m.mxid === mxid);
+  if (memberIdx !== -1) {
+    room.joinedMembers.splice(memberIdx, 1);
+    room.membersCount = room.joinedMembers.length;
+  }
+
+  // Ban
+  if (!room.bannedMembers) room.bannedMembers = [];
+  if (!room.bannedMembers.includes(mxid)) {
+    room.bannedMembers.push(mxid);
+  }
+
+  // Update memberships
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (user) {
+    if (!user.memberships) user.memberships = [];
+    user.memberships.unshift({
+      roomId,
+      roomName: room.name,
+      state: "ban",
+      timestamp: new Date().toISOString(),
+      handler: `banned_by_${req.user.username}`
+    });
+  }
+
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Ban User from Room",
+    target: mxid,
+    status: "success",
+    details: `Banned ${mxid} from room: ${room.name}`
+  });
+  writeDb(db);
+
+  res.json({ success: true });
+});
+
+app.post("/api/matrix/users/rooms/unban", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mxid, roomId } = req.body;
+  if (!mxid || !roomId) return res.status(400).json({ error: "MXID and roomId are required" });
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+
+  if (room.bannedMembers) {
+    room.bannedMembers = room.bannedMembers.filter((b: string) => b !== mxid);
+  }
+
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (user) {
+    if (!user.memberships) user.memberships = [];
+    user.memberships.unshift({
+      roomId,
+      roomName: room.name,
+      state: "leave",
+      timestamp: new Date().toISOString(),
+      handler: `unbanned_by_${req.user.username}`
+    });
+  }
+
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Unban User from Room",
+    target: mxid,
+    status: "success",
+    details: `Lifted ban on user ${mxid} for room ${room.name}`
+  });
+  writeDb(db);
+
+  res.json({ success: true });
+});
+
+// Quarantine/Unquarantine/Delete media
+app.post("/api/matrix/users/media/quarantine", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { mediaId, quarantine } = req.body;
+  if (!mediaId) return res.status(400).json({ error: "Media ID is required" });
+
+  const db = readDb();
+  const media = (db.matrixMedia || []).find((m: any) => m.id === mediaId);
+  if (!media) return res.status(404).json({ error: "Media file not found" });
+
+  media.isQuarantined = !!quarantine;
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: quarantine ? "Quarantine Media" : "Lift Media Quarantine",
+    target: mediaId,
+    status: "success",
+    details: quarantine ? `Quarantined media file: ${media.fileName}` : `Lifted quarantine on media file: ${media.fileName}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, media });
+});
+
+// Rate limit updates
+app.post("/api/matrix/users/rate-limits", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { mxid, perSecond, burstCount } = req.body;
+  if (!mxid) return res.status(400).json({ error: "MXID is required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  user.rateLimits = {
+    perSecond: parseFloat(perSecond) || 2,
+    burstCount: parseInt(burstCount) || 10
+  };
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Update User Rate Limits",
+    target: mxid,
+    status: "success",
+    details: `Updated rate limits for ${mxid} to ${perSecond} req/s, burst: ${burstCount}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, rateLimits: user.rateLimits });
+});
+
+// Account data updates
+app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { mxid, accountData } = req.body;
+  if (!mxid || !accountData) return res.status(400).json({ error: "MXID and accountData are required" });
+
+  const db = readDb();
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) return res.status(404).json({ error: "Matrix user not found" });
+
+  user.accountData = accountData;
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Update Account Data",
+    target: mxid,
+    status: "success",
+    details: `Updated key-value account data overrides for ${mxid}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, accountData: user.accountData });
+});
+
+// Room Chat/Messages Viewer API
+app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, (req, res) => {
+  const { roomId } = req.params;
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+
+  // If no messages array exists, populate with realistic defaults
+  if (!room.messages) {
+    const isPublic = room.isPublic;
+    const domain = roomId.split(":")[1] || "matrix.company.local";
+    room.messages = [
+      { id: "msg-1", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "سلام به همگی، خوش آمدید به سرور ماتریکس ما. لطفاً همگی در این کانال حضور فعال داشته باشید.", timestamp: new Date(Date.now() - 3600000 * 24).toISOString(), type: "m.text" },
+      { id: "msg-2", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "Hi Masoud! Glad to be here. The Homeserver is running extremely fast today.", timestamp: new Date(Date.now() - 3600000 * 23.5).toISOString(), type: "m.text" },
+      { id: "msg-3", sender: "@bob:" + domain, senderDisplayName: "Bob", content: "درود، تشکر از راه‌اندازی این سرور امن. تمام بخش‌های رمزنگاری شده تست شدند.", timestamp: new Date(Date.now() - 3600000 * 22).toISOString(), type: "m.text" },
+      { id: "msg-4", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "عالیه باب. برای ترن‌سرور (Coturn) هم پورت‌های امن رو فعال کردیم تا تماس‌ها بدون مشکل وصل بشن.", timestamp: new Date(Date.now() - 3600000 * 21).toISOString(), type: "m.text" },
+      { id: "msg-5", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "I noticed that. The integration with LDAP AD works seamlessly as well.", timestamp: new Date(Date.now() - 3600000 * 20.8).toISOString(), type: "m.text" },
+      { id: "msg-6", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "بله، همگام‌سازی کاربرها به صورت اتوماتیک انجام میشه.", timestamp: new Date(Date.now() - 3600000 * 18).toISOString(), type: "m.text" }
+    ];
+
+    if (roomId.includes("room2")) {
+      room.messages = [
+        { id: "sec-1", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "سلام تیم امنیت. ممیزی دوره‌ای کدهای TLS رو شروع کردیم. لاگ‌های سرور سیناپس رو بررسی کنید.", timestamp: new Date(Date.now() - 3600000 * 6).toISOString(), type: "m.text" },
+        { id: "sec-2", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "I audited the nginx-proxy logs. All unauthorized endpoints are correctly blocked via rate limits.", timestamp: new Date(Date.now() - 3600000 * 5).toISOString(), type: "m.text" },
+        { id: "sec-3", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "We should restrict the API registrations with token-only access to prevent bot spamming.", timestamp: new Date(Date.now() - 3600000 * 4.8).toISOString(), type: "m.text" },
+        { id: "sec-4", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "موافقم آلیس. از بخش توکن‌های ثبت‌نام پنل، توکن‌های اختصاصی با محدودیت استفاده بساز تا بفرستیم برای افراد جدید.", timestamp: new Date(Date.now() - 3600000 * 4).toISOString(), type: "m.text" },
+        { id: "sec-5", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "Done. I created three tokens and enabled LDAP authentication fallback. Safe and sound.", timestamp: new Date(Date.now() - 3600000 * 3.5).toISOString(), type: "m.text" }
+      ];
+    }
+
+    writeDb(db);
+  }
+
+  res.json(room.messages);
+});
+
+// Send message to room
+app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, (req, res) => {
+  const { roomId } = req.params;
+  const { content, sender, senderDisplayName } = req.body;
+  if (!content) return res.status(400).json({ error: "Content is required" });
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+
+  if (!room.messages) room.messages = [];
+
+  const newMessage = {
+    id: "msg-" + Date.now(),
+    sender: sender || `@${req.user.username}:${roomId.split(":")[1] || "matrix.company.local"}`,
+    senderDisplayName: senderDisplayName || req.user.username,
+    content,
+    timestamp: new Date().toISOString(),
+    type: "m.text"
+  };
+
+  room.messages.push(newMessage);
+  writeDb(db);
+
+  res.json(newMessage);
+});
+
+// -------------------------------------------------------------
 // Matrix Rooms Management (Ketesa features)
 // -------------------------------------------------------------
 app.get("/api/matrix/rooms", authenticateToken, (req, res) => {

@@ -28,7 +28,21 @@ import {
   AlertCircle,
   Hash,
   Sliders,
-  Sparkles
+  Sparkles,
+  Shield,
+  Mail,
+  Phone,
+  Laptop,
+  History,
+  FileText,
+  Lock,
+  Unlock,
+  UserCheck,
+  ToggleLeft,
+  Activity,
+  HardDriveUpload,
+  Zap,
+  Network
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -37,6 +51,7 @@ interface KetesaAdminProps {
   authToken: string | null;
   currentUser: { role: UserRole; username: string } | null;
   showToast: (type: 'success' | 'error', text: string) => void;
+  isLightMode?: boolean;
 }
 
 const faTranslations = {
@@ -241,7 +256,7 @@ const enTranslations = {
   powerLevel: "Power Level"
 };
 
-export default function KetesaAdmin({ lang, authToken, currentUser, showToast }: KetesaAdminProps) {
+export default function KetesaAdmin({ lang, authToken, currentUser, showToast, isLightMode = false }: KetesaAdminProps) {
   const t = lang === 'fa' ? faTranslations : enTranslations;
   const isRtl = lang === 'fa';
   const hasWriteAccess = currentUser?.role !== 'Viewer';
@@ -286,6 +301,397 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
   // Bulk Media parameters
   const [cleanupDays, setCleanupDays] = useState('30');
   const [cleanupDomain, setCleanupDomain] = useState('');
+
+  // Advanced Ketesa states
+  const [selectedUserMxid, setSelectedUserMxid] = useState<string | null>(null);
+  const [selectedUserDetails, setSelectedUserDetails] = useState<any | null>(null);
+  const [userDetailsLoading, setUserDetailsLoading] = useState(false);
+  const [activeUserDetailTab, setActiveUserDetailTab] = useState<'user' | 'contact' | 'sso' | 'devices' | 'rooms' | 'media' | 'pushers' | 'limits' | 'account' | 'history'>('user');
+  
+  const [newEmail, setNewEmail] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [userRateLimits, setUserRateLimits] = useState({ perSecond: '2', burstCount: '10' });
+  const [userAccountDataText, setUserAccountDataText] = useState('{}');
+
+  // Chat/Messages states
+  const [activeRoomChatId, setActiveRoomChatId] = useState<string | null>(null);
+  const [activeRoomChatName, setActiveRoomChatName] = useState<string>('');
+  const [roomChatMessages, setRoomChatMessages] = useState<any[]>([]);
+  const [newRoomChatMessageText, setNewRoomChatMessageText] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  // Advanced Ketesa helper functions
+  const fetchUserDetails = async (mxid: string, resetTab = false) => {
+    setUserDetailsLoading(true);
+    setSelectedUserMxid(mxid);
+    if (resetTab) {
+      setActiveUserDetailTab('user');
+    }
+    try {
+      const res = await fetch(`/api/matrix/users/details?mxid=${encodeURIComponent(mxid)}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedUserDetails(data);
+        setUserRateLimits({
+          perSecond: data.rateLimits?.perSecond?.toString() || '2',
+          burstCount: data.rateLimits?.burstCount?.toString() || '10'
+        });
+        setUserAccountDataText(JSON.stringify(data.accountData || {}, null, 2));
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    } finally {
+      setUserDetailsLoading(false);
+    }
+  };
+
+  const handleUpdateUserParams = async (updates: any) => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/details/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, ...updates })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid);
+        fetchAll();
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid || !newPassword) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, password: newPassword })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        setNewPassword('');
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleAddEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid || !newEmail) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/emails/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, email: newEmail })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        setNewEmail('');
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        const err = await res.json();
+        showToast('error', err.error || t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleRemoveEmail = async (email: string) => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/emails/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, email })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleAddPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid || !newPhone) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/phones/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, phone: newPhone })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        setNewPhone('');
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        const err = await res.json();
+        showToast('error', err.error || t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleRemovePhone = async (phone: string) => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/phones/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, phone })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleTerminateDevice = async (deviceId: string) => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/devices/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, deviceId })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleUserRoomAction = async (roomId: string, action: 'kick' | 'ban' | 'unban') => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      const res = await fetch(`/api/matrix/users/rooms/${action}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, roomId })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid);
+        const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (roomsRes.ok) setRooms(await roomsRes.json());
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleSaveRateLimits = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      const res = await fetch('/api/matrix/users/rate-limits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          mxid: selectedUserMxid,
+          perSecond: parseFloat(userRateLimits.perSecond),
+          burstCount: parseInt(userRateLimits.burstCount)
+        })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleSaveAccountData = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      let parsed;
+      try {
+        parsed = JSON.parse(userAccountDataText);
+      } catch (err) {
+        return showToast('error', 'Invalid JSON syntax');
+      }
+
+      const res = await fetch('/api/matrix/users/account-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, accountData: parsed })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid);
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleOpenRoomChat = async (roomId: string, roomName: string) => {
+    setIsChatLoading(true);
+    setActiveRoomChatId(roomId);
+    setActiveRoomChatName(roomName);
+    try {
+      const res = await fetch(`/api/matrix/rooms/${encodeURIComponent(roomId)}/messages`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        setRoomChatMessages(await res.json());
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleSendChatMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeRoomChatId || !newRoomChatMessageText.trim()) return;
+
+    try {
+      const res = await fetch(`/api/matrix/rooms/${encodeURIComponent(activeRoomChatId)}/messages/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          content: newRoomChatMessageText,
+          sender: currentUser ? `@${currentUser.username}:matrix.company.local` : '@admin:matrix.company.local',
+          senderDisplayName: currentUser ? currentUser.username : 'Server Administrator'
+        })
+      });
+      if (res.ok) {
+        const msg = await res.json();
+        setRoomChatMessages(prev => [...prev, msg]);
+        setNewRoomChatMessageText('');
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleQuarantineMedia = async (mediaId: string, quarantined: boolean) => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    try {
+      const res = await fetch('/api/matrix/media/quarantine', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mediaId, quarantined })
+      });
+      if (res.ok) {
+        showToast('success', quarantined 
+          ? (isRtl ? 'رسانه با موفقیت قرنطینه شد.' : 'Media successfully quarantined.') 
+          : (isRtl ? 'رسانه با موفقیت آزاد شد.' : 'Media successfully released from quarantine.')
+        );
+        if (selectedUserMxid) {
+          fetchUserDetails(selectedUserMxid);
+        }
+        // Always refresh the global media list to keep in sync
+        const mediaRes = await fetch('/api/matrix/media', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (mediaRes.ok) setMedia(await mediaRes.json());
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
 
   // Initial Fetching
   useEffect(() => {
@@ -873,6 +1279,12 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex justify-center items-center gap-2">
+                              <button
+                                onClick={() => fetchUserDetails(u.mxid, true)}
+                                className="px-2.5 py-1 text-xs bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded font-medium transition-all duration-200"
+                              >
+                                {isRtl ? 'جزئیات' : 'Details'}
+                              </button>
                               {hasWriteAccess ? (
                                 u.isDeactivated ? (
                                   <button
@@ -1029,13 +1441,23 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
 
                     {/* Room actions footer */}
                     <div className="flex justify-between items-center gap-2">
-                      <button
-                        onClick={() => setShowRoomMembersModal(r)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-850 hover:bg-slate-800 text-gray-300 border border-white/5 rounded-lg transition-colors duration-200"
-                      >
-                        <Users className="h-3.5 w-3.5" />
-                        <span>{t.viewMembers}</span>
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowRoomMembersModal(r)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-850 hover:bg-slate-800 text-gray-300 border border-white/5 rounded-lg transition-colors duration-200"
+                        >
+                          <Users className="h-3.5 w-3.5" />
+                          <span>{t.viewMembers}</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenRoomChat(r.id, r.name)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 border border-indigo-500/20 rounded-lg transition-colors duration-200"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          <span>{isRtl ? 'پایش گفتگو' : 'Inspect Chat'}</span>
+                        </button>
+                      </div>
 
                       {hasWriteAccess && (
                         <button
@@ -1372,63 +1794,89 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md p-6 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl relative space-y-4"
+              className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
               id="add-user-modal"
             >
               <button
                 onClick={() => setShowAddUserModal(false)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200"
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
               >
                 <X className="h-5 w-5" />
               </button>
 
-              <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2 border-b border-white/5 pb-2">
-                <UserPlus className="h-5 w-5 text-indigo-400" />
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-slate-800 border-slate-200' : 'text-gray-100 border-white/5'
+              }`}>
+                <UserPlus className="h-5 w-5 text-indigo-500" />
                 <span>{t.addUserBtn}</span>
               </h3>
 
               <form onSubmit={handleRegisterUser} className="space-y-4 text-sm font-medium">
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.username}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.username}</label>
                   <input
                     type="text"
                     value={newUser.username}
                     onChange={(e) => setNewUser(prev => ({ ...prev, username: e.target.value }))}
                     placeholder="e.g. masoud"
                     required
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-indigo-500 rounded-lg p-2.5 outline-none text-gray-200 font-mono text-xs transition-colors duration-200"
+                    className={`w-full border focus:border-indigo-500 rounded-lg p-2.5 outline-none font-mono text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200'
+                    }`}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.passwordLabel}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.passwordLabel}</label>
                   <input
                     type="password"
                     value={newUser.password}
                     onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
                     required
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-indigo-500 rounded-lg p-2.5 outline-none text-gray-200 font-mono text-xs transition-colors duration-200"
+                    className={`w-full border focus:border-indigo-500 rounded-lg p-2.5 outline-none font-mono text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200'
+                    }`}
                   />
                 </div>
 
-                <div className="flex items-center gap-3 bg-slate-950/30 p-3 rounded-lg border border-white/5 mt-2">
+                <div className={`flex items-center gap-3 p-3 rounded-lg border mt-2 ${
+                  isLightMode ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/30 border-white/5'
+                }`}>
                   <input
                     type="checkbox"
                     id="user-is-admin-cb"
                     checked={newUser.isAdmin}
                     onChange={(e) => setNewUser(prev => ({ ...prev, isAdmin: e.target.checked }))}
-                    className="h-4 w-4 rounded border-white/10 bg-slate-900 text-indigo-600 focus:ring-0"
+                    className={`h-4 w-4 rounded focus:ring-0 ${
+                      isLightMode ? 'border-slate-300 bg-white text-indigo-600' : 'border-white/10 bg-slate-900 text-indigo-600'
+                    }`}
                   />
-                  <label htmlFor="user-is-admin-cb" className="text-xs text-gray-300 leading-tight select-none">
+                  <label htmlFor="user-is-admin-cb" className={`text-xs leading-tight select-none ${
+                    isLightMode ? 'text-slate-700' : 'text-gray-300'
+                  }`}>
                     {t.makeAdminLabel}
                   </label>
                 </div>
 
-                <div className="flex justify-end gap-2 border-t border-white/5 pt-4 mt-2">
+                <div className={`flex justify-end gap-2 border-t pt-4 mt-2 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/5'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setShowAddUserModal(false)}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-lg text-xs transition-colors duration-200"
+                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    }`}
                   >
                     {t.cancel}
                   </button>
@@ -1443,7 +1891,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </ AnimatePresence>
 
       {/* ========================================== */}
       {/* MODAL 2: REACTIVATE USER & RESET PASS */}
@@ -1455,7 +1903,9 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md p-6 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl relative space-y-4"
+              className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
               id="reactivate-modal"
             >
               <button
@@ -1463,54 +1913,74 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
                   setShowReactivateModal(null);
                   setReactivatePass('');
                 }}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200"
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
               >
                 <X className="h-5 w-5" />
               </button>
 
-              <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2 border-b border-white/5 pb-2">
-                <RefreshCw className="h-5 w-5 animate-spin-slow" />
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-emerald-600 border-slate-200' : 'text-emerald-400 border-white/5'
+              }`}>
+                <RefreshCw className="h-5 w-5 animate-spin-slow text-emerald-500" />
                 <span>Reactivate Matrix User</span>
               </h3>
 
-              <p className="text-xs text-gray-400 font-mono">
-                MXID: <span className="text-indigo-300">{showReactivateModal}</span>
+              <p className={`text-xs font-mono ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                MXID: <span className={isLightMode ? 'text-indigo-600 font-semibold' : 'text-indigo-300'}>{showReactivateModal}</span>
               </p>
 
               <form onSubmit={handleReactivateUser} className="space-y-4 text-sm font-medium">
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.resetPasswordTitle}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.resetPasswordTitle}</label>
                   <input
                     type="password"
                     value={reactivatePass}
                     onChange={(e) => setReactivatePass(e.target.value)}
                     required
                     placeholder="Enter new account password"
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-emerald-500 rounded-lg p-2.5 outline-none text-gray-200 font-mono text-xs transition-colors duration-200"
+                    className={`w-full border focus:border-emerald-500 rounded-lg p-2.5 outline-none font-mono text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200'
+                    }`}
                   />
                 </div>
 
-                <div className="flex items-center gap-3 bg-slate-950/30 p-3 rounded-lg border border-white/5 mt-2">
+                <div className={`flex items-center gap-3 p-3 rounded-lg border mt-2 ${
+                  isLightMode ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/30 border-white/5'
+                }`}>
                   <input
                     type="checkbox"
                     id="reactivate-is-admin-cb"
                     checked={reactivateAdmin}
                     onChange={(e) => setReactivateAdmin(e.target.checked)}
-                    className="h-4 w-4 rounded border-white/10 bg-slate-900 text-emerald-600 focus:ring-0"
+                    className={`h-4 w-4 rounded focus:ring-0 ${
+                      isLightMode ? 'border-slate-300 bg-white text-emerald-600' : 'border-white/10 bg-slate-900 text-emerald-600'
+                    }`}
                   />
-                  <label htmlFor="reactivate-is-admin-cb" className="text-xs text-gray-300 leading-tight select-none">
+                  <label htmlFor="reactivate-is-admin-cb" className={`text-xs leading-tight select-none ${
+                    isLightMode ? 'text-slate-700' : 'text-gray-300'
+                  }`}>
                     {t.makeAdminLabel}
                   </label>
                 </div>
 
-                <div className="flex justify-end gap-2 border-t border-white/5 pt-4 mt-2">
+                <div className={`flex justify-end gap-2 border-t pt-4 mt-2 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/5'
+                }`}>
                   <button
                     type="button"
                     onClick={() => {
                       setShowReactivateModal(null);
                       setReactivatePass('');
                     }}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-lg text-xs transition-colors duration-200"
+                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    }`}
                   >
                     {t.cancel}
                   </button>
@@ -1537,89 +2007,125 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md p-6 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl relative space-y-4"
+              className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
               id="create-room-modal"
             >
               <button
                 onClick={() => setShowCreateRoomModal(false)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200"
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
               >
                 <X className="h-5 w-5" />
               </button>
 
-              <h3 className="text-lg font-bold text-purple-400 flex items-center gap-2 border-b border-white/5 pb-2">
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-purple-700 border-slate-200' : 'text-purple-400 border-white/5'
+              }`}>
                 <Plus className="h-5 w-5" />
                 <span>{t.createRoomBtn}</span>
               </h3>
 
               <form onSubmit={handleCreateRoom} className="space-y-4 text-sm font-medium">
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.roomNameLabel}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.roomNameLabel}</label>
                   <input
                     type="text"
                     value={newRoom.name}
                     onChange={(e) => setNewRoom(prev => ({ ...prev, name: e.target.value }))}
                     placeholder="e.g. Sales Division"
                     required
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-purple-500 rounded-lg p-2.5 outline-none text-gray-200 text-xs transition-colors duration-200"
+                    className={`w-full border rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-850 focus:border-purple-500' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-purple-500'
+                    }`}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.roomAliasLabel} (alias)</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.roomAliasLabel} (alias)</label>
                   <input
                     type="text"
                     value={newRoom.alias}
                     onChange={(e) => setNewRoom(prev => ({ ...prev, alias: e.target.value }))}
                     placeholder="e.g. sales (produces #sales:domain.com)"
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-purple-500 rounded-lg p-2.5 outline-none text-gray-200 font-mono text-xs transition-colors duration-200"
+                    className={`w-full border rounded-lg p-2.5 outline-none font-mono text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-850 focus:border-purple-500' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-purple-500'
+                    }`}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.roomTopicLabel}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.roomTopicLabel}</label>
                   <textarea
                     value={newRoom.topic}
                     onChange={(e) => setNewRoom(prev => ({ ...prev, topic: e.target.value }))}
                     placeholder="Optional topic statement"
                     rows={2}
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-purple-500 rounded-lg p-2.5 outline-none text-gray-200 text-xs transition-colors duration-200 resize-none"
+                    className={`w-full border rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 resize-none ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-850 focus:border-purple-500' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-purple-500'
+                    }`}
                   />
                 </div>
 
-                <div className="flex flex-col gap-2.5 bg-slate-950/30 p-3 rounded-lg border border-white/5 text-xs">
+                <div className={`flex flex-col gap-2.5 p-3 rounded-lg border text-xs ${
+                  isLightMode ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/30 border-white/5'
+                }`}>
                   <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
                       id="room-public-cb"
                       checked={newRoom.isPublic}
                       onChange={(e) => setNewRoom(prev => ({ ...prev, isPublic: e.target.checked }))}
-                      className="h-4 w-4 rounded border-white/10 bg-slate-900 text-purple-600 focus:ring-0"
+                      className={`h-4 w-4 rounded focus:ring-0 ${
+                        isLightMode ? 'border-slate-300 text-purple-600 bg-white' : 'border-white/10 bg-slate-900 text-purple-600'
+                      }`}
                     />
-                    <label htmlFor="room-public-cb" className="text-gray-300 leading-tight select-none">
+                    <label htmlFor="room-public-cb" className={`leading-tight select-none ${
+                      isLightMode ? 'text-slate-700' : 'text-gray-300'
+                    }`}>
                       {t.roomVisibilityLabel}
                     </label>
                   </div>
 
-                  <div className="flex items-center gap-3 border-t border-white/5 pt-2.5">
+                  <div className={`flex items-center gap-3 border-t pt-2.5 ${
+                    isLightMode ? 'border-slate-200' : 'border-white/5'
+                  }`}>
                     <input
                       type="checkbox"
                       id="room-federated-cb"
                       checked={newRoom.isFederated}
                       onChange={(e) => setNewRoom(prev => ({ ...prev, isFederated: e.target.checked }))}
-                      className="h-4 w-4 rounded border-white/10 bg-slate-900 text-purple-600 focus:ring-0"
+                      className={`h-4 w-4 rounded focus:ring-0 ${
+                        isLightMode ? 'border-slate-300 text-purple-600 bg-white' : 'border-white/10 bg-slate-900 text-purple-600'
+                      }`}
                     />
-                    <label htmlFor="room-federated-cb" className="text-gray-300 leading-tight select-none">
+                    <label htmlFor="room-federated-cb" className={`leading-tight select-none ${
+                      isLightMode ? 'text-slate-700' : 'text-gray-300'
+                    }`}>
                       {t.roomFederationLabel}
                     </label>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 border-t border-white/5 pt-4 mt-2">
+                <div className={`flex justify-end gap-2 border-t pt-4 mt-2 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/5'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setShowCreateRoomModal(false)}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-lg text-xs transition-colors duration-200"
+                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    }`}
                   >
                     {t.cancel}
                   </button>
@@ -1646,22 +2152,28 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-lg p-6 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl relative space-y-4"
+              className={`w-full max-w-lg p-6 rounded-2xl shadow-2xl relative space-y-4 ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
               id="room-members-modal"
             >
               <button
                 onClick={() => setShowRoomMembersModal(null)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200"
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
               >
                 <X className="h-5 w-5" />
               </button>
 
-              <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2 border-b border-white/5 pb-2">
-                <Users className="h-5 w-5 text-indigo-400" />
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-slate-800 border-slate-200' : 'text-gray-100 border-white/5'
+              }`}>
+                <Users className="h-5 w-5 text-indigo-500" />
                 <span>{t.memberList} ({showRoomMembersModal.joinedMembers.length})</span>
               </h3>
 
-              <p className="text-xs text-purple-400 font-mono">
+              <p className={`text-xs font-mono ${isLightMode ? 'text-purple-600 font-semibold' : 'text-purple-400'}`}>
                 {showRoomMembersModal.name}
               </p>
 
@@ -1669,18 +2181,24 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
                 {showRoomMembersModal.joinedMembers.map((m) => (
                   <div
                     key={m.mxid}
-                    className="flex justify-between items-center p-3 bg-slate-950/30 border border-white/5 rounded-lg text-sm"
+                    className={`flex justify-between items-center p-3 border rounded-lg text-sm ${
+                      isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/30 border-white/5'
+                    }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="h-7 w-7 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-mono text-gray-400">
+                      <span className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                        isLightMode ? 'bg-slate-200 text-slate-600' : 'bg-slate-800 text-gray-400'
+                      }`}>
                         @
                       </span>
                       <div>
-                        <span className="block text-gray-200 font-mono text-xs truncate max-w-[180px] md:max-w-[240px]" title={m.mxid}>
+                        <span className={`block font-mono text-xs truncate max-w-[180px] md:max-w-[240px] ${
+                          isLightMode ? 'text-slate-700' : 'text-gray-200'
+                        }`} title={m.mxid}>
                           {m.mxid}
                         </span>
                         <span className="block text-[10px] text-gray-500 font-mono">
-                          PL: <span className="text-indigo-400 font-bold">{m.powerLevel}</span> ({m.role})
+                          PL: <span className={`font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>{m.powerLevel}</span> ({m.role})
                         </span>
                       </div>
                     </div>
@@ -1702,10 +2220,14 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
                 ))}
               </div>
 
-              <div className="flex justify-end border-t border-white/5 pt-4">
+              <div className={`flex justify-end border-t pt-4 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
                 <button
                   onClick={() => setShowRoomMembersModal(null)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-lg text-xs transition-colors duration-200"
+                  className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                    isLightMode 
+                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300' 
+                      : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                  }`}
                 >
                   Close
                 </button>
@@ -1725,23 +2247,31 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md p-6 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl relative space-y-4"
+              className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
               id="shutdown-room-modal"
             >
               <button
                 onClick={() => setShowShutdownRoomModal(null)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200"
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
               >
                 <X className="h-5 w-5" />
               </button>
 
-              <h3 className="text-lg font-bold text-red-400 flex items-center gap-2 border-b border-white/5 pb-2">
-                <ShieldAlert className="h-5 w-5 animate-pulse" />
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-red-600 border-slate-200' : 'text-red-400 border-white/5'
+              }`}>
+                <ShieldAlert className="h-5 w-5 animate-pulse text-red-500" />
                 <span>Shutdown & Purge Room</span>
               </h3>
 
-              <div className="text-xs text-gray-400 space-y-1 bg-slate-950/40 p-3 rounded-lg border border-white/5">
-                <p>Room: <span className="text-red-300 font-semibold">{showShutdownRoomModal.name}</span></p>
+              <div className={`text-xs space-y-1 p-3 rounded-lg border ${
+                isLightMode ? 'bg-red-50 border-red-100 text-red-900' : 'text-gray-400 bg-slate-950/40 border-white/5'
+              }`}>
+                <p>Room: <span className={`font-semibold ${isLightMode ? 'text-red-700' : 'text-red-300'}`}>{showShutdownRoomModal.name}</span></p>
                 <p className="font-mono text-[10px] truncate">ID: {showShutdownRoomModal.id}</p>
               </div>
 
@@ -1753,22 +2283,32 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
                       id="sd-purge-cb"
                       checked={shutdownRoomConfig.purge}
                       onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, purge: e.target.checked }))}
-                      className="h-4 w-4 rounded border-white/10 bg-slate-900 text-red-600 focus:ring-0"
+                      className={`h-4 w-4 rounded focus:ring-0 ${
+                        isLightMode ? 'border-slate-300 bg-white text-red-600' : 'border-white/10 bg-slate-900 text-red-600'
+                      }`}
                     />
-                    <label htmlFor="sd-purge-cb" className="text-xs text-gray-300 leading-tight select-none">
+                    <label htmlFor="sd-purge-cb" className={`text-xs leading-tight select-none ${
+                      isLightMode ? 'text-slate-700' : 'text-gray-300'
+                    }`}>
                       {t.purgeRoomLabel}
                     </label>
                   </div>
 
-                  <div className="flex items-center gap-3 border-t border-white/5 pt-2.5">
+                  <div className={`flex items-center gap-3 border-t pt-2.5 ${
+                    isLightMode ? 'border-slate-200' : 'border-white/5'
+                  }`}>
                     <input
                       type="checkbox"
                       id="sd-sendmsg-cb"
                       checked={shutdownRoomConfig.sendMessage}
                       onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, sendMessage: e.target.checked }))}
-                      className="h-4 w-4 rounded border-white/10 bg-slate-900 text-red-600 focus:ring-0"
+                      className={`h-4 w-4 rounded focus:ring-0 ${
+                        isLightMode ? 'border-slate-300 bg-white text-red-600' : 'border-white/10 bg-slate-900 text-red-600'
+                      }`}
                     />
-                    <label htmlFor="sd-sendmsg-cb" className="text-xs text-gray-300 leading-tight select-none">
+                    <label htmlFor="sd-sendmsg-cb" className={`text-xs leading-tight select-none ${
+                      isLightMode ? 'text-slate-700' : 'text-gray-300'
+                    }`}>
                       {t.sendMessageLabel}
                     </label>
                   </div>
@@ -1781,16 +2321,26 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
                       onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, messageText: e.target.value }))}
                       placeholder={t.sendMessagePlaceholder}
                       rows={2}
-                      className="w-full bg-slate-950/60 border border-white/5 focus:border-red-500 rounded-lg p-2.5 outline-none text-gray-200 text-xs transition-colors duration-200 resize-none"
+                      className={`w-full border focus:border-red-500 rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 resize-none ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800' 
+                          : 'bg-slate-950/60 border-white/5 text-gray-200'
+                      }`}
                     />
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 border-t border-white/5 pt-4">
+                <div className={`flex justify-end gap-2 border-t pt-4 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/5'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setShowShutdownRoomModal(null)}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-lg text-xs transition-colors duration-200"
+                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    }`}
                   >
                     {t.cancel}
                   </button>
@@ -1817,59 +2367,83 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md p-6 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl relative space-y-4"
+              className={`w-full max-w-md p-6 rounded-2xl shadow-2xl relative space-y-4 ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
               id="create-token-modal"
             >
               <button
                 onClick={() => setShowCreateTokenModal(false)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors duration-200"
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
               >
                 <X className="h-5 w-5" />
               </button>
 
-              <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2 border-b border-white/5 pb-2">
-                <Key className="h-5 w-5 animate-pulse" />
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-emerald-600 border-slate-200' : 'text-emerald-400 border-white/5'
+              }`}>
+                <Key className="h-5 w-5 animate-pulse text-emerald-500" />
                 <span>{t.createTokenBtn}</span>
               </h3>
 
               <form onSubmit={handleCreateToken} className="space-y-4 text-sm font-medium">
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.tokenStringLabel}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.tokenStringLabel}</label>
                   <input
                     type="text"
                     value={newToken.token}
                     onChange={(e) => setNewToken(prev => ({ ...prev, token: e.target.value }))}
                     placeholder="e.g. VIP-INVITE-ONLY"
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-emerald-500 rounded-lg p-2.5 outline-none text-gray-200 font-mono text-xs transition-colors duration-200"
+                    className={`w-full border focus:border-emerald-500 rounded-lg p-2.5 outline-none font-mono text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200'
+                    }`}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.usesAllowedLabel}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.usesAllowedLabel}</label>
                   <input
                     type="number"
                     value={newToken.usesAllowed}
                     onChange={(e) => setNewToken(prev => ({ ...prev, usesAllowed: e.target.value }))}
                     placeholder="e.g. 10 (Leave blank for unlimited)"
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-emerald-500 rounded-lg p-2.5 outline-none text-gray-200 font-mono text-xs transition-colors duration-200"
+                    className={`w-full border focus:border-emerald-500 rounded-lg p-2.5 outline-none font-mono text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200'
+                    }`}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">{t.expiryLabel}</label>
+                  <label className={`block text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>{t.expiryLabel}</label>
                   <input
                     type="datetime-local"
                     value={newToken.expiryTime}
                     onChange={(e) => setNewToken(prev => ({ ...prev, expiryTime: e.target.value }))}
-                    className="w-full bg-slate-950/60 border border-white/5 focus:border-emerald-500 rounded-lg p-2.5 outline-none text-gray-200 font-mono text-xs transition-colors duration-200"
+                    className={`w-full border focus:border-emerald-500 rounded-lg p-2.5 outline-none font-mono text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800' 
+                        : 'bg-slate-950/60 border-white/5 text-gray-200'
+                    }`}
                   />
                 </div>
 
-                <div className="flex justify-end gap-2 border-t border-white/5 pt-4 mt-2">
+                <div className={`flex justify-end gap-2 border-t pt-4 mt-2 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/5'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setShowCreateTokenModal(false)}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-lg text-xs transition-colors duration-200"
+                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    }`}
                   >
                     {t.cancel}
                   </button>
@@ -1880,6 +2454,997 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast }:
                     Generate
                   </button>
                 </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================== */}
+      {/* MODAL 7: DETAILED USER VIEWER (KETESA EXTRA) */}
+      {/* ========================================== */}
+      <AnimatePresence>
+        {selectedUserMxid && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              className={`w-full max-w-5xl h-[85vh] flex flex-col rounded-2xl shadow-2xl relative overflow-hidden ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
+            >
+              {/* Header */}
+              <div className={`flex items-center justify-between p-5 border-b ${
+                isLightMode ? 'border-slate-200 bg-slate-100/70' : 'border-white/5 bg-slate-950/20'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-600/10 text-indigo-400 rounded-lg">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className={`text-base font-bold flex items-center gap-2 font-mono ${
+                      isLightMode ? 'text-slate-800' : 'text-gray-100'
+                    }`}>
+                      <span>{selectedUserMxid}</span>
+                    </h3>
+                    <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-500'}`}>
+                      {isRtl ? 'پیکربندی و نظارت پیشرفته کاربر ماتریکس (Ketesa Admin)' : 'Advanced Matrix User Configuration & Monitoring (Ketesa Admin)'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedUserMxid(null);
+                    setSelectedUserDetails(null);
+                  }}
+                  className={`p-1.5 rounded-lg transition-colors duration-200 ${
+                    isLightMode 
+                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                      : 'bg-slate-800 hover:bg-slate-700 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Main Content Pane */}
+              {userDetailsLoading ? (
+                <div className={`flex-1 flex flex-col items-center justify-center gap-3 font-mono text-sm ${
+                  isLightMode ? 'text-slate-600' : 'text-gray-400'
+                }`}>
+                  <RefreshCw className="h-8 w-8 text-indigo-400 animate-spin" />
+                  <span>Loading user homeserver profile...</span>
+                </div>
+              ) : selectedUserDetails ? (
+                <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                  
+                  {/* Left Sidebar Tabs */}
+                  <div className={`w-full md:w-56 border-r p-3 flex flex-row md:flex-col gap-1 overflow-x-auto md:overflow-x-visible md:overflow-y-auto shrink-0 select-none ${
+                    isLightMode ? 'bg-slate-100/50 border-slate-200' : 'bg-slate-950/20 border-white/5'
+                  }`}>
+                    <button
+                      onClick={() => setActiveUserDetailTab('user')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'user' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <span>🧙‍♂️</span>
+                      <span>{isRtl ? 'یوزر اصلی' : 'User profile'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('contact')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'contact' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'اطلاعات تماس' : 'Contact Info'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('sso')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'sso' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <Network className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'اتصال SSO' : 'SSO Mapping'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('devices')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'devices' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <Laptop className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'نشست‌ها / دستگاه‌ها' : 'Devices & Sessions'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('rooms')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'rooms' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'اتاق‌های عضو' : 'Rooms List'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('media')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'media' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <HardDrive className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'فایل‌های آپلودی' : 'Media Cache'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('pushers')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'pushers' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'پوشرها و اعلان‌ها' : 'Pushers & Alerts'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('limits')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'limits' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <Sliders className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'محدودیت نرخ' : 'Rate Limits'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('account')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'account' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'دیتاهای اکانت' : 'Account Data'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('history')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'history' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <History className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'لاگ‌های گفتگو' : 'Chat & History'}</span>
+                    </button>
+                  </div>
+
+                  {/* Right Tab Content area */}
+                  <div className="flex-1 p-6 overflow-y-auto space-y-6 text-sm">
+                    
+                    {/* SUB-TAB 1: USER SUMMARY */}
+                    {activeUserDetailTab === 'user' && (
+                       <div className="space-y-6">
+                        {/* Meta info header card */}
+                        <div className={`p-5 rounded-xl border space-y-3 ${
+                          isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/30 border-white/5'
+                        }`}>
+                          <h4 className="text-xs text-indigo-400 font-mono font-bold uppercase tracking-wider">
+                            {isRtl ? 'شناسنامه کاربر ماتریکس' : 'Matrix Core Identity Card'}
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                            <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                              <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>Created at:</span>
+                              <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-300'}`}>
+                                {selectedUserDetails.createdAt ? new Date(selectedUserDetails.createdAt).toLocaleString() : 'N/A'}
+                              </span>
+                            </div>
+                            <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                              <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>MXID:</span>
+                              <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-300'}`}>{selectedUserDetails.mxid}</span>
+                            </div>
+                            <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                              <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>User type:</span>
+                              <span className="text-indigo-500 font-semibold uppercase">{selectedUserDetails.userType || 'ketesa'}</span>
+                            </div>
+                            <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                              <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>Display name:</span>
+                              <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-300'}`}>{selectedUserDetails.displayName || 'N/A'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status flags */}
+                        <div className="space-y-4">
+                          <h4 className="text-xs text-indigo-400 font-semibold uppercase tracking-wider">
+                            {isRtl ? 'محدودیت‌ها و وضعیت حساب' : 'Account Status Flags'}
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Suspended flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.isSuspended}
+                                onChange={(e) => handleUpdateUserParams({ isSuspended: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>Suspended</span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  Suspending this user places them in read-only mode across all rooms.
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Shadow Banned flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.isShadowBanned}
+                                onChange={(e) => handleUpdateUserParams({ isShadowBanned: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>Shadow banned</span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  A shadow-banned user receives normal responses, but their events are not propagated to other users.
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Locked flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.isLocked}
+                                onChange={(e) => handleUpdateUserParams({ isLocked: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>Locked</span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  Prevent the user from usefully using their account. Reversible and non-destructive.
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Server Administrator flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.isAdmin}
+                                onChange={(e) => handleUpdateUserParams({ isAdmin: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold flex items-center gap-1.5 ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
+                                  <Shield className="h-3.5 w-3.5" />
+                                  <span>Server Administrator</span>
+                                </span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  Allows full root administrative access to the Synapse configuration APIs.
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Erased flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.isErased}
+                                onChange={(e) => handleUpdateUserParams({ isErased: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold ${isLightMode ? 'text-red-600' : 'text-red-400'}`}>Erased</span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  Marks the user as permanently deleted to comply with GDPR/deletion requests.
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Password resets */}
+                        <div className={`p-5 rounded-xl border space-y-4 ${
+                          isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <h4 className="text-xs text-red-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                            <Lock className="h-4 w-4" />
+                            <span>{isRtl ? 'تغییر رمز عبور کاربر' : 'Force Reset User Password'}</span>
+                          </h4>
+                          <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                            {isRtl ? 'تغییر رمز عبور باعث خروج فوری کاربر از تمام دستگاه‌ها و نشست‌ها می‌شود.' : 'Changing the password will immediately log the user out of all sessions for security compliance.'}
+                          </p>
+                          <form onSubmit={handleResetPassword} className="flex gap-2 max-w-md">
+                            <input
+                              type="password"
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              placeholder="New password string"
+                              className={`flex-1 border rounded-lg p-2.5 outline-none text-xs font-mono transition-colors ${
+                                isLightMode 
+                                  ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                                  : 'bg-slate-950/50 border-white/10 text-gray-200 focus:border-indigo-500'
+                              }`}
+                            />
+                            <button
+                              type="submit"
+                              className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
+                                isLightMode 
+                                  ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200' 
+                                  : 'bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/20'
+                              }`}
+                            >
+                              Update
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 2: CONTACT INFO */}
+                    {activeUserDetailTab === 'contact' && (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          
+                          {/* Emails */}
+                          <div className={`space-y-4 p-5 rounded-xl border ${
+                            isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/10 border-white/5'
+                          }`}>
+                            <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                              <Mail className="h-4 w-4" />
+                              <span>Email Addresses</span>
+                            </h4>
+                            <form onSubmit={handleAddEmail} className="flex gap-2">
+                              <input
+                                type="email"
+                                value={newEmail}
+                                onChange={(e) => setNewEmail(e.target.value)}
+                                placeholder="Add email address"
+                                className={`flex-1 border rounded-lg p-2.5 outline-none text-xs ${
+                                  isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-950/50 border-white/10 text-gray-200'
+                                }`}
+                              />
+                              <button
+                                type="submit"
+                                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors"
+                              >
+                                Add
+                              </button>
+                            </form>
+                            <div className={`divide-y max-h-48 overflow-y-auto ${isLightMode ? 'divide-slate-100' : 'divide-white/5'}`}>
+                              {!selectedUserDetails.emails || selectedUserDetails.emails.length === 0 ? (
+                                <p className="text-xs text-gray-500 py-3 text-center italic">No registered emails.</p>
+                              ) : (
+                                selectedUserDetails.emails.map((email: string) => (
+                                  <div key={email} className={`flex justify-between items-center py-2 text-xs font-mono ${
+                                    isLightMode ? 'text-slate-700' : 'text-gray-300'
+                                  }`}>
+                                    <span>{email}</span>
+                                    <button
+                                      onClick={() => handleRemoveEmail(email)}
+                                      className="p-1 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Phones */}
+                          <div className={`space-y-4 p-5 rounded-xl border ${
+                            isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/10 border-white/5'
+                          }`}>
+                            <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                              <Phone className="h-4 w-4" />
+                              <span>Phone Numbers</span>
+                            </h4>
+                            <form onSubmit={handleAddPhone} className="flex gap-2">
+                              <input
+                                type="text"
+                                value={newPhone}
+                                onChange={(e) => setNewPhone(e.target.value)}
+                                placeholder="Add phone (e.g. +989123456789)"
+                                className={`flex-1 border rounded-lg p-2.5 outline-none text-xs font-mono ${
+                                  isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-950/50 border-white/10 text-gray-200'
+                                }`}
+                              />
+                              <button
+                                type="submit"
+                                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors"
+                              >
+                                Add
+                              </button>
+                            </form>
+                            <div className={`divide-y max-h-48 overflow-y-auto ${isLightMode ? 'divide-slate-100' : 'divide-white/5'}`}>
+                              {!selectedUserDetails.phones || selectedUserDetails.phones.length === 0 ? (
+                                <p className="text-xs text-gray-500 py-3 text-center italic">No registered phone numbers.</p>
+                              ) : (
+                                selectedUserDetails.phones.map((phone: string) => (
+                                  <div key={phone} className={`flex justify-between items-center py-2 text-xs font-mono ${
+                                    isLightMode ? 'text-slate-700' : 'text-gray-300'
+                                  }`}>
+                                    <span>{phone}</span>
+                                    <button
+                                      onClick={() => handleRemovePhone(phone)}
+                                      className="p-1 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 3: SSO & LINKAGE */}
+                    {activeUserDetailTab === 'sso' && (
+                      <div className="space-y-4">
+                        <div className={`p-5 rounded-xl border space-y-4 ${
+                          isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                            <Network className="h-4 w-4" />
+                            <span>Single Sign-On (SSO) Providers</span>
+                          </h4>
+                          <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                            View SSO external identifier mappings configured for federated user registration.
+                          </p>
+                          <div className="space-y-3 font-mono text-xs">
+                            <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                              <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>SSO Linked status:</span>
+                              <span className={selectedUserDetails.sso?.linked ? 'text-emerald-500 font-bold' : 'text-gray-500'}>
+                                {selectedUserDetails.sso?.linked ? 'Linked' : 'Not Linked'}
+                              </span>
+                            </div>
+                            {selectedUserDetails.sso?.linked && (
+                              <>
+                                <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                                  <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>Provider:</span>
+                                  <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>{selectedUserDetails.sso?.provider}</span>
+                                </div>
+                                <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                                  <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>External ID:</span>
+                                  <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>{selectedUserDetails.sso?.externalId}</span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 4: DEVICES & SESSIONS */}
+                    {activeUserDetailTab === 'devices' && (
+                      <div className="space-y-4">
+                        <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <Laptop className="h-4 w-4" />
+                          <span>Active Client Devices & Matrix Sessions</span>
+                        </h4>
+                        <div className={`border rounded-xl overflow-hidden ${
+                          isLightMode ? 'border-slate-200 bg-white shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <table className="w-full text-left text-xs font-mono">
+                            <thead>
+                              <tr className={`${
+                                isLightMode ? 'bg-slate-100/80 text-slate-600 border-b border-slate-200' : 'bg-slate-950/40 text-gray-400 border-b border-white/5'
+                              }`}>
+                                <th className="p-3">Device ID</th>
+                                <th className="p-3">Display Name</th>
+                                <th className="p-3">Last Seen IP</th>
+                                <th className="p-3">User Agent</th>
+                                <th className="p-3 text-center">Terminate</th>
+                              </tr>
+                            </thead>
+                            <tbody className={`divide-y ${isLightMode ? 'divide-slate-100' : 'divide-white/5'}`}>
+                              {!selectedUserDetails.devices || selectedUserDetails.devices.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="p-5 text-center text-gray-500 italic">No active devices.</td>
+                                </tr>
+                              ) : (
+                                selectedUserDetails.devices.map((dev: any) => (
+                                  <tr key={dev.id} className={`transition-colors ${
+                                    isLightMode ? 'hover:bg-slate-50/50 text-slate-700' : 'hover:bg-white/5 text-gray-300'
+                                  }`}>
+                                    <td className={`p-3 font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-300'}`}>{dev.id}</td>
+                                    <td className="p-3 font-sans">{dev.displayName || 'Unnamed Device'}</td>
+                                    <td className="p-3">{dev.lastSeenIp || 'Unknown'}</td>
+                                    <td className={`p-3 max-w-[200px] truncate font-sans ${isLightMode ? 'text-slate-400' : 'text-gray-500'}`} title={dev.userAgent}>
+                                      {dev.userAgent || 'N/A'}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <button
+                                        onClick={() => handleTerminateDevice(dev.id)}
+                                        className="p-1 text-red-400 hover:bg-red-500/15 rounded transition-all duration-200"
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 5: ROOMS MEMBERSHIPS */}
+                    {activeUserDetailTab === 'rooms' && (
+                      <div className="space-y-4">
+                        <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <Layers className="h-4 w-4" />
+                          <span>Joined Room Memberships & Moderation</span>
+                        </h4>
+                        <div className={`border rounded-xl overflow-hidden ${
+                          isLightMode ? 'border-slate-200 bg-white shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <table className="w-full text-left text-xs font-mono">
+                            <thead>
+                              <tr className={`${
+                                isLightMode ? 'bg-slate-100/80 text-slate-600 border-b border-slate-200' : 'bg-slate-950/40 text-gray-400 border-b border-white/5'
+                              }`}>
+                                <th className="p-3">Room Name</th>
+                                <th className="p-3">Room ID</th>
+                                <th className="p-3 text-center">Power Level</th>
+                                <th className="p-3 text-center">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className={`divide-y ${isLightMode ? 'divide-slate-100' : 'divide-white/5'}`}>
+                              {!selectedUserDetails.memberships || selectedUserDetails.memberships.length === 0 ? (
+                                <tr>
+                                  <td colSpan={4} className="p-5 text-center text-gray-500 italic">This user is not currently in any rooms.</td>
+                                </tr>
+                              ) : (
+                                selectedUserDetails.memberships.map((m: any) => (
+                                  <tr key={m.roomId} className={`transition-colors ${
+                                    isLightMode ? 'hover:bg-slate-50/50 text-slate-700' : 'hover:bg-white/5 text-gray-300'
+                                  }`}>
+                                    <td className={`p-3 font-sans font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>{m.roomName}</td>
+                                    <td className="p-3 text-gray-500 select-all">{m.roomId}</td>
+                                    <td className="p-3 text-center">
+                                      <span className={`px-2 py-0.5 border rounded font-bold ${
+                                        isLightMode ? 'bg-slate-100 border-slate-200 text-indigo-600' : 'bg-slate-900/60 border-white/5 text-indigo-400'
+                                      }`}>
+                                        {m.powerLevel ?? 100}
+                                      </span>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <div className="flex justify-center items-center gap-2">
+                                        <button
+                                          onClick={() => handleUserRoomAction(m.roomId, 'kick')}
+                                          className="px-2 py-1 text-[10px] bg-amber-600/10 hover:bg-amber-600/20 text-amber-500 border border-amber-500/20 rounded font-sans transition-colors"
+                                        >
+                                          Kick
+                                        </button>
+                                        <button
+                                          onClick={() => handleUserRoomAction(m.roomId, 'ban')}
+                                          className="px-2 py-1 text-[10px] bg-red-600/10 hover:bg-red-600/20 text-red-500 border border-red-500/20 rounded font-sans transition-colors"
+                                        >
+                                          Ban
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 6: USER MEDIA CACHE */}
+                    {activeUserDetailTab === 'media' && (
+                      <div className="space-y-4">
+                        <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <HardDrive className="h-4 w-4" />
+                          <span>Uploaded Media Cache Assets</span>
+                        </h4>
+                        <div className={`border rounded-xl overflow-hidden ${
+                          isLightMode ? 'border-slate-200 bg-white shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <table className="w-full text-left text-xs font-mono">
+                            <thead>
+                              <tr className={`${
+                                isLightMode ? 'bg-slate-100/80 text-slate-600 border-b border-slate-200' : 'bg-slate-950/40 text-gray-400 border-b border-white/5'
+                              }`}>
+                                <th className="p-3">File Name</th>
+                                <th className="p-3">Media ID</th>
+                                <th className="p-3">Size</th>
+                                <th className="p-3 text-center">Status</th>
+                                <th className="p-3 text-center">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className={`divide-y ${isLightMode ? 'divide-slate-100' : 'divide-white/5'}`}>
+                              {!selectedUserDetails.media || selectedUserDetails.media.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="p-5 text-center text-gray-500 italic">No uploaded media recorded for this user.</td>
+                                </tr>
+                              ) : (
+                                selectedUserDetails.media.map((med: any) => (
+                                  <tr key={med.mediaId} className={`transition-colors ${
+                                    isLightMode ? 'hover:bg-slate-50/50 text-slate-700' : 'hover:bg-white/5 text-gray-300'
+                                  }`}>
+                                    <td className={`p-3 font-sans font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>{med.fileName}</td>
+                                    <td className="p-3 text-gray-500 select-all">{med.mediaId}</td>
+                                    <td className={`p-3 font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-300'}`}>
+                                      {(med.size / (1024 * 1024)).toFixed(2)} MB
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      {med.quarantined ? (
+                                        <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-red-600/10 text-red-500 border border-red-500/20">Quarantined</span>
+                                      ) : (
+                                        <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-emerald-600/10 text-emerald-500 border border-emerald-500/20">Normal</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <button
+                                        onClick={() => handleQuarantineMedia(med.mediaId, !med.quarantined)}
+                                        className={`px-2 py-1 text-[10px] rounded font-sans border transition-all ${
+                                          med.quarantined 
+                                            ? 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-500 border-emerald-500/30' 
+                                            : 'bg-red-600/20 hover:bg-red-600/30 text-red-500 border-red-500/30'
+                                        }`}
+                                      >
+                                        {med.quarantined ? 'Release' : 'Quarantine'}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 7: PUSHERS */}
+                    {activeUserDetailTab === 'pushers' && (
+                      <div className="space-y-4">
+                        <div className={`p-5 rounded-xl border space-y-4 ${
+                          isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                            <Zap className="h-4 w-4" />
+                            <span>Registered Push Gateways (Pushers)</span>
+                          </h4>
+                          <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                            Listed are pushers registered by mobile or web clients to route push notifications through external gateways like FCM/UnifiedPush.
+                          </p>
+                          <div className={`divide-y text-xs font-mono ${isLightMode ? 'divide-slate-100' : 'divide-white/5'}`}>
+                            {!selectedUserDetails.pushers || selectedUserDetails.pushers.length === 0 ? (
+                              <p className="text-xs text-gray-500 py-3 text-center italic">No pushers configured for this account.</p>
+                            ) : (
+                              selectedUserDetails.pushers.map((push: any, i: number) => (
+                                <div key={i} className="py-3 space-y-1">
+                                  <div className="flex justify-between">
+                                    <span className={isLightMode ? 'text-slate-400' : 'text-gray-500'}>App ID:</span>
+                                    <span className={`font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>{push.appId}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={isLightMode ? 'text-slate-400' : 'text-gray-500'}>Push Key (Gateway):</span>
+                                    <span className={`select-all ${isLightMode ? 'text-slate-800' : 'text-gray-300'}`}>{push.pushKey}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className={isLightMode ? 'text-slate-400' : 'text-gray-500'}>Kind:</span>
+                                    <span className={`font-sans ${isLightMode ? 'text-slate-700' : 'text-gray-400'}`}>{push.kind || 'http'}</span>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 8: RATE LIMITS */}
+                    {activeUserDetailTab === 'limits' && (
+                      <div className="space-y-4">
+                        <form onSubmit={handleSaveRateLimits} className={`p-5 rounded-xl border space-y-4 ${
+                          isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                            <Sliders className="h-4 w-4" />
+                            <span>Custom Homeserver Rate Limits</span>
+                          </h4>
+                          <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                            Configure explicit request rate limits for this Matrix account to bypass global homeserver constraints.
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <label className="block text-xs text-gray-500 font-mono">Requests Per Second (`per_second`):</label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={userRateLimits.perSecond}
+                                onChange={(e) => setUserRateLimits(prev => ({ ...prev, perSecond: e.target.value }))}
+                                className={`w-full border rounded-lg p-2.5 outline-none font-mono text-xs transition-colors ${
+                                  isLightMode ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                                }`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs text-gray-500 font-mono">Max Burst Count (`burst_count`):</label>
+                              <input
+                                type="number"
+                                value={userRateLimits.burstCount}
+                                onChange={(e) => setUserRateLimits(prev => ({ ...prev, burstCount: e.target.value }))}
+                                className={`w-full border rounded-lg p-2.5 outline-none font-mono text-xs transition-colors ${
+                                  isLightMode ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                                }`}
+                              />
+                            </div>
+                          </div>
+                          <div className={`flex justify-end border-t pt-4 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                            <button
+                              type="submit"
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors"
+                            >
+                              Apply Custom Rate Limits
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 9: ACCOUNT DATA (RAW JSON CLIENT STATE) */}
+                    {activeUserDetailTab === 'account' && (
+                      <div className="space-y-4">
+                        <form onSubmit={handleSaveAccountData} className={`p-5 rounded-xl border space-y-4 ${
+                          isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-950/20 border-white/5'
+                        }`}>
+                          <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                            <FileText className="h-4 w-4" />
+                            <span>Raw Account Data (Client State Store)</span>
+                          </h4>
+                          <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                            Configure globally stored client-side metadata variables. Must be a valid JSON key-value store.
+                          </p>
+                          <textarea
+                            value={userAccountDataText}
+                            onChange={(e) => setUserAccountDataText(e.target.value)}
+                            rows={8}
+                            className={`w-full border rounded-lg p-3 outline-none font-mono text-xs leading-relaxed transition-colors ${
+                              isLightMode ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' : 'bg-slate-950/60 border-white/5 text-gray-200 focus:border-indigo-500'
+                            }`}
+                            placeholder="{}"
+                          />
+                          <div className={`flex justify-end border-t pt-4 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                            <button
+                              type="submit"
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors"
+                            >
+                              Update Client Account Data
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 10: MEMBESHIP CHAT TIMELINE (HISTORY LOGS) */}
+                    {activeUserDetailTab === 'history' && (
+                      <div className="space-y-4">
+                        <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <History className="h-4 w-4" />
+                          <span>Direct & Group Rooms Chat History Logs</span>
+                        </h4>
+                        <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                          Inspect the interactive chat conversations this user is participating in. Click "Inspect Chat" to open the live discussion log safely.
+                        </p>
+                        <div className="space-y-2 max-h-[350px] overflow-y-auto">
+                          {!selectedUserDetails.memberships || selectedUserDetails.memberships.length === 0 ? (
+                            <p className="text-xs text-gray-500 text-center italic py-4">User is not a member of any conversational room.</p>
+                          ) : (
+                            selectedUserDetails.memberships.map((m: any) => (
+                              <div key={m.roomId} className={`flex justify-between items-center p-3.5 rounded-xl border transition-all duration-200 ${
+                                isLightMode ? 'bg-white border-slate-200 hover:border-indigo-500/50 shadow-sm' : 'bg-slate-950/30 border-white/5 hover:border-indigo-500/30'
+                              }`}>
+                                <div>
+                                  <span className={`block text-xs font-semibold font-sans ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>{m.roomName}</span>
+                                  <span className="block text-[10px] text-gray-500 font-mono mt-0.5 select-all">{m.roomId}</span>
+                                </div>
+                                <button
+                                  onClick={() => handleOpenRoomChat(m.roomId, m.roomName)}
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-300 border border-indigo-500/25 rounded-lg text-xs font-medium transition-colors duration-250"
+                                >
+                                  <MessageSquare className="h-3.5 w-3.5" />
+                                  <span>Inspect Chat</span>
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              ) : (
+                <div className={`flex-1 flex items-center justify-center italic ${isLightMode ? 'text-slate-500' : 'text-gray-500'}`}>
+                  User profile details not found.
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================== */}
+      {/* MODAL 8: LIVE ROOM CHAT MESSAGE INSPECTOR */}
+      {/* ========================================== */}
+      <AnimatePresence>
+        {activeRoomChatId && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className={`w-full max-w-2xl h-[75vh] flex flex-col rounded-2xl shadow-2xl relative overflow-hidden ${
+                isLightMode ? 'bg-slate-50 border border-slate-200' : 'bg-slate-900 border border-white/10'
+              }`}
+            >
+              {/* Header */}
+              <div className={`flex items-center justify-between p-5 border-b ${
+                isLightMode ? 'border-slate-200 bg-slate-100/70' : 'border-white/5 bg-slate-950/20'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-600/10 text-indigo-400 rounded-lg">
+                    <MessageSquare className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className={`text-base font-bold font-sans ${
+                      isLightMode ? 'text-slate-800' : 'text-gray-100'
+                    }`}>
+                      {activeRoomChatName}
+                    </h3>
+                    <p className="text-xs text-gray-500 font-mono">
+                      {activeRoomChatId}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setActiveRoomChatId(null);
+                    setRoomChatMessages([]);
+                  }}
+                  className={`p-1.5 rounded-lg transition-colors duration-200 ${
+                    isLightMode 
+                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                      : 'bg-slate-800 hover:bg-slate-700 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Chat timeline messages wrapper */}
+              <div className={`flex-1 p-5 overflow-y-auto space-y-4 ${
+                isLightMode ? 'bg-white' : 'bg-slate-950/10'
+              }`}>
+                {isChatLoading ? (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-2 font-mono text-xs">
+                    <RefreshCw className="h-6 w-6 text-indigo-400 animate-spin" />
+                    <span>Loading timeline messages...</span>
+                  </div>
+                ) : roomChatMessages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500 text-xs italic">
+                    No message events sent in this room timeline yet.
+                  </div>
+                ) : (
+                  roomChatMessages.map((msg, index) => {
+                    const isSystem = msg.sender.startsWith('@admin');
+                    return (
+                      <div key={msg.id || index} className={`flex flex-col ${isSystem ? 'items-end' : 'items-start'}`}>
+                        <div className={`max-w-[85%] rounded-xl p-3.5 shadow-md border ${
+                          isSystem 
+                            ? isLightMode 
+                              ? 'bg-indigo-50 border-indigo-200 text-indigo-900 rounded-tr-none' 
+                              : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-100 rounded-tr-none' 
+                            : isLightMode 
+                              ? 'bg-slate-100 border-slate-200 text-slate-800 rounded-tl-none' 
+                              : 'bg-slate-800 border-white/5 text-gray-200 rounded-tl-none'
+                        }`}>
+                          <div className="flex items-baseline gap-2 mb-1.5">
+                            <span className={`font-semibold text-xs font-sans ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>
+                              {msg.senderDisplayName || msg.sender}
+                            </span>
+                            <span className="text-[9px] text-gray-500 font-mono">
+                              {msg.sender}
+                            </span>
+                          </div>
+                          <p className="text-xs font-sans leading-relaxed break-words whitespace-pre-wrap">{msg.content}</p>
+                          <span className="block text-[9px] text-gray-500 text-right mt-1.5 font-mono">
+                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Chat bottom bar input form */}
+              <form onSubmit={handleSendChatMessage} className={`p-4 border-t flex gap-2 ${
+                isLightMode ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-slate-950/20'
+              }`}>
+                <input
+                  type="text"
+                  value={newRoomChatMessageText}
+                  onChange={(e) => setNewRoomChatMessageText(e.target.value)}
+                  placeholder={isRtl ? 'پیامی بنویسید...' : 'Type a simulation response message...'}
+                  className={`flex-1 border rounded-xl p-3 outline-none text-xs focus:border-indigo-500 transition-colors ${
+                    isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-950/50 border-white/10 text-gray-200'
+                  }`}
+                />
+                <button
+                  type="submit"
+                  disabled={!newRoomChatMessageText.trim()}
+                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5"
+                >
+                  <span>{isRtl ? 'ارسال' : 'Send'}</span>
+                </button>
               </form>
             </motion.div>
           </div>

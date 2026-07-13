@@ -879,6 +879,7 @@ export default function App() {
                 authToken={authToken}
                 currentUser={currentUser}
                 showToast={showToast}
+                isLightMode={isLightMode}
               />
             )}
 

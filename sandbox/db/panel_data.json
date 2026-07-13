@@ -43,14 +43,219 @@
       "isAdmin": true,
       "isDeactivated": false,
       "displayName": "Masoud",
-      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=masoud"
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=masoud",
+      "createdAt": "2026-04-25T07:46:53.796Z",
+      "userType": "admin",
+      "emails": [
+        "masoud@matrix.kheilisabz.local"
+      ],
+      "phones": [
+        "+989121132769"
+      ],
+      "sso": [
+        {
+          "provider": "LDAP Integration",
+          "externalId": "masoud",
+          "linkedAt": "2026-04-25T07:46:53.796Z"
+        }
+      ],
+      "devices": [
+        {
+          "id": "DEV-WEB-3558",
+          "name": "Chrome macOS - Element Web",
+          "lastSeenIp": "192.168.1.100",
+          "lastSeenAt": "2026-07-13T05:46:53.796Z",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0.0.0"
+        }
+      ],
+      "connections": [
+        {
+          "ip": "192.168.1.112",
+          "timestamp": "2026-07-13T07:31:53.796Z",
+          "userAgent": "Element iOS"
+        },
+        {
+          "ip": "192.168.1.100",
+          "timestamp": "2026-07-13T05:46:53.796Z",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0.0.0"
+        },
+        {
+          "ip": "10.0.4.52",
+          "timestamp": "2026-07-12T07:46:53.796Z",
+          "userAgent": "Element Desktop"
+        }
+      ],
+      "pushers": [
+        {
+          "appId": "im.vector.app.android",
+          "pushKey": "APA91bEy...899",
+          "kind": "http",
+          "data": {
+            "url": "https://matrix.org/_matrix/push/v1/notify"
+          },
+          "profileTag": "mobile-pusher"
+        }
+      ],
+      "experimental": [
+        {
+          "key": "m.relates_to.stable",
+          "value": "true"
+        },
+        {
+          "key": "org.matrix.msc3026",
+          "value": "enabled"
+        }
+      ],
+      "rateLimits": {
+        "perSecond": 2,
+        "burstCount": 10
+      },
+      "accountData": {
+        "im.vector.web.settings": {
+          "sidebarShowShortcuts": true,
+          "theme": "dark"
+        }
+      },
+      "isSuspended": false,
+      "isShadowBanned": false,
+      "isLocked": false,
+      "isErased": false,
+      "memberships": [
+        {
+          "roomId": "!room2:matrix.company.local",
+          "roomName": "Infrastructure & Security",
+          "state": "ban",
+          "timestamp": "2026-07-13T07:56:02.160Z",
+          "handler": "banned_by_admin"
+        },
+        {
+          "roomId": "!room1:matrix.company.local",
+          "roomName": "General Organization Chat",
+          "state": "join",
+          "timestamp": "2026-04-25T07:46:53.796Z",
+          "handler": "synapse.join"
+        },
+        {
+          "roomId": "!room2:matrix.company.local",
+          "roomName": "Infrastructure & Security",
+          "state": "join",
+          "timestamp": "2026-07-11T07:46:53.796Z",
+          "handler": "synapse.join"
+        }
+      ]
     },
     {
       "mxid": "@alice:matrix.company.local",
       "isAdmin": false,
       "isDeactivated": false,
       "displayName": "Alice",
-      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=alice"
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=alice",
+      "createdAt": "2026-05-19T07:57:17.168Z",
+      "userType": "normal",
+      "emails": [
+        "alice@matrix.kheilisabz.local"
+      ],
+      "phones": [
+        "+989128914798"
+      ],
+      "sso": [
+        {
+          "provider": "LDAP Integration",
+          "externalId": "alice",
+          "linkedAt": "2026-05-19T07:57:17.168Z"
+        }
+      ],
+      "devices": [
+        {
+          "id": "DEV-IOS-1996",
+          "name": "Masoud's iPhone 15 Pro",
+          "lastSeenIp": "192.168.1.112",
+          "lastSeenAt": "2026-07-13T07:42:17.168Z",
+          "userAgent": "Element iOS / Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)"
+        },
+        {
+          "id": "DEV-WEB-7024",
+          "name": "Chrome macOS - Element Web",
+          "lastSeenIp": "192.168.1.100",
+          "lastSeenAt": "2026-07-13T05:57:17.168Z",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0.0.0"
+        }
+      ],
+      "connections": [
+        {
+          "ip": "192.168.1.112",
+          "timestamp": "2026-07-13T07:42:17.168Z",
+          "userAgent": "Element iOS"
+        },
+        {
+          "ip": "192.168.1.100",
+          "timestamp": "2026-07-13T05:57:17.168Z",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0.0.0"
+        },
+        {
+          "ip": "10.0.4.52",
+          "timestamp": "2026-07-12T07:57:17.168Z",
+          "userAgent": "Element Desktop"
+        }
+      ],
+      "pushers": [
+        {
+          "appId": "im.vector.app.android",
+          "pushKey": "APA91bEy...554",
+          "kind": "http",
+          "data": {
+            "url": "https://matrix.org/_matrix/push/v1/notify"
+          },
+          "profileTag": "mobile-pusher"
+        }
+      ],
+      "experimental": [
+        {
+          "key": "m.relates_to.stable",
+          "value": "true"
+        },
+        {
+          "key": "org.matrix.msc3026",
+          "value": "enabled"
+        }
+      ],
+      "rateLimits": {
+        "perSecond": 2,
+        "burstCount": 10
+      },
+      "accountData": {
+        "im.vector.web.settings": {
+          "sidebarShowShortcuts": true,
+          "theme": "dark"
+        }
+      },
+      "isSuspended": false,
+      "isShadowBanned": false,
+      "isLocked": false,
+      "isErased": false,
+      "memberships": [
+        {
+          "roomId": "!room1:matrix.company.local",
+          "roomName": "General Organization Chat",
+          "state": "ban",
+          "timestamp": "2026-07-13T07:57:46.509Z",
+          "handler": "banned_by_admin"
+        },
+        {
+          "roomId": "!room1:matrix.company.local",
+          "roomName": "General Organization Chat",
+          "state": "join",
+          "timestamp": "2026-05-19T07:57:17.168Z",
+          "handler": "synapse.join"
+        },
+        {
+          "roomId": "!room2:matrix.company.local",
+          "roomName": "Infrastructure & Security",
+          "state": "join",
+          "timestamp": "2026-07-11T07:57:17.168Z",
+          "handler": "synapse.join"
+        }
+      ]
     },
     {
       "mxid": "@bob:matrix.company.local",
@@ -64,10 +269,163 @@
       "isAdmin": false,
       "isDeactivated": true,
       "displayName": "Welcome",
-      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=welcome"
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=welcome",
+      "createdAt": "2026-05-31T07:47:13.075Z",
+      "userType": "normal",
+      "emails": [
+        "welcome@matrix.kheilisabz.local"
+      ],
+      "phones": [
+        "+989127699187"
+      ],
+      "sso": [
+        {
+          "provider": "LDAP Integration",
+          "externalId": "welcome",
+          "linkedAt": "2026-05-31T07:47:13.075Z"
+        }
+      ],
+      "devices": [
+        {
+          "id": "DEV-IOS-4278",
+          "name": "Masoud's iPhone 15 Pro",
+          "lastSeenIp": "192.168.1.112",
+          "lastSeenAt": "2026-07-13T07:32:13.075Z",
+          "userAgent": "Element iOS / Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)"
+        },
+        {
+          "id": "DEV-WEB-4195",
+          "name": "Chrome macOS - Element Web",
+          "lastSeenIp": "192.168.1.100",
+          "lastSeenAt": "2026-07-13T05:47:13.075Z",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0.0.0"
+        }
+      ],
+      "connections": [
+        {
+          "ip": "192.168.1.112",
+          "timestamp": "2026-07-13T07:32:13.075Z",
+          "userAgent": "Element iOS"
+        },
+        {
+          "ip": "192.168.1.100",
+          "timestamp": "2026-07-13T05:47:13.075Z",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0.0.0"
+        },
+        {
+          "ip": "10.0.4.52",
+          "timestamp": "2026-07-12T07:47:13.075Z",
+          "userAgent": "Element Desktop"
+        }
+      ],
+      "pushers": [
+        {
+          "appId": "im.vector.app.android",
+          "pushKey": "APA91bEy...596",
+          "kind": "http",
+          "data": {
+            "url": "https://matrix.org/_matrix/push/v1/notify"
+          },
+          "profileTag": "mobile-pusher"
+        }
+      ],
+      "experimental": [
+        {
+          "key": "m.relates_to.stable",
+          "value": "true"
+        },
+        {
+          "key": "org.matrix.msc3026",
+          "value": "enabled"
+        }
+      ],
+      "rateLimits": {
+        "perSecond": 2,
+        "burstCount": 10
+      },
+      "accountData": {
+        "im.vector.web.settings": {
+          "sidebarShowShortcuts": true,
+          "theme": "dark"
+        }
+      },
+      "isSuspended": false,
+      "isShadowBanned": false,
+      "isLocked": false,
+      "isErased": false,
+      "memberships": [
+        {
+          "roomId": "!room1:matrix.company.local",
+          "roomName": "General Organization Chat",
+          "state": "join",
+          "timestamp": "2026-05-31T07:47:13.075Z",
+          "handler": "synapse.join"
+        },
+        {
+          "roomId": "!room2:matrix.company.local",
+          "roomName": "Infrastructure & Security",
+          "state": "join",
+          "timestamp": "2026-07-11T07:47:13.075Z",
+          "handler": "synapse.join"
+        }
+      ]
     }
   ],
   "auditLogs": [
+    {
+      "id": "log-1783929877328",
+      "timestamp": "2026-07-13T08:04:37.328Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "health_check",
+      "status": "success",
+      "details": "Executed system command: health_check"
+    },
+    {
+      "id": "log-1783929703582",
+      "timestamp": "2026-07-13T08:01:43.582Z",
+      "username": "admin",
+      "action": "Create Backup",
+      "target": "matrix-backup-20260713-080143.tar.gz",
+      "status": "success",
+      "details": "Initiated manual backup. Included SSL: No"
+    },
+    {
+      "id": "log-1783929694831",
+      "timestamp": "2026-07-13T08:01:34.830Z",
+      "username": "admin",
+      "action": "Create Backup",
+      "target": "matrix-backup-20260713-080134.tar.gz",
+      "status": "success",
+      "details": "Initiated manual backup. Included SSL: No"
+    },
+    {
+      "id": "log-1783929466510",
+      "timestamp": "2026-07-13T07:57:46.510Z",
+      "username": "admin",
+      "action": "Ban User from Room",
+      "target": "@alice:matrix.company.local",
+      "status": "success",
+      "details": "Banned @alice:matrix.company.local from room: General Organization Chat"
+    },
+    {
+      "id": "log-1783929362160",
+      "timestamp": "2026-07-13T07:56:02.160Z",
+      "username": "admin",
+      "action": "Ban User from Room",
+      "target": "@masoud:matrix.company.local",
+      "status": "success",
+      "details": "Banned @masoud:matrix.company.local from room: Infrastructure & Security"
+    },
+    {
+      "id": "log-1783929358262",
+      "timestamp": "2026-07-13T07:55:58.262Z",
+      "username": "admin",
+      "action": "Terminate Device Session",
+      "target": "@masoud:matrix.company.local",
+      "status": "success",
+      "details": "Force logged out device DEV-IOS-2988 for user @masoud:matrix.company.local"
+    },
     {
       "id": "log-1783924568424",
       "timestamp": "2026-07-13T06:36:08.424Z",
@@ -152,6 +510,20 @@
   ],
   "backups": [
     {
+      "id": "bak-1783929703582",
+      "filename": "matrix-backup-20260713-080143.tar.gz",
+      "size": "141.8 MB",
+      "timestamp": "2026-07-13T08:01:43.582Z",
+      "hasSSL": false
+    },
+    {
+      "id": "bak-1783929694830",
+      "filename": "matrix-backup-20260713-080134.tar.gz",
+      "size": "143.6 MB",
+      "timestamp": "2026-07-13T08:01:34.830Z",
+      "hasSSL": false
+    },
+    {
       "id": "bak-1",
       "filename": "matrix-backup-20260710-120000.tar.gz",
       "size": "142.8 MB",
@@ -201,16 +573,11 @@
       "alias": "#general:matrix.company.local",
       "topic": "Welcome to our central Matrix server! Let's collaborate.",
       "creator": "@masoud:matrix.company.local",
-      "membersCount": 3,
+      "membersCount": 2,
       "joinedMembers": [
         {
           "mxid": "@masoud:matrix.company.local",
           "role": "Creator",
-          "powerLevel": 100
-        },
-        {
-          "mxid": "@alice:matrix.company.local",
-          "role": "Admin",
           "powerLevel": 100
         },
         {
@@ -222,7 +589,60 @@
       "version": "10",
       "isFederated": true,
       "isPublic": true,
-      "createdAt": "2026-07-12T12:00:00.000Z"
+      "createdAt": "2026-07-12T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "msg-1",
+          "sender": "@masoud:matrix.company.local",
+          "senderDisplayName": "Masoud",
+          "content": "سلام به همگی، خوش آمدید به سرور ماتریکس ما. لطفاً همگی در این کانال حضور فعال داشته باشید.",
+          "timestamp": "2026-07-12T07:55:32.416Z",
+          "type": "m.text"
+        },
+        {
+          "id": "msg-2",
+          "sender": "@alice:matrix.company.local",
+          "senderDisplayName": "Alice",
+          "content": "Hi Masoud! Glad to be here. The Homeserver is running extremely fast today.",
+          "timestamp": "2026-07-12T08:25:32.416Z",
+          "type": "m.text"
+        },
+        {
+          "id": "msg-3",
+          "sender": "@bob:matrix.company.local",
+          "senderDisplayName": "Bob",
+          "content": "درود، تشکر از راه‌اندازی این سرور امن. تمام بخش‌های رمزنگاری شده تست شدند.",
+          "timestamp": "2026-07-12T09:55:32.416Z",
+          "type": "m.text"
+        },
+        {
+          "id": "msg-4",
+          "sender": "@masoud:matrix.company.local",
+          "senderDisplayName": "Masoud",
+          "content": "عالیه باب. برای ترن‌سرور (Coturn) هم پورت‌های امن رو فعال کردیم تا تماس‌ها بدون مشکل وصل بشن.",
+          "timestamp": "2026-07-12T10:55:32.416Z",
+          "type": "m.text"
+        },
+        {
+          "id": "msg-5",
+          "sender": "@alice:matrix.company.local",
+          "senderDisplayName": "Alice",
+          "content": "I noticed that. The integration with LDAP AD works seamlessly as well.",
+          "timestamp": "2026-07-12T11:07:32.416Z",
+          "type": "m.text"
+        },
+        {
+          "id": "msg-6",
+          "sender": "@masoud:matrix.company.local",
+          "senderDisplayName": "Masoud",
+          "content": "بله، همگام‌سازی کاربرها به صورت اتوماتیک انجام میشه.",
+          "timestamp": "2026-07-12T13:55:32.416Z",
+          "type": "m.text"
+        }
+      ],
+      "bannedMembers": [
+        "@alice:matrix.company.local"
+      ]
     },
     {
       "id": "!room2:matrix.company.local",
@@ -230,13 +650,8 @@
       "alias": "#infra:matrix.company.local",
       "topic": "Critical server updates, TLS reissues, and docker configurations discussion.",
       "creator": "@masoud:matrix.company.local",
-      "membersCount": 2,
+      "membersCount": 1,
       "joinedMembers": [
-        {
-          "mxid": "@masoud:matrix.company.local",
-          "role": "Creator",
-          "powerLevel": 100
-        },
         {
           "mxid": "@alice:matrix.company.local",
           "role": "Moderator",
@@ -246,7 +661,10 @@
       "version": "10",
       "isFederated": false,
       "isPublic": false,
-      "createdAt": "2026-07-12T13:30:00.000Z"
+      "createdAt": "2026-07-12T13:30:00.000Z",
+      "bannedMembers": [
+        "@masoud:matrix.company.local"
+      ]
     },
     {
       "id": "!room3:matrix.company.local",
