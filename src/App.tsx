@@ -45,11 +45,11 @@ const translations = {
   fa: {
     title: "پنل مدیریت پیشرفته ماتریکس",
     subtitle: "رابط کاربری فضایی (Spatial UI) - مدیریت آنی سرور ماتریکس، المنت و کانال‌های ارتباطی",
-    loginTitle: "احراز هویت پنل مدیریتی",
-    loginSubtitle: "توکن امنیتی JWT فعال است. با نقش کاربری خود وارد شوید.",
+    loginTitle: "پنل مدیریت یکپارچه ماتریکس",
+    loginSubtitle: "درگاه امن ورود به پنل مدیریت ماتریکس (Synapse)، کلاینت المنت و سرور TURN",
     username: "نام کاربری",
     password: "رمز عبور",
-    loginBtn: "ورود به پنل",
+    loginBtn: "لاگین",
     logoutBtn: "خروج",
     liveStatus: "وضعیت سرور: متصل",
     checkingStatus: "در حال به روز رسانی...",
@@ -75,11 +75,11 @@ const translations = {
   en: {
     title: "Matrix Stack Manager",
     subtitle: "Spatial UI Design - Real-time Management Panel for Matrix Synapse, Element & TURN",
-    loginTitle: "Administrative Authentication",
-    loginSubtitle: "JWT Security is active. Sign in with your administrative account.",
+    loginTitle: "Matrix Stack Manager",
+    loginSubtitle: "Secure access gateway for Matrix Synapse core, Element Client, and TURN server",
     username: "Username",
     password: "Password",
-    loginBtn: "Authenticate",
+    loginBtn: "Login",
     logoutBtn: "Logout",
     liveStatus: "Server State: Connected",
     checkingStatus: "Syncing data...",
@@ -105,7 +105,7 @@ const translations = {
 };
 
 export default function App() {
-  const [lang, setLang] = useState<'fa' | 'en'>('en');
+  const [lang, setLang] = useState<'fa' | 'en'>((localStorage.getItem('lang_pref') as 'fa' | 'en') || 'fa');
   const t = translations[lang];
 
   // Theme State
@@ -313,10 +313,17 @@ export default function App() {
     fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: loginUser, password: loginPass })
+      body: JSON.stringify({ username: loginUser.trim(), password: loginPass })
     })
-    .then(res => {
-      if (!res.ok) throw new Error("Invalid username or password");
+    .then(async res => {
+      if (!res.ok) {
+        let errMsg = "Invalid username or password";
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errData.detail || errMsg;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       return res.json();
     })
     .then(data => {
@@ -570,64 +577,80 @@ export default function App() {
 
       {/* VIEW: UNAUTHENTICATED LOGIN CARD */}
       {!authToken ? (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="spatial-glass max-w-md w-full rounded-3xl p-8 border border-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] spatial-depth-card relative">
-            {/* Quick Settings: Theme */}
-            <div className="absolute top-6 right-6 flex items-center gap-2">
+        <div className="flex-1 flex items-center justify-center p-6 min-h-[80vh]">
+          <div className="spatial-glass max-w-md w-full rounded-3xl p-8 border border-white/10 shadow-[0_30px_70px_rgba(0,0,0,0.6)] spatial-depth-card relative overflow-hidden">
+            {/* Upper Right Quick Controls */}
+            <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
+              <button
+                onClick={() => {
+                  const nextLang = lang === 'fa' ? 'en' : 'fa';
+                  setLang(nextLang);
+                  localStorage.setItem('lang_pref', nextLang);
+                }}
+                title={lang === 'fa' ? 'Change language to English' : 'تغییر زبان به فارسی'}
+                className="p-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-slate-400 hover:text-white flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+              >
+                <Languages className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>{lang === 'fa' ? 'EN' : 'FA'}</span>
+              </button>
               <button
                 onClick={toggleTheme}
                 title={t.themeToggle}
-                className="p-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-slate-400 hover:text-white"
+                className="p-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-slate-400 hover:text-white cursor-pointer"
               >
-                {isLightMode ? <Moon className="w-4 h-4 text-purple-400" /> : <Sun className="w-4 h-4 text-amber-400" />}
+                {isLightMode ? <Moon className="w-3.5 h-3.5 text-purple-400" /> : <Sun className="w-3.5 h-3.5 text-amber-400" />}
               </button>
             </div>
 
-            {/* Ambient light inside card */}
-            <div className="absolute -top-12 -left-12 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+            {/* Premium Aesthetic Glowing backdrops inside card */}
+            <div className="absolute -top-16 -left-16 w-36 h-36 bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-16 -right-16 w-36 h-36 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="flex flex-col items-center text-center mb-8">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.15)] pulse-glow-cyan mb-4">
-                <Lock className="w-8 h-8" />
+            {/* Matrix Decorative Grid Background overlay inside card */}
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:16px_16px] [mask-image:radial-gradient(ellipse_at_center,black_60%,transparent_100%)] pointer-events-none" />
+
+            <div className="flex flex-col items-center text-center mb-8 relative">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.2)] pulse-glow-cyan mb-4 animate-float">
+                <ShieldCheck className="w-8 h-8" />
               </div>
-              <h2 className="text-2xl font-display font-bold text-white tracking-tight">{t.loginTitle}</h2>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed">{t.loginSubtitle}</p>
+              <h2 className="text-2xl font-display font-bold text-white tracking-tight glow-text-cyan">{t.loginTitle}</h2>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed max-w-sm">{t.loginSubtitle}</p>
             </div>
 
             {loginError && (
-              <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/15 text-red-400 text-xs font-semibold text-center mb-6">
-                {loginError}
+              <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold text-center mb-6 flex items-center justify-center gap-2 animate-pulse">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{loginError}</span>
               </div>
             )}
 
-            <form onSubmit={handleLoginSubmit} className="space-y-5">
+            <form onSubmit={handleLoginSubmit} className="space-y-5 relative">
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{t.username}</label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">{t.username}</label>
+                <div className="relative group">
+                  <User className="w-4 h-4 text-slate-500 group-focus-within:text-indigo-400 absolute left-4 top-1/2 -translate-y-1/2 transition-colors" />
                   <input
                     type="text"
                     value={loginUser}
                     onChange={(e) => setLoginUser(e.target.value)}
                     required
-                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-100 outline-none focus:border-indigo-500/50"
-                    placeholder="e.g. admin"
+                    className="w-full bg-black/40 border border-white/10 focus:border-indigo-500/50 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-100 outline-none transition-all focus:ring-2 focus:ring-indigo-500/15"
+                    placeholder={lang === 'fa' ? "مثال: admin" : "e.g. admin"}
                     id="username-input"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{t.password}</label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">{t.password}</label>
+                <div className="relative group">
+                  <Lock className="w-4 h-4 text-slate-500 group-focus-within:text-indigo-400 absolute left-4 top-1/2 -translate-y-1/2 transition-colors" />
                   <input
                     type="password"
                     value={loginPass}
                     onChange={(e) => setLoginPass(e.target.value)}
                     required
-                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-100 outline-none focus:border-indigo-500/50"
+                    className="w-full bg-black/40 border border-white/10 focus:border-indigo-500/50 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-100 outline-none transition-all focus:ring-2 focus:ring-indigo-500/15"
                     placeholder="••••••••"
                     id="password-input"
                   />
@@ -636,11 +659,42 @@ export default function App() {
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-sm tracking-wide shadow-[0_4px_20px_rgba(99,102,241,0.25)] hover:scale-[1.02] active:scale-[0.98] transition-all mt-4"
+                className="w-full py-3.5 rounded-xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 text-white font-bold text-sm tracking-wide shadow-[0_4px_25px_rgba(99,102,241,0.3)] hover:scale-[1.02] active:scale-[0.98] hover:shadow-[0_4px_30px_rgba(99,102,241,0.45)] transition-all mt-6 cursor-pointer"
               >
                 {t.loginBtn}
               </button>
             </form>
+
+            {/* Quick Demo Credentials Panel */}
+            <div className="mt-6 pt-5 border-t border-white/5 relative">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-3 text-center">
+                {lang === 'fa' ? "اکانت‌های دمو (ورود سریع با یک کلیک):" : "Quick Demo Accounts (1-Click Fill):"}
+              </span>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginUser("admin");
+                    setLoginPass("admin1234");
+                  }}
+                  className="px-3 py-2.5 rounded-xl bg-indigo-500/5 hover:bg-indigo-500/10 border border-indigo-500/10 hover:border-indigo-500/20 text-[11px] font-mono font-semibold text-indigo-400 hover:text-indigo-300 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span>admin (Owner)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginUser("masoud");
+                    setLoginPass("masoud1234");
+                  }}
+                  className="px-3 py-2.5 rounded-xl bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/10 hover:border-purple-500/20 text-[11px] font-mono font-semibold text-purple-400 hover:text-purple-300 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <User className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  <span>masoud (Super)</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
