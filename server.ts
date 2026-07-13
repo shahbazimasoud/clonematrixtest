@@ -185,14 +185,14 @@ async function queryPostgres(queryStr: string, params: any[] = []): Promise<any[
 
   const now = Date.now();
   if (!isPostgresAvailable && now - lastPostgresCheckTime < 15000) {
-    throw new Error("PostgreSQL is down (cached check)");
+    throw new Error("PostgreSQL status: down (cached check)");
   }
 
   const dbConfig = getSynapseDBConfig();
   if (!dbConfig) {
     isPostgresAvailable = false;
     lastPostgresCheckTime = now;
-    throw new Error("No Postgres config available");
+    throw new Error("No local Postgres config found");
   }
   
   const client = new Client({
@@ -797,7 +797,7 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
       return res.json(matrixUsers);
     }
   } catch (e: any) {
-    console.log("Postgres user fetch error, falling back to local DB: " + e.message);
+    console.log("Postgres user fetch notice: falling back to local DB (" + e.message + ")");
   }
 
   const db = readDb();
@@ -949,7 +949,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
       return res.json(realUser);
     }
   } catch (e: any) {
-    console.log("Postgres user details fetch error, falling back to local DB: " + e.message);
+    console.log("Postgres user details fetch notice: falling back to local DB (" + e.message + ")");
   }
 
   const db = readDb();
