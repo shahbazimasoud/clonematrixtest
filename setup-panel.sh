@@ -353,20 +353,32 @@ PIP_CMD="$INSTALL_DIR/venv/bin/pip"
 
 # Configure pip with resilient timeout and retry options
 log_info "Configuring Pip with resilient timeouts and retry settings..."
-if ! "$PIP_CMD" install --default-timeout=1000 --retries 10 --upgrade pip; then
+if ! "$PIP_CMD" install --default-timeout=30 --retries 3 --upgrade pip; then
   log_warning "Pip upgrade timed out or failed. Proceeding with the default pip version."
 fi
 
 # Attempt standard installation first
-log_info "Attempt 1: Installing Python dependencies using standard PyPI registry with high timeout..."
-if ! "$PIP_CMD" install --default-timeout=1000 --retries 10 -r "$INSTALL_DIR/requirements.txt"; then
-  log_warning "Standard PyPI installation timed out or failed. Attempt 2: Switching to high-speed mirror registries..."
+log_info "Attempt 1: Installing Python dependencies using standard PyPI registry..."
+if ! "$PIP_CMD" install --default-timeout=20 --retries 2 -r "$INSTALL_DIR/requirements.txt"; then
+  log_warning "Standard PyPI installation timed out or failed. Attempt 2: Switching to high-speed Iranian & international mirror registries..."
   
   MIRROR_SUCCESS=false
-  # Try high-speed mirrors which are highly accessible and reliable under throttled connections
-  for MIRROR in "https://pypi.tuna.tsinghua.edu.cn/simple" "https://mirrors.aliyun.com/pypi/simple"; do
+  # High-speed reliable mirrors (Iranian mirrors first, then Chinese high-speed mirrors)
+  MIRRORS=(
+    "https://pypi.ir/simple"
+    "https://packman.ir/simple"
+    "https://pypi.isust.ac.ir/simple"
+    "https://mirror.iranserver.com/pypi/simple"
+    "https://pypi.yazd.ac.ir/simple"
+    "https://pypi.tuna.tsinghua.edu.cn/simple"
+    "https://mirrors.aliyun.com/pypi/simple"
+  )
+  
+  for MIRROR in "${MIRRORS[@]}"; do
     log_info "Retrying pip installation via mirror: $MIRROR ..."
-    if "$PIP_CMD" install --default-timeout=1000 --retries 10 -i "$MIRROR" -r "$INSTALL_DIR/requirements.txt"; then
+    # Extract host name for --trusted-host parameter to bypass certificate validation blocks
+    HOST=$(echo "$MIRROR" | awk -F/ '{print $3}')
+    if "$PIP_CMD" install --default-timeout=600 --retries 5 --trusted-host "$HOST" -i "$MIRROR" -r "$INSTALL_DIR/requirements.txt"; then
       MIRROR_SUCCESS=true
       log_success "Successfully installed Python dependencies using mirror: $MIRROR"
       break
