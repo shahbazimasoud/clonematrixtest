@@ -28,7 +28,7 @@ curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/maste
 
 ### 📋 مراحل نصب تعاملی پنل:
 ۱. **دامنه یا IP**: اسکریپت آدرس دامنه یا آی‌پی پنل شما را می‌پرسد.
-۲. **پورت شبکه**: پورت اجرای پنل (به صورت پیش‌فرض ۳۰۰۰) را وارد می‌کنید.
+۲. **پورت شبکه**: پورت اجرای پنل (به صورت پیش‌فرض ۳۰۰۰) را وارد می‌کنید. پنل و وب‌سرویس پشتیبان به‌طور کامل از پورت سفارشی شما در زمان اجرا پشتیبانی می‌کنند.
 ۳. **اطلاعات ادمین اصلی (Owner)**: نام کاربری، ایمیل و رمز عبور ادمین اولیه از شما پرسیده می‌شود.
 ۴. **راه‌اندازی خودکار**: اسکریپت به طور خودکار آخرین نسخه پایدار Node.js 22 LTS، ابزارهای کامپایل و Git را نصب کرده، دیتابیس لوکال را با رمز ادمین هش‌شده بذرپاشی (Seed) می‌کند و یک وب‌سرویس پس‌زمینه پایدار با استفاده از `systemd` ایجاد می‌نماید.
 
@@ -43,7 +43,7 @@ curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/maste
 ```
 
 ### 📋 How the Interactive Setup Works:
-1. **Interactive Prompts**: It asks you for the Panel's domain or public IP, access port, and your target Administrator (**Owner**) credentials.
+1. **Interactive Prompts**: It asks you for the Panel's domain or public IP, access port (any custom port of your choice is fully supported!), and your target Administrator (**Owner**) credentials.
 2. **Auto-Dependency Installation**: Verifies and installs Node.js 22 LTS, `npm`, `git`, and other essential system tools.
 3. **Network Resilience**: Features an automatic fallback system optimized to guarantee successful setup even behind restrictive firewalls or slower networks.
 4. **Secure Daemon**: Creates and registers a robust `systemd` service called `matrix-manager.service` to keep the panel running persistently on system reboots.
@@ -90,6 +90,18 @@ Once installed, use standard systemd commands to inspect and control the daemon 
   ```bash
   sudo systemctl stop matrix-manager
   ```
+
+---
+
+## 🗑️ حذف کامل پنل از روی سرور | Uninstallation Guide
+
+در صورتی که می‌خواهید پنل را به همراه تمامی فایل‌ها، سرویس‌ها و تنظیمات مینی‌مال Nginx به طور کامل حذف کنید، می‌توانید از اسکریپت حذف تعاملی زیر استفاده کنید:
+
+To completely remove the Matrix Manager panel, its databases, persistent settings, systemd daemon services, and any related Nginx virtual host configurations from your VPS, run the interactive uninstaller:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/master/uninstall-panel.sh | sudo bash
+```
 
 ---
 
