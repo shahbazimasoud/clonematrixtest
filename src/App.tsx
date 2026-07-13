@@ -105,7 +105,7 @@ const translations = {
 };
 
 export default function App() {
-  const [lang, setLang] = useState<'fa' | 'en'>((localStorage.getItem('lang_pref') as 'fa' | 'en') || 'fa');
+  const [lang, setLang] = useState<'fa' | 'en'>((localStorage.getItem('lang_pref') as 'fa' | 'en') || 'en');
   const t = translations[lang];
 
   // Theme State
@@ -199,11 +199,11 @@ export default function App() {
       })
       .then(data => {
         setCurrentUser(data.user);
-        fetchConfig();
-        fetchLogs();
-        fetchPanelUsers();
-        fetchMatrixUsers();
-        fetchBackups();
+        fetchConfig(authToken);
+        fetchLogs(authToken);
+        fetchPanelUsers(authToken);
+        fetchMatrixUsers(authToken);
+        fetchBackups(authToken);
         setupWebSocket(authToken);
       })
       .catch(() => {
@@ -262,8 +262,9 @@ export default function App() {
   };
 
   // Fetch functions for panel REST API
-  const fetchConfig = () => {
-    fetch('/api/matrix/config', { headers: { 'Authorization': `Bearer ${authToken}` } })
+  const fetchConfig = (token = authToken) => {
+    if (!token) return;
+    fetch('/api/matrix/config', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         setConfig(data.config);
@@ -281,26 +282,30 @@ export default function App() {
       });
   };
 
-  const fetchLogs = () => {
-    fetch('/api/logs/audit', { headers: { 'Authorization': `Bearer ${authToken}` } })
+  const fetchLogs = (token = authToken) => {
+    if (!token) return;
+    fetch('/api/logs/audit', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setAuditLogs(data));
   };
 
-  const fetchPanelUsers = () => {
-    fetch('/api/users', { headers: { 'Authorization': `Bearer ${authToken}` } })
+  const fetchPanelUsers = (token = authToken) => {
+    if (!token) return;
+    fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setPanelUsers(data));
   };
 
-  const fetchMatrixUsers = () => {
-    fetch('/api/matrix/users', { headers: { 'Authorization': `Bearer ${authToken}` } })
+  const fetchMatrixUsers = (token = authToken) => {
+    if (!token) return;
+    fetch('/api/matrix/users', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setMatrixUsers(data));
   };
 
-  const fetchBackups = () => {
-    fetch('/api/backups', { headers: { 'Authorization': `Bearer ${authToken}` } })
+  const fetchBackups = (token = authToken) => {
+    if (!token) return;
+    fetch('/api/backups', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setBackups(data));
   };
@@ -328,9 +333,18 @@ export default function App() {
     })
     .then(data => {
       localStorage.setItem('admin_token', data.token);
+      setCurrentUser(data.user);
       setAuthToken(data.token);
       setLoginUser('');
       setLoginPass('');
+      
+      // Instantly load data using the freshly acquired token
+      fetchConfig(data.token);
+      fetchLogs(data.token);
+      fetchPanelUsers(data.token);
+      fetchMatrixUsers(data.token);
+      fetchBackups(data.token);
+      setupWebSocket(data.token);
     })
     .catch(err => {
       setLoginError(err.message);
