@@ -1461,7 +1461,7 @@ export default function ConfigForms({
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
                           u.isDeactivated ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
                         }`}>
-                          {u.mxid.charAt(1).toUpperCase()}
+                          {(u.mxid?.charAt(1) || 'U').toUpperCase()}
                         </div>
                         <div>
                           <h4 className="text-xs font-semibold text-white">{u.mxid}</h4>

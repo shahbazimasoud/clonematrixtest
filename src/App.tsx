@@ -922,28 +922,28 @@ export default function App() {
                       <div className="space-y-4 text-xs font-mono">
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Homeserver URL:</span>
-                          <span className="text-indigo-400 font-semibold">https://{config.HS_DOMAIN}</span>
+                          <span className="text-indigo-400 font-semibold">https://{config?.HS_DOMAIN || 'matrix.company.local'}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Element App:</span>
-                          <span className="text-purple-400 font-semibold">https://{config.ELEMENT_DOMAIN}</span>
+                          <span className="text-purple-400 font-semibold">https://{config?.ELEMENT_DOMAIN || 'chat.company.local'}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Base Domain:</span>
-                          <span className="text-slate-200">{config.BASE_DOMAIN}</span>
+                          <span className="text-slate-200">{config?.BASE_DOMAIN || 'company.local'}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Server Public IP:</span>
-                          <span className="text-slate-200">{config.PUBLIC_IP}</span>
+                          <span className="text-slate-200">{config?.PUBLIC_IP || '127.0.0.1'}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">SSL Profile:</span>
-                          <span className="text-amber-400 font-semibold">{config.SSL_MODE.toUpperCase()}</span>
+                          <span className="text-amber-400 font-semibold">{(config?.SSL_MODE || 'selfsigned').toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">LDAP Bridging:</span>
-                          <span className={ldap.enabled ? "text-emerald-400 font-semibold" : "text-slate-500"}>
-                            {ldap.enabled ? "ENABLED" : "DISABLED"}
+                          <span className={ldap?.enabled ? "text-emerald-400 font-semibold" : "text-slate-500"}>
+                            {ldap?.enabled ? "ENABLED" : "DISABLED"}
                           </span>
                         </div>
                       </div>
