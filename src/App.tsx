@@ -30,7 +30,8 @@ import {
   Video,
   ShieldAlert,
   Sun,
-  Moon
+  Moon,
+  ArrowRight
 } from 'lucide-react';
 import SpatialDock from './components/SpatialDock';
 import MetricCard from './components/MetricCard';
@@ -178,6 +179,10 @@ export default function App() {
   const [backups, setBackups] = useState<BackupItem[]>([]);
   const [undoHistory, setUndoHistory] = useState<UndoItem[]>([]);
 
+  // Connection Profile states
+  const [connections, setConnections] = useState<any[]>([]);
+  const [activeConnection, setActiveConnection] = useState<any>({ id: 'local', name: 'Local Server (This Machine)', host: 'localhost', isActive: true });
+
   // Navigation and terminal/command execution states
   const [activeView, setActiveView] = useState('dashboard');
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
@@ -208,6 +213,7 @@ export default function App() {
         fetchMatrixUsers(authToken);
         fetchBackups(authToken);
         setupWebSocket(authToken);
+        fetchConnections(authToken);
       })
       .catch(() => {
         handleLogout();
@@ -303,6 +309,18 @@ export default function App() {
     fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setPanelUsers(data));
+  };
+
+  const fetchConnections = (token = authToken) => {
+    if (!token) return;
+    fetch('/api/connections', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => {
+        setConnections(data);
+        const active = data.find((c: any) => c.isActive);
+        setActiveConnection(active || { id: 'local', name: 'Local Server (This Machine)', host: 'localhost', isActive: true });
+      })
+      .catch(err => console.error("Error fetching connections:", err));
   };
 
   const fetchMatrixUsers = (token = authToken) => {
@@ -748,9 +766,11 @@ export default function App() {
               <div>
                 <h1 className="text-lg font-display font-bold text-white flex items-center gap-2">
                   {t.title}
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981] animate-ping" />
+                  <span className={`inline-block w-2 h-2 rounded-full ${activeConnection?.id !== 'local' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-indigo-500 shadow-[0_0_8px_#6366f1]'} animate-ping`} />
                 </h1>
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider">{t.liveStatus}</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">
+                  {activeConnection?.id !== 'local' ? `Connected: ${activeConnection?.name}` : t.liveStatus}
+                </p>
               </div>
             </div>
 
@@ -798,6 +818,67 @@ export default function App() {
             {/* VIEW 1: CENTRAL METRICS DASHBOARD */}
             {activeView === 'dashboard' && (
               <div className="space-y-6">
+                
+                {/* Active Connection Banner / Onboarding */}
+                {activeConnection?.id === 'local' ? (
+                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950/40 via-purple-950/20 to-slate-900/40 border border-indigo-500/20 p-6 md:p-8 shadow-[0_10px_30px_rgba(99,102,241,0.05)]">
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-40 h-40 bg-purple-500/5 rounded-full blur-2xl pointer-events-none" />
+                    
+                    <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                      <div className="space-y-2">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-xs font-semibold text-indigo-300">
+                          <Globe className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
+                          <span>Local Sandbox Mode</span>
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-display font-extrabold text-white tracking-tight">
+                          Connect Your Remote Matrix/Element Server
+                        </h2>
+                        <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
+                          This control panel is currently running in fallback Sandbox mode. Establish a secure SSH and Database connection profile to start managing your active Matrix homeserver services, config files, user registration, rooms, and live telemetry on your production VPS.
+                        </p>
+                      </div>
+                      
+                      <button
+                        onClick={() => setActiveView('connections')}
+                        className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-sm font-bold shadow-[0_4px_20px_rgba(99,102,241,0.25)] hover:scale-[1.02] active:scale-[0.98] transition-all shrink-0 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <span>Connect Remote Server</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950/10 to-teal-950/10 border border-emerald-500/20 p-5 md:p-6 shadow-[0_10px_30px_rgba(16,185,129,0.03)]">
+                    <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                          <Server className="w-6 h-6 animate-pulse" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                            <span>Connected Server Profile</span>
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          </h3>
+                          <p className="text-md font-bold text-emerald-400 font-mono mt-0.5">
+                            {activeConnection?.name} ({activeConnection?.host}:{activeConnection?.port})
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Matrix homeserver, Element client, and Postgres Database are actively being managed over SSH tunnel.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => setActiveView('connections')}
+                        className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <span>Switch Profile</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Real-time stats bento grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1122,6 +1203,7 @@ export default function App() {
                   fetchPanelUsers();
                   fetchMatrixUsers();
                   fetchBackups();
+                  fetchConnections();
                 }}
                 showToast={showToast}
               />
