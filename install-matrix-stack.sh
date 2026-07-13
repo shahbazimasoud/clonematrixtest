@@ -295,7 +295,7 @@ server {
     ssl_certificate $CERT_DIR/fullchain.pem;
     ssl_certificate_key $CERT_DIR/privkey.pem;
 
-    location /_matrix {
+    location / {
         proxy_pass http://localhost:8008;
         proxy_set_header X-Forwarded-For \$remote_addr;
         proxy_set_header X-Forwarded-Proto \$scheme;
