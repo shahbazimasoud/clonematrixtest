@@ -322,9 +322,14 @@ cat <<EOF > "$INSTALL_DIR/sandbox/db/panel_data.json"
   }
 }
 
-# Create real database directory and copy panel data
+# Create real database directory and copy panel data if not exists
 mkdir -p "$INSTALL_DIR/db"
-cp "$INSTALL_DIR/sandbox/db/panel_data.json" "$INSTALL_DIR/db/panel_data.json"
+if [ ! -f "$INSTALL_DIR/db/panel_data.json" ] || [ ! -s "$INSTALL_DIR/db/panel_data.json" ]; then
+  log_info "Database not found or empty. Seeding database..."
+  cp "$INSTALL_DIR/sandbox/db/panel_data.json" "$INSTALL_DIR/db/panel_data.json"
+else
+  log_info "Existing database found. Preserving current panel data."
+fi
 
 # Pre-populate basic sandbox configs
 mkdir -p "$INSTALL_DIR/sandbox/etc/matrix-synapse"
@@ -394,14 +399,17 @@ if ! "$PIP_CMD" install --default-timeout=180 --retries 5 -r "$INSTALL_DIR/requi
   fi
 fi
 
-log_step "Compiling Panel frontend assets via Vite..."
-npx vite build
+log_step "Compiling Panel assets (Frontend & Backend Server) via NPM..."
+npm run build
 
 # ------------------------------------------------------------------------------
 # 5. Systemd Service Deployment
 # ------------------------------------------------------------------------------
 log_step "Creating persistent Systemd Service..."
 SERVICE_FILE="/etc/systemd/system/matrix-manager.service"
+
+# Find Node executable path dynamically
+NODE_EXEC_PATH=$(command -v node || echo "/usr/bin/node")
 
 cat <<EOF > "$SERVICE_FILE"
 [Unit]
@@ -412,9 +420,10 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/venv/bin/python3 server.py
+ExecStart=$NODE_EXEC_PATH dist/server.cjs
 Restart=on-failure
 Environment=PORT=$PANEL_PORT
+Environment=NODE_ENV=production
 
 [Install]
 WantedBy=multi-user.target
