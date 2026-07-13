@@ -11,7 +11,7 @@ A premium, modern, full-featured full-stack management panel to deploy, configur
 شما می‌توانید کل پروژه (شامل کلاینت پنل و سرور بک‌اند) را روی هر سرور ابری یا VPS خام (لینوکس اوبونتو یا دبیان) به سادگی با اجرای یک دستور تک‌خطی زیر نصب کنید:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/shahbazimasoud/matrix-manager/master/setup-panel.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/master/setup-panel.sh | sudo bash
 ```
 
 ### 📋 مراحل نصب تعاملی:
@@ -30,7 +30,7 @@ curl -sSL https://raw.githubusercontent.com/shahbazimasoud/matrix-manager/master
 Deploy the entire full-stack Matrix Stack Manager panel on any fresh Ubuntu/Debian VPS with a single interactive command:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/shahbazimasoud/matrix-manager/master/setup-panel.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/master/setup-panel.sh | sudo bash
 ```
 
 ### 📋 How the Interactive Setup Works:
@@ -83,8 +83,8 @@ If you want to run or build the code locally for development purposes:
 
 1. کلون کردن ریپازیتوری | Clone the repository:
    ```bash
-   git clone https://github.com/shahbazimasoud/matrix-manager.git
-   cd matrix-manager
+   git clone https://github.com/shahbazimasoud/clonematrixtest.git
+   cd clonematrixtest
    ```
 2. نصب پیش‌نیازها | Install dependencies:
    ```bash

@@ -146,7 +146,7 @@ if [ "$(pwd)" != "$INSTALL_DIR" ]; then
     # Ensure git commands don't hang indefinitely by setting transfer timeouts
     if ! git -c network.maxSubmissions=1 -c network.lowSpeedLimit=1000 -c network.lowSpeedTime=30 fetch --all; then
       log_warning "Git fetch failed. Trying fallback pull via proxy..."
-      git remote set-url origin https://mirror.ghproxy.com/https://github.com/shahbazimasoud/matrix-manager.git
+      git remote set-url origin https://mirror.ghproxy.com/https://github.com/shahbazimasoud/clonematrixtest.git
       git fetch --all || true
     fi
     git reset --hard origin/master || git reset --hard origin/main || log_warning "Failed to hard reset, proceeding anyway..."
@@ -157,14 +157,14 @@ if [ "$(pwd)" != "$INSTALL_DIR" ]; then
     
     # Try 1: Direct Git Clone
     log_info "Attempt 1: Direct git clone from GitHub..."
-    if git -c network.maxSubmissions=1 -c network.lowSpeedLimit=1000 -c network.lowSpeedTime=30 clone https://github.com/shahbazimasoud/matrix-manager.git "$INSTALL_DIR"; then
+    if git -c network.maxSubmissions=1 -c network.lowSpeedLimit=1000 -c network.lowSpeedTime=30 clone https://github.com/shahbazimasoud/clonematrixtest.git "$INSTALL_DIR"; then
       CLONE_SUCCESS=true
     fi
     
     # Try 2: Git Clone via Mirror/Proxy (e.g. ghproxy)
     if [ "$CLONE_SUCCESS" = false ]; then
       log_warning "Direct git clone timed out or failed. Attempt 2: Cloning via GitHub Mirror Proxy..."
-      if git -c network.maxSubmissions=1 -c network.lowSpeedLimit=1000 -c network.lowSpeedTime=30 clone https://mirror.ghproxy.com/https://github.com/shahbazimasoud/matrix-manager.git "$INSTALL_DIR"; then
+      if git -c network.maxSubmissions=1 -c network.lowSpeedLimit=1000 -c network.lowSpeedTime=30 clone https://mirror.ghproxy.com/https://github.com/shahbazimasoud/clonematrixtest.git "$INSTALL_DIR"; then
         CLONE_SUCCESS=true
       fi
     fi
@@ -174,15 +174,15 @@ if [ "$(pwd)" != "$INSTALL_DIR" ]; then
       log_warning "Cloning via mirror failed. Attempt 3: Downloading repository ZIP directly..."
       # Install unzip if not present
       apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" unzip || true
-      rm -f /tmp/matrix-manager.zip
+      rm -f /tmp/clonematrixtest.zip
       
-      if curl -f -sSL --connect-timeout 20 --max-time 120 -o /tmp/matrix-manager.zip https://github.com/shahbazimasoud/matrix-manager/archive/refs/heads/master.zip || \
-         curl -f -sSL --connect-timeout 20 --max-time 120 -o /tmp/matrix-manager.zip https://mirror.ghproxy.com/https://github.com/shahbazimasoud/matrix-manager/archive/refs/heads/master.zip; then
+      if curl -f -sSL --connect-timeout 20 --max-time 120 -o /tmp/clonematrixtest.zip https://github.com/shahbazimasoud/clonematrixtest/archive/refs/heads/master.zip || \
+         curl -f -sSL --connect-timeout 20 --max-time 120 -o /tmp/clonematrixtest.zip https://mirror.ghproxy.com/https://github.com/shahbazimasoud/clonematrixtest/archive/refs/heads/master.zip; then
         log_info "ZIP downloaded successfully. Extracting to $INSTALL_DIR..."
-        unzip -q -o /tmp/matrix-manager.zip -d /tmp/matrix-extracted
-        # The zip extracts into matrix-manager-master/ folder inside /tmp/matrix-extracted
-        mv /tmp/matrix-extracted/matrix-manager-master/* "$INSTALL_DIR/" || cp -r /tmp/matrix-extracted/matrix-manager-master/* "$INSTALL_DIR/" || true
-        rm -rf /tmp/matrix-extracted /tmp/matrix-manager.zip
+        unzip -q -o /tmp/clonematrixtest.zip -d /tmp/matrix-extracted
+        # The zip extracts into clonematrixtest-master/ folder inside /tmp/matrix-extracted
+        mv /tmp/matrix-extracted/clonematrixtest-master/* "$INSTALL_DIR/" || cp -r /tmp/matrix-extracted/clonematrixtest-master/* "$INSTALL_DIR/" || true
+        rm -rf /tmp/matrix-extracted /tmp/clonematrixtest.zip
         CLONE_SUCCESS=true
       fi
     fi
