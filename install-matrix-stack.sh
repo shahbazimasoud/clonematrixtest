@@ -361,7 +361,28 @@ server {
 EOF
 
   ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/matrix-stack" || true
-  rm -f "/etc/nginx/sites-enabled/default" || true
+  
+  # Restore and ensure default server block exists to prevent hijacking other domains
+  if [ ! -f "/etc/nginx/sites-available/default" ]; then
+    log_info "Recreating default server block at /etc/nginx/sites-available/default..."
+    cat <<EOF > "/etc/nginx/sites-available/default"
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    root /var/www/html;
+    index index.html index.htm;
+    server_name _;
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+}
+EOF
+  fi
+  mkdir -p /var/www/html
+  if [ ! -f "/var/www/html/index.html" ]; then
+    echo "<h1>Welcome to nginx!</h1><p>Default server page restored by Ketesa.</p>" > /var/www/html/index.html
+  fi
+  ln -sf "/etc/nginx/sites-available/default" "/etc/nginx/sites-enabled/default" || true
 
   nginx -t && systemctl restart nginx || log_warning "Failed to fully restart nginx server process."
   log_success "Nginx proxy configurations loaded & running."

@@ -13,7 +13,8 @@ import {
   Terminal, 
   BarChart3, 
   LogOut,
-  Users
+  Users,
+  Globe
 } from 'lucide-react';
 
 interface SpatialDockProps {
@@ -33,6 +34,7 @@ export default function SpatialDock({ activeView, onViewChange, onLogout, userRo
     { id: 'backups', label: 'Archiving', icon: Database, color: 'text-blue-400' },
     { id: 'terminal', label: 'Web Console', icon: Terminal, color: 'text-rose-400' },
     { id: 'reporting', label: 'Analytics', icon: BarChart3, color: 'text-indigo-400' },
+    { id: 'connections', label: 'Connections', icon: Globe, color: 'text-teal-400' },
   ];
 
   return (

@@ -14,6 +14,7 @@ import bcrypt from "bcryptjs";
 import { spawn, execSync } from "child_process";
 import os from "os";
 import { Client } from "pg";
+import { Client as SSHClient } from "ssh2";
 
 declare global {
   namespace Express {
@@ -30,6 +31,194 @@ const wss = new WebSocketServer({ noServer: true });
 const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "spatial-matrix-secret-key-9988";
 const SANDBOX_DIR = path.join(process.cwd(), "sandbox");
+
+interface ConnectionProfile {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  privateKey?: string;
+  authType: 'password' | 'key';
+  
+  // Database configuration
+  dbHost?: string;
+  dbPort?: number;
+  dbName?: string;
+  dbUser?: string;
+  dbPass?: string;
+  
+  // Config paths
+  configPath?: string;
+  homeserverYamlPath?: string;
+  elementConfigPath?: string;
+  homeserverLogPath?: string;
+  
+  isActive: boolean;
+}
+
+function getActiveConnection(): ConnectionProfile {
+  try {
+    const db = readDb();
+    if (!db.connections) {
+      return {
+        id: "local",
+        name: "Local Server (This Machine)",
+        host: "localhost",
+        port: 22,
+        username: "",
+        authType: "key",
+        isActive: true
+      };
+    }
+    return db.connections.find((c: any) => c.isActive) || db.connections[0];
+  } catch (e) {
+    return {
+      id: "local",
+      name: "Local Server (This Machine)",
+      host: "localhost",
+      port: 22,
+      username: "",
+      authType: "key",
+      isActive: true
+    };
+  }
+}
+
+function executeSSHCommand(config: ConnectionProfile, cmd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const conn = new SSHClient();
+    conn.on("ready", () => {
+      conn.exec(cmd, (err, stream) => {
+        if (err) {
+          conn.end();
+          return reject(err);
+        }
+        let stdout = "";
+        let stderr = "";
+        stream.on("close", (code, signal) => {
+          conn.end();
+          if (code !== 0 && code !== null) {
+            reject(new Error(stderr || `Command failed with exit code ${code}`));
+          } else {
+            resolve(stdout);
+          }
+        }).on("data", (data: any) => {
+          stdout += data.toString();
+        }).stderr.on("data", (data: any) => {
+          stderr += data.toString();
+        });
+      });
+    }).on("error", (err) => {
+      reject(err);
+    });
+
+    const connOpts: any = {
+      host: config.host,
+      port: config.port || 22,
+      username: config.username,
+      readyTimeout: 10000
+    };
+    if (config.authType === "password") {
+      connOpts.password = config.password;
+    } else {
+      connOpts.privateKey = config.privateKey;
+    }
+    conn.connect(connOpts);
+  });
+}
+
+function interpolateQueryParams(queryStr: string, params: any[]): string {
+  if (!params || params.length === 0) return queryStr;
+  
+  let interpolated = queryStr;
+  params.forEach((param, i) => {
+    const placeholder = `$${i + 1}`;
+    let formattedParam = "";
+    if (typeof param === "string") {
+      formattedParam = `'${param.replace(/'/g, "''")}'`;
+    } else if (param === null || param === undefined) {
+      formattedParam = "NULL";
+    } else if (param instanceof Date) {
+      formattedParam = `'${param.toISOString()}'`;
+    } else {
+      formattedParam = String(param);
+    }
+    interpolated = interpolated.split(placeholder).join(formattedParam);
+  });
+  return interpolated;
+}
+
+async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: string, params: any[] = []): Promise<any[]> {
+  const interpolatedSql = interpolateQueryParams(sqlQuery, params);
+  const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${interpolatedSql.replace(/"/g, '\\"')}) t;`;
+  
+  const dbUser = config.dbUser || "synapse_user";
+  const dbPass = config.dbPass || "";
+  const dbName = config.dbName || "synapse";
+  const dbHost = config.dbHost || "localhost";
+  const dbPort = config.dbPort || 5432;
+  
+  const cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`;
+  
+  const jsonStr = await executeSSHCommand(config, cmd);
+  return JSON.parse(jsonStr.trim() || "[]");
+}
+
+async function readConfigContent(filePath: string, defaultContent: string = ""): Promise<string> {
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      let targetPath = filePath;
+      if (filePath === "/etc/matrix-stack.conf" && activeConn.configPath) {
+        targetPath = activeConn.configPath;
+      } else if (filePath === "/etc/matrix-synapse/homeserver.yaml" && activeConn.homeserverYamlPath) {
+        targetPath = activeConn.homeserverYamlPath;
+      } else if (filePath === "/var/www/element/config.json" && activeConn.elementConfigPath) {
+        targetPath = activeConn.elementConfigPath;
+      } else if (filePath === "/var/log/matrix-synapse/homeserver.log" && activeConn.homeserverLogPath) {
+        targetPath = activeConn.homeserverLogPath;
+      }
+      
+      const content = await executeSSHCommand(activeConn, `cat "${targetPath}" 2>/dev/null || echo "__NOT_FOUND__"`);
+      if (content.trim() === "__NOT_FOUND__") {
+        return defaultContent;
+      }
+      return content;
+    } catch (err) {
+      return defaultContent;
+    }
+  } else {
+    return readSandboxFile(filePath, defaultContent);
+  }
+}
+
+async function writeConfigContent(filePath: string, content: string): Promise<boolean> {
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      let targetPath = filePath;
+      if (filePath === "/etc/matrix-stack.conf" && activeConn.configPath) {
+        targetPath = activeConn.configPath;
+      } else if (filePath === "/etc/matrix-synapse/homeserver.yaml" && activeConn.homeserverYamlPath) {
+        targetPath = activeConn.homeserverYamlPath;
+      } else if (filePath === "/var/www/element/config.json" && activeConn.elementConfigPath) {
+        targetPath = activeConn.elementConfigPath;
+      }
+      
+      const cmd = `cat << 'EOF' > "${targetPath}"\n${content}\nEOF`;
+      await executeSSHCommand(activeConn, cmd);
+      return true;
+    } catch (err) {
+      console.error(`Failed to write remote config:`, err);
+      return false;
+    }
+  } else {
+    writeSandboxFile(filePath, content);
+    return true;
+  }
+}
 
 // -------------------------------------------------------------
 // Real PostgreSQL Connection & Query Helper
@@ -64,6 +253,16 @@ let isPostgresAvailable = true;
 let lastPostgresCheckTime = 0;
 
 async function queryPostgres(queryStr: string, params: any[] = []): Promise<any[]> {
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      return await queryRemotePostgres(activeConn, queryStr, params);
+    } catch (err: any) {
+      console.error("Remote Postgres Query Error:", err);
+      throw err;
+    }
+  }
+
   const now = Date.now();
   if (!isPostgresAvailable && now - lastPostgresCheckTime < 15000) {
     throw new Error("PostgreSQL is down (cached check)");
@@ -606,6 +805,21 @@ function readDb() {
     updated = true;
   }
 
+  if (!data.connections) {
+    data.connections = [
+      {
+        id: "local",
+        name: "Local Server (This Machine)",
+        host: "localhost",
+        port: 22,
+        username: "",
+        authType: "key",
+        isActive: true
+      }
+    ];
+    updated = true;
+  }
+
   if (updated) {
     writeSandboxFile("/db/panel_data.json", JSON.stringify(data, null, 2));
   }
@@ -680,6 +894,134 @@ app.post("/api/auth/login", (req, res) => {
 
 app.get("/api/auth/verify", authenticateToken, (req, res) => {
   res.json({ valid: true, user: req.user });
+});
+
+// Connection Profiles management
+app.get("/api/connections", authenticateToken, (req, res) => {
+  const db = readDb();
+  if (!db.connections) {
+    db.connections = [
+      {
+        id: "local",
+        name: "Local Server (This Machine)",
+        host: "localhost",
+        port: 22,
+        username: "",
+        authType: "key",
+        isActive: true
+      }
+    ];
+    writeDb(db);
+  }
+  res.json(db.connections);
+});
+
+app.post("/api/connections", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const profile = req.body;
+  const db = readDb();
+  if (!db.connections) {
+    db.connections = [
+      {
+        id: "local",
+        name: "Local Server (This Machine)",
+        host: "localhost",
+        port: 22,
+        username: "",
+        authType: "key",
+        isActive: true
+      }
+    ];
+  }
+  
+  const newProfile = {
+    ...profile,
+    id: `remote-${Date.now()}`,
+    isActive: false
+  };
+  
+  db.connections.push(newProfile);
+  writeDb(db);
+  res.status(201).json(newProfile);
+});
+
+app.put("/api/connections/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { id } = req.params;
+  const profile = req.body;
+  const db = readDb();
+  
+  if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
+  const index = db.connections.findIndex((c: any) => c.id === id);
+  if (index === -1) return res.status(404).json({ error: "Connection profile not found" });
+  
+  db.connections[index] = {
+    ...db.connections[index],
+    ...profile,
+    id // keep original ID
+  };
+  
+  writeDb(db);
+  res.json(db.connections[index]);
+});
+
+app.delete("/api/connections/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { id } = req.params;
+  if (id === "local") return res.status(400).json({ error: "Cannot delete local system profile" });
+  
+  const db = readDb();
+  if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
+  
+  const index = db.connections.findIndex((c: any) => c.id === id);
+  if (index === -1) return res.status(404).json({ error: "Connection profile not found" });
+  
+  const deleted = db.connections[index];
+  db.connections = db.connections.filter((c: any) => c.id !== id);
+  
+  // If the deleted profile was active, default back to local
+  if (deleted.isActive) {
+    const localProfile = db.connections.find((c: any) => c.id === "local");
+    if (localProfile) localProfile.isActive = true;
+  }
+  
+  writeDb(db);
+  res.json({ message: "Connection profile deleted successfully" });
+});
+
+app.post("/api/connections/select", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { id } = req.body;
+  const db = readDb();
+  if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
+  
+  db.connections.forEach((c: any) => {
+    c.isActive = (c.id === id);
+  });
+  
+  writeDb(db);
+  res.json({ message: "Connection profile activated successfully" });
+});
+
+app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const profile = req.body;
+  try {
+    // 1. Test SSH Connection
+    const testResult = await executeSSHCommand(profile, "echo 'SSH_OK'");
+    if (!testResult.includes("SSH_OK")) {
+      return res.status(400).json({ error: "SSH verification failed. Invalid credentials or unreachable host." });
+    }
+    
+    // 2. Test PostgreSQL Connection over SSH
+    try {
+      const dbResult = await queryRemotePostgres(profile, "SELECT 1 as connected");
+      if (dbResult && dbResult[0] && dbResult[0].connected === 1) {
+        return res.json({ success: true, ssh: true, db: true });
+      } else {
+        return res.json({ success: true, ssh: true, db: false, dbError: "SSH connected, but failed to connect to Postgres" });
+      }
+    } catch (dbErr: any) {
+      return res.json({ success: true, ssh: true, db: false, dbError: dbErr.message });
+    }
+  } catch (err: any) {
+    res.status(400).json({ error: `SSH Connection Failed: ${err.message}` });
+  }
 });
 
 // Panel Users management
@@ -1851,8 +2193,8 @@ app.post("/api/matrix/tokens/delete", authenticateToken, checkPermission(["Owner
 });
 
 // Configurations API
-app.get("/api/matrix/config", authenticateToken, (req, res) => {
-  const confRaw = readSandboxFile("/etc/matrix-stack.conf");
+app.get("/api/matrix/config", authenticateToken, async (req, res) => {
+  const confRaw = await readConfigContent("/etc/matrix-stack.conf");
   const config: any = {};
   confRaw.split("\n").forEach((line) => {
     const parts = line.split("=");
@@ -1869,7 +2211,7 @@ app.get("/api/matrix/config", authenticateToken, (req, res) => {
   });
 });
 
-app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { config, ldap, workers } = req.body;
   const db = readDb();
 
@@ -1878,10 +2220,10 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
     Object.entries(config).forEach(([key, val]) => {
       confContent += `${key}=${val}\n`;
     });
-    writeSandboxFile("/etc/matrix-stack.conf", confContent);
+    await writeConfigContent("/etc/matrix-stack.conf", confContent);
 
     // Update homeserver.yaml values dynamically
-    let yaml = readSandboxFile("/etc/matrix-synapse/homeserver.yaml");
+    let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
     if (config.HS_DOMAIN) {
       yaml = yaml.replace(/^server_name:.*$/m, `server_name: "${config.HS_DOMAIN}"`);
       yaml = yaml.replace(/^public_baseurl:.*$/m, `public_baseurl: "https://${config.HS_DOMAIN}/"`);
@@ -1892,15 +2234,20 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
     if (config.PG_DB) {
       yaml = yaml.replace(/database:.*$/m, `database: "${config.PG_DB}"`);
     }
-    writeSandboxFile("/etc/matrix-synapse/homeserver.yaml", yaml);
+    await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", yaml);
 
     // Update element config.json
     if (config.HS_DOMAIN) {
-      const elConfig = JSON.parse(readSandboxFile("/var/www/element/config.json", "{}"));
-      if (elConfig.default_server_config && elConfig.default_server_config["m.homeserver"]) {
-        elConfig.default_server_config["m.homeserver"].base_url = `https://${config.HS_DOMAIN}`;
-        elConfig.default_server_config["m.homeserver"].server_name = config.HS_DOMAIN;
-        writeSandboxFile("/var/www/element/config.json", JSON.stringify(elConfig, null, 2));
+      const elConfigRaw = await readConfigContent("/var/www/element/config.json", "{}");
+      try {
+        const elConfig = JSON.parse(elConfigRaw);
+        if (elConfig.default_server_config && elConfig.default_server_config["m.homeserver"]) {
+          elConfig.default_server_config["m.homeserver"].base_url = `https://${config.HS_DOMAIN}`;
+          elConfig.default_server_config["m.homeserver"].server_name = config.HS_DOMAIN;
+          await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2));
+        }
+      } catch (e) {
+        console.error("Failed to update remote element config", e);
       }
     }
   }
@@ -1908,7 +2255,7 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
   if (ldap) {
     db.ldapConfig = { ...db.ldapConfig, ...ldap };
     // Simulate writing to synapse ldap structure
-    let yaml = readSandboxFile("/etc/matrix-synapse/homeserver.yaml");
+    let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
     if (ldap.enabled) {
       yaml = yaml.replace("modules: []", [
         "modules:",
@@ -1927,7 +2274,7 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
     } else {
       yaml = yaml.replace(/modules:[\s\S]+?(?=turn_uris|presence|$)/, "modules: []\n");
     }
-    writeSandboxFile("/etc/matrix-synapse/homeserver.yaml", yaml);
+    await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", yaml);
   }
 
   if (workers) {
@@ -1951,8 +2298,8 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
 });
 
 // Logs API
-app.get("/api/logs/synapse", authenticateToken, (req, res) => {
-  const content = readSandboxFile("/var/log/matrix-synapse/homeserver.log");
+app.get("/api/logs/synapse", authenticateToken, async (req, res) => {
+  const content = await readConfigContent("/var/log/matrix-synapse/homeserver.log");
   res.json({ logs: content.split("\n").slice(-150) });
 });
 
@@ -2357,6 +2704,70 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         }
 
         ws.send(JSON.stringify({ type: "cmd_start", command }));
+
+        const activeConn = getActiveConnection();
+        if (activeConn && activeConn.id !== "local") {
+          ws.send(JSON.stringify({ type: "cmd_stdout", text: `🌐 [REMOTE] Connecting to SSH at ${activeConn.username}@${activeConn.host}:${activeConn.port}...` }));
+          
+          const conn = new SSHClient();
+          conn.on("ready", () => {
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: `🔓 [REMOTE] SSH session established. Executing: ${command}` }));
+            
+            // Build the execution command
+            let fullCmd = command;
+            if (command === "custom_install") {
+              const selectedComponents = args?.components || ["synapse", "element", "postgres", "coturn", "nginx"];
+              const confObj = args?.config || {};
+              // Convert config to env vars prefixed command
+              let envStr = "";
+              Object.entries(confObj).forEach(([k, v]) => {
+                envStr += `${k}='${String(v).replace(/'/g, "'\\''")}' `;
+              });
+              envStr += `INSTALL_SYNAPSE='${selectedComponents.includes("synapse")}' `;
+              envStr += `INSTALL_ELEMENT='${selectedComponents.includes("element")}' `;
+              envStr += `INSTALL_POSTGRES='${selectedComponents.includes("postgres")}' `;
+              envStr += `INSTALL_COTURN='${selectedComponents.includes("coturn")}' `;
+              envStr += `INSTALL_NGINX='${selectedComponents.includes("nginx")}' `;
+              fullCmd = `${envStr} bash ./install-matrix-stack.sh`;
+            }
+            
+            conn.exec(fullCmd, (err, stream) => {
+              if (err) {
+                ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ [SSH EXEC ERROR] ${err.message}` }));
+                ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+                conn.end();
+                return;
+              }
+              
+              stream.on("close", (code, signal) => {
+                ws.send(JSON.stringify({ type: "cmd_stdout", text: `🏁 [REMOTE] Command completed with exit code: ${code}` }));
+                ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
+                conn.end();
+              }).on("data", (data: any) => {
+                ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+              }).stderr.on("data", (data: any) => {
+                ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+              });
+            });
+          }).on("error", (err) => {
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ [REMOTE SSH CONNECTION ERROR] ${err.message}` }));
+            ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+          });
+          
+          const connOpts: any = {
+            host: activeConn.host,
+            port: activeConn.port || 22,
+            username: activeConn.username,
+            readyTimeout: 15000
+          };
+          if (activeConn.authType === "password") {
+            connOpts.password = activeConn.password;
+          } else {
+            connOpts.privateKey = activeConn.privateKey;
+          }
+          conn.connect(connOpts);
+          return;
+        }
 
         // Real production target VPS execution wrapper
         const isSandbox = !fs.existsSync("/bin/systemctl");

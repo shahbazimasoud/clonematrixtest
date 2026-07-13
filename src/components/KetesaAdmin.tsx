@@ -1231,8 +1231,8 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           <span>{t.tabUsers}</span>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono transition-colors duration-300 ${
             isLightMode 
-              ? 'bg-indigo-100 text-indigo-700 font-bold' 
-              : 'bg-slate-800 text-indigo-300'
+              ? 'bg-indigo-100 text-indigo-800 font-extrabold border border-indigo-200' 
+              : 'bg-indigo-500/20 text-indigo-200 font-bold border border-indigo-500/30'
           }`}>
             {users.length}
           </span>
@@ -1255,8 +1255,8 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           <span>{t.tabRooms}</span>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono transition-colors duration-300 ${
             isLightMode 
-              ? 'bg-purple-100 text-purple-700 font-bold' 
-              : 'bg-slate-800 text-purple-300'
+              ? 'bg-purple-100 text-purple-800 font-extrabold border border-purple-200' 
+              : 'bg-purple-500/20 text-purple-200 font-bold border border-purple-500/30'
           }`}>
             {rooms.length}
           </span>
@@ -1279,8 +1279,8 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           <span>{t.tabMedia}</span>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono transition-colors duration-300 ${
             isLightMode 
-              ? 'bg-amber-100 text-amber-700 font-bold' 
-              : 'bg-slate-800 text-amber-300'
+              ? 'bg-amber-100 text-amber-800 font-extrabold border border-amber-200' 
+              : 'bg-amber-500/20 text-amber-200 font-bold border border-amber-500/30'
           }`}>
             {totalCachedSizeMB} MB
           </span>
@@ -1303,8 +1303,8 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           <span>{t.tabTokens}</span>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono transition-colors duration-300 ${
             isLightMode 
-              ? 'bg-emerald-100 text-emerald-700 font-bold' 
-              : 'bg-slate-800 text-emerald-300'
+              ? 'bg-emerald-100 text-emerald-800 font-extrabold border border-emerald-200' 
+              : 'bg-emerald-500/20 text-emerald-200 font-bold border border-emerald-500/30'
           }`}>
             {tokens.length}
           </span>

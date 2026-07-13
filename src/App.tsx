@@ -38,6 +38,7 @@ import TerminalPanel from './components/TerminalPanel';
 import ConfigForms from './components/ConfigForms';
 import ReportingPanel from './components/ReportingPanel';
 import KetesaAdmin from './components/KetesaAdmin';
+import ConnectionManager from './components/ConnectionManager';
 import { SystemStats, ServiceState, PanelUser, AuditLog, BackupItem, UndoItem, MatrixConfig, LDAPConfig, MatrixUser } from './types';
 
 // Translation Dictionary for Persian (Default) & English
@@ -1108,6 +1109,21 @@ export default function App() {
                 onDeleteBackup={handleDeleteBackup}
                 onCreateBackup={handleCreateBackup}
                 userRole={currentUser?.role || 'Viewer'}
+              />
+            )}
+
+            {/* VIEW 8: MULTI-SERVER CONNECTION MANAGEMENT */}
+            {activeView === 'connections' && (
+              <ConnectionManager
+                authToken={authToken || ''}
+                onProfileChanged={() => {
+                  fetchConfig();
+                  fetchLogs();
+                  fetchPanelUsers();
+                  fetchMatrixUsers();
+                  fetchBackups();
+                }}
+                showToast={showToast}
               />
             )}
           </main>
