@@ -101,6 +101,16 @@ def read_file(path_str: str, default: str = "") -> str:
 def write_file(path_str: str, content: str):
     p = get_file_path(path_str)
     os.makedirs(os.path.dirname(p), exist_ok=True)
+    
+    if os.path.exists(p) and os.path.getsize(p) > 0:
+        if not path_str.endswith(".bak") and ".bak." not in path_str:
+            backup_path = f"{p}.bak.{int(time.time())}"
+            try:
+                import shutil
+                shutil.copy2(p, backup_path)
+            except Exception as e:
+                logger.error(f"Failed to create file backup for {path_str}: {e}")
+                
     with open(p, "w", encoding="utf-8") as f:
         f.write(content)
 
@@ -211,6 +221,445 @@ def load_stack_config() -> Dict[str, str]:
             parts = line.split("=", 1)
             config[parts[0].strip()] = parts[1].strip()
     return config
+
+def load_ldap_config() -> Dict[str, Any]:
+    ldap_raw = read_file("/etc/matrix-stack-ldap.conf")
+    ldap = {}
+    for line in ldap_raw.splitlines():
+        line = line.strip()
+        if "=" in line and not line.startswith("#"):
+            parts = line.split("=", 1)
+            ldap[parts[0].strip()] = parts[1].strip()
+            
+    db = read_db()
+    db_ldap = db.get("ldapConfig") or {}
+    
+    enabled = db_ldap.get("enabled", False)
+    if ldap_raw.strip():
+        enabled = True
+        
+    return {
+        "enabled": enabled,
+        "uri": ldap.get("LDAP_URI", db_ldap.get("uri", "")),
+        "base": ldap.get("LDAP_BASE", db_ldap.get("base", "")),
+        "mode": ldap.get("LDAP_MODE", db_ldap.get("mode", "search")),
+        "start_tls": ldap.get("LDAP_START_TLS", str(db_ldap.get("start_tls", "false"))).lower() == "true",
+        "bind_dn": ldap.get("LDAP_BIND_DN", db_ldap.get("bind_dn", "")),
+        "bind_password": ldap.get("LDAP_BIND_PASSWORD", db_ldap.get("bind_password", "")),
+        "uid_attr": ldap.get("LDAP_UID_ATTR", db_ldap.get("uid_attr", "uid")),
+        "mail_attr": ldap.get("LDAP_MAIL_ATTR", db_ldap.get("mail_attr", "mail")),
+        "name_attr": ldap.get("LDAP_NAME_ATTR", db_ldap.get("name_attr", "cn"))
+    }
+
+def save_ldap_config_file(ldap: Dict[str, Any]):
+    conf_content = f"""LDAP_URI={ldap.get('uri', '')}
+LDAP_BASE={ldap.get('base', '')}
+LDAP_MODE={ldap.get('mode', 'search')}
+LDAP_START_TLS={str(ldap.get('start_tls', 'false')).lower()}
+LDAP_BIND_DN={ldap.get('bind_dn', '')}
+LDAP_BIND_PASSWORD={ldap.get('bind_password', '')}
+LDAP_UID_ATTR={ldap.get('uid_attr', 'uid')}
+LDAP_MAIL_ATTR={ldap.get('mail_attr', 'mail')}
+LDAP_NAME_ATTR={ldap.get('name_attr', 'cn')}
+"""
+    write_file("/etc/matrix-stack-ldap.conf", conf_content)
+
+def update_homeserver_ldap(yaml_content: str, ldap: Dict[str, Any]) -> str:
+    if not ldap.get("enabled"):
+        if "modules:" in yaml_content:
+            yaml_content = re.sub(r'^modules:(?:\s*\[\]|\s*\n(?:\s+.*\n?)*)', 'modules: []\n', yaml_content, flags=re.MULTILINE)
+        else:
+            yaml_content += "\nmodules: []\n"
+        return yaml_content
+        
+    bind_dn_str = f'\n      bind_dn: "{ldap.get("bind_dn")}"' if ldap.get("bind_dn") else ''
+    bind_pw_str = f'\n      bind_password: "{ldap.get("bind_password")}"' if ldap.get("bind_password") else ''
+    
+    ldap_block = f"""modules:
+  - module: "ldap_auth_provider.LdapAuthProviderModule"
+    config:
+      mode: "{ldap.get('mode', 'search')}"
+      uri: "{ldap.get('uri', '')}"
+      start_tls: {str(ldap.get('start_tls', 'false')).lower()}
+      base: "{ldap.get('base', '')}"
+      attributes:
+        uid: "{ldap.get('uid_attr', 'uid')}"
+        mail: "{ldap.get('mail_attr', 'mail')}"
+        name: "{ldap.get('name_attr', 'cn')}"{bind_dn_str}{bind_pw_str}"""
+
+    if "modules:" in yaml_content:
+        yaml_content = re.sub(r'^modules:(?:\s*\[\]|\s*\n(?:\s+.*\n?)*)', ldap_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + ldap_block + "\n"
+        
+    return yaml_content
+
+def load_workers_config() -> Dict[str, Any]:
+    raw = read_file("/etc/matrix-stack-workers.conf")
+    sc_workers = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if "=" in line and not line.startswith("#"):
+            parts = line.split("=", 1)
+            sc_workers[parts[0].strip()] = parts[1].strip()
+            
+    db = read_db()
+    db_workers = db.get("workersConfig") or {}
+    
+    return {
+        "enabled": sc_workers.get("WORKERS_ENABLED", str(db_workers.get("enabled", "false"))).lower() == "true",
+        "count": int(sc_workers.get("WORKERS_COUNT", db_workers.get("count", 2))),
+        "federationSender": sc_workers.get("WORKERS_FEDERATION_SENDER", str(db_workers.get("federationSender", "false"))).lower() == "true",
+        "basePort": int(sc_workers.get("WORKERS_BASE_PORT", db_workers.get("basePort", 8083)))
+    }
+
+def save_workers_config_file(workers: Dict[str, Any]):
+    enabled = workers.get("enabled", False)
+    count = workers.get("count", 2)
+    fed_sender = workers.get("federationSender", False)
+    base_port = workers.get("basePort", 8083)
+    
+    conf_content = f"""WORKERS_ENABLED={str(enabled).lower()}
+WORKERS_COUNT={count}
+WORKERS_FEDERATION_SENDER={str(fed_sender).lower()}
+WORKERS_BASE_PORT={base_port}
+"""
+    write_file("/etc/matrix-stack-workers.conf", conf_content)
+    
+    if enabled:
+        workers_dir = "/etc/matrix-synapse/workers"
+        for i in range(1, count + 1):
+            port = base_port + i - 1
+            worker_yaml = f"""worker_app: synapse.app.generic_worker
+worker_name: generic_worker{i}
+worker_listeners:
+  - type: http
+    port: {port}
+    resources:
+      - names: [client, federation]
+"""
+            write_file(f"{workers_dir}/generic_worker{i}.yaml", worker_yaml)
+            
+        if fed_sender:
+            fed_yaml = f"""worker_app: synapse.app.federation_sender
+worker_name: federation_sender1
+"""
+            write_file(f"{workers_dir}/federation_sender1.yaml", fed_yaml)
+            
+        write_file("/etc/matrix-synapse/conf.d/worker-log.yaml", 'log_config: "/etc/matrix-synapse/worker-log-config.yaml"\n')
+
+def update_homeserver_workers(yaml_content: str, workers: Dict[str, Any]) -> str:
+    enabled = workers.get("enabled", False)
+    enabled_val = "true" if enabled else "false"
+    
+    redis_block = f"""redis:
+  enabled: {enabled_val}"""
+    
+    if "redis:" in yaml_content:
+        yaml_content = re.sub(r'^redis:(?:\s*\n(?:\s+.*\n?)*)', redis_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + redis_block + "\n"
+        
+    secret = "some_random_replication_secret_key"
+    if enabled:
+        if "worker_replication_secret:" not in yaml_content:
+            yaml_content += f'\nworker_replication_secret: "{secret}"\n'
+    else:
+        yaml_content = re.sub(r'^worker_replication_secret:.*$', '', yaml_content, flags=re.MULTILINE)
+        
+    return yaml_content
+
+def load_element_config() -> Dict[str, Any]:
+    try:
+        raw = read_file("/var/www/element/config.json", "{}")
+        if not raw.strip():
+            raw = "{}"
+        data = json.loads(raw)
+        return data
+    except Exception as e:
+        logger.error(f"Failed to read element config: {e}")
+        return {}
+
+def update_element_config_file(sc: Dict[str, Any]):
+    try:
+        data = load_element_config()
+            
+        if "default_server_config" not in data:
+            data["default_server_config"] = {
+                "m.homeserver": {
+                    "base_url": f"https://{sc.get('HS_DOMAIN', 'matrix.company.local')}",
+                    "server_name": sc.get("HS_DOMAIN", "matrix.company.local")
+                }
+            }
+        if "settingDefaults" not in data:
+            data["settingDefaults"] = {}
+        if "features" not in data:
+            data["features"] = {}
+        if "jitsi" not in data:
+            data["jitsi"] = {}
+            
+        typing = str(sc.get("TYPING_NOTIFS_ENABLED", "true")).lower() == "true"
+        data["settingDefaults"]["sendTypingNotifications"] = typing
+        data["settingDefaults"]["showTypingNotifications"] = typing
+        
+        read_receipts = str(sc.get("READ_RECEIPTS_ENABLED", "true")).lower() == "true"
+        data["settingDefaults"]["sendReadReceipts"] = read_receipts
+        
+        if "ELEMENT_CALL_URL" in sc:
+            data["element_call_url"] = sc["ELEMENT_CALL_URL"]
+            
+        data["jitsi"]["preferredDomain"] = "meet.jit.si"
+        
+        write_file("/var/www/element/config.json", json.dumps(data, indent=2))
+    except Exception as e:
+        logger.error(f"Failed to write element config: {e}")
+
+def get_synapse_email_config(yaml_content: str) -> Dict[str, Any]:
+    email_section = re.search(r"^email:\s*\n([\s\S]+?)(?=\n\w+:|$)", yaml_content, flags=re.MULTILINE)
+    config = {}
+    if email_section:
+        text = email_section.group(1)
+        for line in text.splitlines():
+            line = line.strip()
+            if ":" in line and not line.startswith("#"):
+                k, v = line.split(":", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                config[k] = v
+    return config
+
+def update_homeserver_email(yaml_content: str, sc: Dict[str, Any]) -> str:
+    enable_notifs = "true" if sc.get("SMTP_HOST") else "false"
+    smtp_host = sc.get("SMTP_HOST", "")
+    smtp_port = sc.get("SMTP_PORT", "587")
+    smtp_user = sc.get("SMTP_USER", "")
+    smtp_pass = sc.get("SMTP_PASS", "")
+    notif_from = sc.get("NOTIF_FROM", "")
+    app_name = sc.get("APP_NAME", "Matrix")
+    element_domain = sc.get("ELEMENT_DOMAIN", "")
+    client_base_url = f"https://{element_domain}" if element_domain else ""
+
+    email_block = f"""email:
+  enable_notifs: {enable_notifs}
+  smtp_host: "{smtp_host}"
+  smtp_port: {smtp_port}
+  smtp_user: "{smtp_user}"
+  smtp_pass: "{smtp_pass}"
+  force_tls: false
+  require_transport_security: true
+  notif_from: "{notif_from}"
+  app_name: "{app_name}"
+  client_base_url: "{client_base_url}" """
+
+    if "email:" in yaml_content:
+        yaml_content = re.sub(r'^email:(?:\s*\n(?:\s+.*\n?)*)', email_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + email_block + "\n"
+    return yaml_content
+
+def update_homeserver_limits(yaml_content: str, sc: Dict[str, Any]) -> str:
+    limit_mb = sc.get("LIMIT_MB", "50")
+    max_upload_size = f"{limit_mb}M"
+    
+    if re.search(r'^max_upload_size:', yaml_content, flags=re.MULTILINE):
+        yaml_content = re.sub(r'^max_upload_size:.*$', f'max_upload_size: "{max_upload_size}"', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += f'\nmax_upload_size: "{max_upload_size}"\n'
+        
+    reg_enabled = str(sc.get("REGISTRATION_ENABLED", "true")).lower() == "true"
+    reg_val = "true" if reg_enabled else "false"
+    if re.search(r'^enable_registration:', yaml_content, flags=re.MULTILINE):
+        yaml_content = re.sub(r'^enable_registration:.*$', f'enable_registration: {reg_val}', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += f'\nenable_registration: {reg_val}\n'
+        
+    rate_limit_per_sec = sc.get("RATE_LIMIT_PER_SEC", "0.2")
+    rate_limit_burst = sc.get("RATE_LIMIT_BURST", "10")
+    rc_message_block = f"""rc_message:
+  per_second: {rate_limit_per_sec}
+  burst_count: {rate_limit_burst}"""
+    if "rc_message:" in yaml_content:
+        yaml_content = re.sub(r'^rc_message:(?:\s*\n(?:\s+.*\n?)*)', rc_message_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + rc_message_block + "\n"
+
+    rc_registration_block = f"""rc_registration:
+  per_second: {rate_limit_per_sec}
+  burst_count: {rate_limit_burst}"""
+    if "rc_registration:" in yaml_content:
+        yaml_content = re.sub(r'^rc_registration:(?:\s*\n(?:\s+.*\n?)*)', rc_registration_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + rc_registration_block + "\n"
+
+    rc_login_block = f"""rc_login:
+  address:
+    per_second: {rate_limit_per_sec}
+    burst_count: {rate_limit_burst}
+  account:
+    per_second: {rate_limit_per_sec}
+    burst_count: {rate_limit_burst}
+  failed_attempts:
+    per_second: {rate_limit_per_sec}
+    burst_count: {rate_limit_burst}"""
+    if "rc_login:" in yaml_content:
+        yaml_content = re.sub(r'^rc_login:(?:\s*\n(?:\s+.*\n?)*)', rc_login_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + rc_login_block + "\n"
+        
+    retention_days = sc.get("MESSAGE_RETENTION_DAYS", "0")
+    retention_enabled = "false" if retention_days == "0" or not retention_days else "true"
+    retention_lifetime = f"{retention_days}d" if retention_days else "365d"
+    retention_block = f"""retention:
+  enabled: {retention_enabled}
+  default_policy:
+    max_lifetime: "{retention_lifetime}" """
+    if "retention:" in yaml_content:
+        yaml_content = re.sub(r'^retention:(?:\s*\n(?:\s+.*\n?)*)', retention_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + retention_block + "\n"
+        
+    media_local_days = sc.get("MEDIA_RETENTION_LOCAL_DAYS", "0")
+    media_remote_days = sc.get("MEDIA_RETENTION_REMOTE_DAYS", "0")
+    media_ret_block = f"""media_retention:
+  local_media_lifetime: "{media_local_days}d"
+  remote_media_lifetime: "{media_remote_days}d" """
+    if "media_retention:" in yaml_content:
+        yaml_content = re.sub(r'^media_retention:(?:\s*\n(?:\s+.*\n?)*)', media_ret_block + '\n', yaml_content, flags=re.MULTILINE)
+    else:
+        yaml_content += "\n" + media_ret_block + "\n"
+        
+    return yaml_content
+
+def update_homeserver_turn(yaml_content: str, sc: Dict[str, Any]) -> str:
+    hs_domain = sc.get("HS_DOMAIN", "matrix.company.local")
+    turn_secret = sc.get("TURN_SHARED_SECRET", "some_default_turn_secret_123")
+    
+    turn_block = f"""turn_uris:
+  - "turn:{hs_domain}:3478?transport=udp"
+  - "turns:{hs_domain}:5349?transport=tcp"
+turn_shared_secret: "{turn_secret}" """
+
+    if "turn_uris:" in yaml_content:
+        yaml_content = re.sub(r'^turn_uris:(?:\s*\n(?:\s+.*\n?)*)', '', yaml_content, flags=re.MULTILINE)
+    
+    if "turn_shared_secret:" in yaml_content:
+        yaml_content = re.sub(r'^turn_shared_secret:.*$', '', yaml_content, flags=re.MULTILINE)
+        
+    yaml_content += "\n" + turn_block + "\n"
+    
+    turnserver_conf = f"""listening-port=3478
+tls-listening-port=5349
+use-auth-secret
+static-auth-secret={turn_secret}
+realm={hs_domain}
+"""
+    if not os.path.exists(get_file_path("/etc/turnserver.conf")):
+        write_file("/etc/turnserver.conf", turnserver_conf)
+        
+    default_coturn = "TURNSERVER_ENABLED=1\n"
+    if not os.path.exists(get_file_path("/etc/default/coturn")):
+        write_file("/etc/default/coturn", default_coturn)
+        
+    return yaml_content
+
+def load_homeserver_limits_and_smtp(config: Dict[str, str]) -> Dict[str, str]:
+    config.setdefault("LIMIT_MB", "50")
+    config.setdefault("REGISTRATION_ENABLED", "true")
+    config.setdefault("MESSAGE_RETENTION_DAYS", "0")
+    config.setdefault("MEDIA_RETENTION_LOCAL_DAYS", "0")
+    config.setdefault("MEDIA_RETENTION_REMOTE_DAYS", "0")
+    config.setdefault("PRESENCE_ENABLED", "true")
+    config.setdefault("ROOM_CREATION_ALLOW", "true")
+    config.setdefault("DIRECTORY_SEARCH_ENABLED", "true")
+    config.setdefault("RATE_LIMIT_PER_SEC", "0.2")
+    config.setdefault("RATE_LIMIT_BURST", "10")
+    
+    config.setdefault("SMTP_HOST", "smtp.company.local")
+    config.setdefault("SMTP_PORT", "587")
+    config.setdefault("SMTP_USER", "smtp_user")
+    config.setdefault("SMTP_PASS", "smtp_pass")
+    config.setdefault("NOTIF_FROM", "Matrix <noreply@company.local>")
+    config.setdefault("APP_NAME", "Matrix")
+    
+    config.setdefault("TYPING_NOTIFS_ENABLED", "true")
+    config.setdefault("READ_RECEIPTS_ENABLED", "true")
+    config.setdefault("PROFILE_EDIT_NAME_ENABLED", "true")
+    config.setdefault("PROFILE_EDIT_AVATAR_ENABLED", "true")
+    config.setdefault("ELEMENT_CALL_URL", "https://call.element.io")
+
+    try:
+        yaml_content = read_file("/etc/matrix-synapse/homeserver.yaml")
+        
+        mus = re.search(r"^max_upload_size:\s*\"?(\d+)[M|G]?\"?", yaml_content, flags=re.MULTILINE)
+        if mus:
+            config["LIMIT_MB"] = mus.group(1)
+            
+        er = re.search(r"^enable_registration:\s*(\w+)", yaml_content, flags=re.MULTILINE)
+        if er:
+            config["REGISTRATION_ENABLED"] = er.group(1).lower()
+            
+        rc_msg = re.search(r"^rc_message:\s*\n\s+per_second:\s*([\d\.]+)\s*\n\s+burst_count:\s*(\d+)", yaml_content, flags=re.MULTILINE)
+        if rc_msg:
+            config["RATE_LIMIT_PER_SEC"] = rc_msg.group(1)
+            config["RATE_LIMIT_BURST"] = rc_msg.group(2)
+            
+        ret = re.search(r"^retention:\s*\n\s+enabled:\s*(\w+)", yaml_content, flags=re.MULTILINE)
+        if ret and ret.group(1).lower() == "true":
+            ml = re.search(r"max_lifetime:\s*\"?(\d+)d\"?", yaml_content)
+            if ml:
+                config["MESSAGE_RETENTION_DAYS"] = ml.group(1)
+        else:
+            config["MESSAGE_RETENTION_DAYS"] = "0"
+            
+        m_ret = re.search(r"^media_retention:\s*\n\s+local_media_lifetime:\s*\"?(\d+)d\"?\s*\n\s+remote_media_lifetime:\s*\"?(\d+)d\"?", yaml_content, flags=re.MULTILINE)
+        if m_ret:
+            config["MEDIA_RETENTION_LOCAL_DAYS"] = m_ret.group(1)
+            config["MEDIA_RETENTION_REMOTE_DAYS"] = m_ret.group(2)
+            
+        email_sec = get_synapse_email_config(yaml_content)
+        if email_sec:
+            if email_sec.get("smtp_host"): config["SMTP_HOST"] = email_sec["smtp_host"]
+            if email_sec.get("smtp_port"): config["SMTP_PORT"] = email_sec["smtp_port"]
+            if email_sec.get("smtp_user"): config["SMTP_USER"] = email_sec["smtp_user"]
+            if email_sec.get("smtp_pass"): config["SMTP_PASS"] = email_sec["smtp_pass"]
+            if email_sec.get("notif_from"): config["NOTIF_FROM"] = email_sec["notif_from"]
+            if email_sec.get("app_name"): config["APP_NAME"] = email_sec["app_name"]
+            
+    except Exception as ex:
+        logger.error(f"Failed to parse limits/smtp from homeserver.yaml: {ex}")
+        
+    try:
+        el = load_element_config()
+        if el:
+            if "settingDefaults" in el:
+                config["TYPING_NOTIFS_ENABLED"] = "true" if el["settingDefaults"].get("sendTypingNotifications", True) else "false"
+                config["READ_RECEIPTS_ENABLED"] = "true" if el["settingDefaults"].get("sendReadReceipts", True) else "false"
+            if "element_call_url" in el:
+                config["ELEMENT_CALL_URL"] = el["element_call_url"]
+    except Exception as ex:
+        logger.error(f"Failed to load element config defaults: {ex}")
+        
+    return config
+
+def restart_services_after_config_change(workers_changed: bool = False, ldap_changed: bool = False, config_changed: bool = False):
+    is_sandbox = not os.path.exists("/bin/systemctl")
+    if is_sandbox:
+        return
+        
+    try:
+        workers_cfg = load_workers_config()
+        
+        if workers_cfg.get("enabled"):
+            count = workers_cfg.get("count", 2)
+            for i in range(1, count + 1):
+                subprocess.run(["systemctl", "restart", f"matrix-synapse-worker@generic_worker{i}.service"], check=False)
+            if workers_cfg.get("federationSender"):
+                subprocess.run(["systemctl", "restart", "matrix-synapse-worker@federation_sender1.service"], check=False)
+                
+        subprocess.run(["systemctl", "restart", "matrix-synapse.service"], check=False)
+        
+    except Exception as e:
+        logger.error(f"Failed to restart services on VPS: {e}")
 
 def get_synapse_db_config() -> Dict[str, Any]:
     """
@@ -1069,11 +1518,15 @@ async def delete_registration_token(payload: Dict[str, str], user: Dict[str, Any
 @app.get("/api/matrix/config")
 async def get_matrix_config(user: Dict[str, Any] = Depends(get_current_user)):
     config = load_stack_config()
-    db = read_db()
+    config = load_homeserver_limits_and_smtp(config)
+    
+    ldap = load_ldap_config()
+    workers = load_workers_config()
+    
     return {
         "config": config,
-        "ldap": db.get("ldapConfig"),
-        "workers": db.get("workersConfig")
+        "ldap": ldap,
+        "workers": workers
     }
 
 @app.post("/api/matrix/config/save")
@@ -1083,62 +1536,77 @@ async def save_matrix_config(payload: Dict[str, Any], user: Dict[str, Any] = Dep
     workers = payload.get("workers")
     db = read_db()
     
+    homeserver_yaml_changed = False
+    element_config_changed = False
+    workers_changed = False
+    ldap_changed = False
+    
     if config:
-        # Save real env configurations
-        conf_content = ""
+        existing_config = load_stack_config()
         for k, v in config.items():
+            existing_config[k] = v
+            
+        conf_content = ""
+        for k, v in existing_config.items():
             conf_content += f"{k}={v}\n"
         write_file("/etc/matrix-stack.conf", conf_content)
         
-        # Modify homeserver.yaml values
         yaml = read_file("/etc/matrix-synapse/homeserver.yaml")
-        if config.get("HS_DOMAIN"):
+        if "HS_DOMAIN" in config:
             yaml = re.sub(r'^server_name:.*$', f'server_name: "{config["HS_DOMAIN"]}"', yaml, flags=re.MULTILINE)
             yaml = re.sub(r'^public_baseurl:.*$', f'public_baseurl: "https://{config["HS_DOMAIN"]}/"', yaml, flags=re.MULTILINE)
-        if config.get("PG_USER"):
+            homeserver_yaml_changed = True
+        if "PG_USER" in config:
             yaml = re.sub(r'user:.*$', f'user: "{config["PG_USER"]}"', yaml, flags=re.MULTILINE)
-        if config.get("PG_DB"):
+            homeserver_yaml_changed = True
+        if "PG_DB" in config:
             yaml = re.sub(r'database:.*$', f'database: "{config["PG_DB"]}"', yaml, flags=re.MULTILINE)
+            homeserver_yaml_changed = True
+            
+        yaml = update_homeserver_email(yaml, existing_config)
+        yaml = update_homeserver_limits(yaml, existing_config)
+        yaml = update_homeserver_turn(yaml, existing_config)
+        homeserver_yaml_changed = True
+        
         write_file("/etc/matrix-synapse/homeserver.yaml", yaml)
         
-        # Modify Element Web config
-        if config.get("HS_DOMAIN"):
-            try:
-                el_config = json.loads(read_file("/var/www/element/config.json", "{}"))
-                if "default_server_config" in el_config:
-                    el_config["default_server_config"]["m.homeserver"]["base_url"] = f"https://{config['HS_DOMAIN']}"
-                    el_config["default_server_config"]["m.homeserver"]["server_name"] = config["HS_DOMAIN"]
-                    write_file("/var/www/element/config.json", json.dumps(el_config, indent=2))
-            except Exception as ex:
-                logger.error(f"Element web config.json modification failed: {ex}")
+        update_element_config_file(existing_config)
+        element_config_changed = True
 
     if ldap:
         db["ldapConfig"] = {**db.get("ldapConfig", {}), **ldap}
-        # Inject LDAP module settings into homeserver.yaml
+        write_db(db)
+        
+        save_ldap_config_file(ldap)
+        
         yaml = read_file("/etc/matrix-synapse/homeserver.yaml")
-        if ldap.get("enabled"):
-            ldap_module = f"""modules:
-  - module: "ldap_auth_provider.LdapAuthProviderModule"
-    config:
-      enabled: true
-      uri: "{ldap.get('uri')}"
-      mode: "{ldap.get('mode')}"
-      start_tls: {str(ldap.get('start_tls')).lower()}
-      base: "{ldap.get('base')}"
-      attributes:
-        uid: "{ldap.get('uid_attr')}"
-        mail: "{ldap.get('mail_attr')}"
-        name: "{ldap.get('name_attr')}" """
-            yaml = re.sub(r'modules:\s*\[\]', ldap_module, yaml)
-        else:
-            yaml = re.sub(r'modules:[\s\S]+?(?=turn_uris|presence|$)', "modules: []\n", yaml)
+        yaml = update_homeserver_ldap(yaml, ldap)
         write_file("/etc/matrix-synapse/homeserver.yaml", yaml)
         
+        ldap_changed = True
+        homeserver_yaml_changed = True
+
     if workers:
         db["workersConfig"] = {**db.get("workersConfig", {}), **workers}
+        write_db(db)
         
-    write_db(db)
-    add_audit_log(user["username"], "Save Configuration", "System", "success", "Saved configuration and adjusted YAML variables.")
+        save_workers_config_file(workers)
+        
+        yaml = read_file("/etc/matrix-synapse/homeserver.yaml")
+        yaml = update_homeserver_workers(yaml, workers)
+        write_file("/etc/matrix-synapse/homeserver.yaml", yaml)
+        
+        workers_changed = True
+        homeserver_yaml_changed = True
+        
+    if homeserver_yaml_changed or ldap_changed or workers_changed:
+        restart_services_after_config_change(
+            workers_changed=workers_changed,
+            ldap_changed=ldap_changed,
+            config_changed=homeserver_yaml_changed
+        )
+        
+    add_audit_log(user["username"], "Save Configuration", "System", "success", "Saved configuration and adjusted system parameters.")
     return {"message": "Configurations saved and synchronized successfully."}
 
 # System Logs
