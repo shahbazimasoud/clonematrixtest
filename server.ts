@@ -60,9 +60,19 @@ function getSynapseDBConfig() {
   return null;
 }
 
+let isPostgresAvailable = true;
+let lastPostgresCheckTime = 0;
+
 async function queryPostgres(queryStr: string, params: any[] = []): Promise<any[]> {
+  const now = Date.now();
+  if (!isPostgresAvailable && now - lastPostgresCheckTime < 15000) {
+    throw new Error("PostgreSQL is down (cached check)");
+  }
+
   const dbConfig = getSynapseDBConfig();
   if (!dbConfig) {
+    isPostgresAvailable = false;
+    lastPostgresCheckTime = now;
     throw new Error("No Postgres config available");
   }
   
@@ -72,15 +82,23 @@ async function queryPostgres(queryStr: string, params: any[] = []): Promise<any[
     database: dbConfig.database,
     user: dbConfig.user,
     password: dbConfig.password,
-    connectionTimeoutMillis: 1000 // fast connection timeout for safe fallback
+    connectionTimeoutMillis: 500 // fast connection timeout for safe fallback
   });
   
-  await client.connect();
   try {
+    await client.connect();
+    isPostgresAvailable = true;
+    lastPostgresCheckTime = now;
     const res = await client.query(queryStr, params);
     return res.rows;
+  } catch (err: any) {
+    isPostgresAvailable = false;
+    lastPostgresCheckTime = now;
+    throw err;
   } finally {
-    await client.end();
+    try {
+      await client.end();
+    } catch (e) {}
   }
 }
 
