@@ -6,6 +6,10 @@
 
 set -eo pipefail
 
+# Make script completely non-interactive for package managers
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+
 # Colors for terminal output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -62,7 +66,7 @@ apt-get update -y
 # ------------------------------------------------------------------------------
 if [ "$INSTALL_POSTGRES" = "true" ]; then
   log_step "Installing PostgreSQL database cluster..."
-  apt-get install -y postgresql postgresql-contrib
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" postgresql postgresql-contrib
 
   log_info "Configuring PostgreSQL access controls..."
   # Ensure the database and user exist
@@ -86,7 +90,7 @@ fi
 # ------------------------------------------------------------------------------
 if [ "$INSTALL_SYNAPSE" = "true" ]; then
   log_step "Setting up Synapse GPG key and official repositories..."
-  apt-get install -y lsb-release wget apt-transport-https
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" lsb-release wget apt-transport-https
   
   wget -O /usr/share/keyrings/matrix-org-archive-keyring.gpg https://packages.matrix.org/debian/matrix-org-archive-keyring.gpg || true
   echo "deb [signed-by=/usr/share/keyrings/matrix-org-archive-keyring.gpg] https://packages.matrix.org/debian/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/matrix-org.list
@@ -98,19 +102,24 @@ if [ "$INSTALL_SYNAPSE" = "true" ]; then
   echo "matrix-synapse-py3 matrix-synapse/server-name string $HS_DOMAIN" | debconf-set-selections
   echo "matrix-synapse-py3 matrix-synapse/report-stats boolean false" | debconf-set-selections
   
-  apt-get install -y matrix-synapse-py3
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" matrix-synapse-py3
 
   log_info "Configuring Synapse homeserver.yaml..."
   YAML_FILE="/etc/matrix-synapse/homeserver.yaml"
   if [ -f "$YAML_FILE" ]; then
-    # Inject PostgreSQL configuration overrides
-    # (In a production system, we utilize python/yq to accurately parse and override the yaml structures)
+    # Inject PostgreSQL configuration overrides cleanly
     log_info "Injecting PostgreSQL adapter settings into $YAML_FILE..."
-    # Disable default sqlite backend config and append postgresql connection block
-    sed -i '/name: sqlite3/s/^/#/' "$YAML_FILE" || true
-    sed -i '/database: \/var\/lib\/matrix-synapse\/homeserver.db/s/^/#/' "$YAML_FILE" || true
     
-    cat <<EOF >> "$YAML_FILE"
+    # Comment out default SQLite database section if present
+    if grep -q "^database:" "$YAML_FILE"; then
+      log_info "Commenting out default SQLite configuration block..."
+      sed -i '/^database:/,/homeserver\.db/s/^/#/' "$YAML_FILE" || true
+    fi
+    
+    # Idempotently add or update PostgreSQL config
+    if ! grep -q "name: psycopg2" "$YAML_FILE"; then
+      log_info "Appending PostgreSQL connection settings..."
+      cat <<EOF >> "$YAML_FILE"
 
 # PostgreSQL connection pool configured by Ketesa Installer
 database:
@@ -128,6 +137,39 @@ database:
 enable_registration: false
 allow_guest_access: false
 EOF
+    else
+      log_info "PostgreSQL settings already present. Updating existing parameters..."
+      # Use python inline to cleanly update existing yaml fields if python3 is available
+      if python3 -c "import yaml" 2>/dev/null; then
+        python3 -c "
+import yaml
+with open('$YAML_FILE', 'r') as f:
+    data = yaml.safe_load(f) or {}
+if 'database' in data:
+    data['database']['name'] = 'psycopg2'
+    if 'args' not in data['database']:
+        data['database']['args'] = {}
+    data['database']['args']['user'] = '$PG_USER'
+    data['database']['args']['password'] = '$PG_PASS'
+    data['database']['args']['database'] = '$PG_DB'
+    data['database']['args']['host'] = '$PG_HOST'
+    data['database']['args']['port'] = int('$PG_PORT')
+    data['database']['args']['cp_min'] = 5
+    data['database']['args']['cp_max'] = 10
+data['enable_registration'] = False
+data['allow_guest_access'] = False
+with open('$YAML_FILE', 'w') as f:
+    yaml.safe_dump(data, f)
+" || true
+      else
+        # Fallback to direct replacement
+        sed -i "s/user: .*/user: $PG_USER/" "$YAML_FILE" || true
+        sed -i "s/password: .*/password: $PG_PASS/" "$YAML_FILE" || true
+        sed -i "s/database: .*/database: $PG_DB/" "$YAML_FILE" || true
+        sed -i "s/host: .*/host: $PG_HOST/" "$YAML_FILE" || true
+        sed -i "s/port: .*/port: $PG_PORT/" "$YAML_FILE" || true
+      fi
+    fi
   fi
 
   systemctl enable matrix-synapse
@@ -140,7 +182,7 @@ fi
 # ------------------------------------------------------------------------------
 if [ "$INSTALL_ELEMENT" = "true" ]; then
   log_step "Deploying Element Web static frontend app..."
-  apt-get install -y nginx git tar
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nginx git tar
 
   WEBROOT="/var/www/element"
   mkdir -p "$WEBROOT"
@@ -187,7 +229,7 @@ fi
 # ------------------------------------------------------------------------------
 if [ "$INSTALL_COTURN" = "true" ]; then
   log_step "Installing & configuring Coturn voice/video STUN/TURN server..."
-  apt-get install -y coturn
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" coturn
 
   log_info "Configuring turnserver.conf..."
   COTURN_CONF="/etc/turnserver.conf"
@@ -236,7 +278,7 @@ mkdir -p "$CERT_DIR"
 
 if [ "$SSL_MODE" = "letsencrypt" ]; then
   log_info "Requesting genuine Let's Encrypt certificates..."
-  apt-get install -y certbot python3-certbot-nginx
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot python3-certbot-nginx
   
   certbot certonly --nginx \
     --non-interactive \
@@ -262,7 +304,7 @@ log_success "SSL/TLS keys generated successfully in $CERT_DIR."
 # ------------------------------------------------------------------------------
 if [ "$INSTALL_NGINX" = "true" ]; then
   log_step "Constructing Nginx virtual routing server configurations..."
-  apt-get install -y nginx
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nginx
 
   NGINX_CONF="/etc/nginx/sites-available/matrix-stack"
 

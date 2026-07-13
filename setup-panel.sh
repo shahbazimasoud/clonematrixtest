@@ -6,6 +6,10 @@
 
 set -eo pipefail
 
+# Make script completely non-interactive for package managers
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+
 # Colors for terminal output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -119,13 +123,13 @@ log_step "Updating local package list..."
 apt-get update -y
 
 log_step "Installing general system tools (git, curl, build-essential, python3, pip, venv)..."
-apt-get install -y git curl build-essential python3 python3-pip python3-venv python3-dev
+apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git curl build-essential python3 python3-pip python3-venv python3-dev
 
 # Node.js and NPM detection and installation
 if ! command -v node &> /dev/null || [ $(node -v | cut -d. -f1 | tr -d 'v') -lt 20 ]; then
   log_step "Installing Node.js 22 LTS repository (NodeSource)..."
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y nodejs
+  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs
 else
   log_info "Node.js is already installed ($(node -v)). Skipping installation."
 fi
@@ -168,7 +172,7 @@ if [ "$(pwd)" != "$INSTALL_DIR" ]; then
     if [ "$CLONE_SUCCESS" = false ]; then
       log_warning "Cloning via mirror failed. Attempt 3: Downloading repository ZIP directly..."
       # Install unzip if not present
-      apt-get install -y unzip || true
+      apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" unzip || true
       rm -f /tmp/matrix-manager.zip
       
       if curl -f -sSL --connect-timeout 20 --max-time 120 -o /tmp/matrix-manager.zip https://github.com/shahbazimasoud/matrix-manager/archive/refs/heads/master.zip || \
