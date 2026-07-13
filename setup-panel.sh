@@ -509,4 +509,5 @@ echo -e "${CYAN}================================================================
 echo -e "  ${YELLOW}Security Note:${NC} Store these login credentials in a secure place."
 echo -e "  To inspect panel server logs: ${BLUE}journalctl -u matrix-manager -f -n 50${NC}"
 echo -e "  To restart panel service:     ${BLUE}systemctl restart matrix-manager${NC}"
+echo -e "  To uninstall panel:           ${RED}curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/master/uninstall-panel.sh | sudo bash${NC}"
 echo -e "${CYAN}======================================================================${NC}"

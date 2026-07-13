@@ -50,7 +50,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || "spatial-matrix-secret-key-9988";
 const SANDBOX_DIR = path.join(process.cwd(), "sandbox");
 
