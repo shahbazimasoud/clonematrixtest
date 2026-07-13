@@ -138,6 +138,7 @@ export default function App() {
     { id: 'fail2ban', name: 'fail2ban', displayName: 'fail2ban Brute Protection', status: 'active' },
     { id: 'prometheus', name: 'prometheus', displayName: 'Prometheus Monitoring', status: 'inactive', port: 9090 }
   ]);
+  const [loadingServices, setLoadingServices] = useState<Record<string, 'start' | 'stop' | 'restart' | null>>({});
 
   // Configurations, user accounts, audit and backup states
   const [config, setConfig] = useState<MatrixConfig>({
@@ -551,6 +552,8 @@ export default function App() {
       return;
     }
 
+    setLoadingServices(prev => ({ ...prev, [serviceId]: action }));
+
     fetch('/api/services/action', {
       method: 'POST',
       headers: {
@@ -559,7 +562,14 @@ export default function App() {
       },
       body: JSON.stringify({ serviceId, action })
     })
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) {
+        return res.json().then(err => {
+          throw new Error(err.error || err.detail || 'Service control failed');
+        });
+      }
+      return res.json();
+    })
     .then(data => {
       if (data.success) {
         showToast('success', `Service ${serviceId} successfully executed ${action}.`);
@@ -574,6 +584,12 @@ export default function App() {
         }));
         fetchLogs();
       }
+    })
+    .catch(err => {
+      showToast('error', `Failed to execute ${action} on ${serviceId}: ${err.message}`);
+    })
+    .finally(() => {
+      setLoadingServices(prev => ({ ...prev, [serviceId]: null }));
     });
   };
 
@@ -848,24 +864,45 @@ export default function App() {
                             <div className="flex gap-2">
                               {svc.status === 'active' ? (
                                 <button
+                                  disabled={!!loadingServices[svc.id]}
                                   onClick={() => handleServiceAction(svc.id, 'stop')}
-                                  className="text-[10px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/15 text-red-400 px-2 py-1 rounded-lg font-bold"
+                                  className="text-[10px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/15 text-red-400 px-2 py-1 rounded-lg font-bold flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
                                 >
-                                  Stop
+                                  {loadingServices[svc.id] === 'stop' && (
+                                    <svg className="animate-spin h-3 w-3 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  )}
+                                  {loadingServices[svc.id] === 'stop' ? 'Stopping...' : 'Stop'}
                                 </button>
                               ) : (
                                 <button
+                                  disabled={!!loadingServices[svc.id]}
                                   onClick={() => handleServiceAction(svc.id, 'start')}
-                                  className="text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 text-emerald-400 px-2 py-1 rounded-lg font-bold"
+                                  className="text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 text-emerald-400 px-2 py-1 rounded-lg font-bold flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
                                 >
-                                  Start
+                                  {loadingServices[svc.id] === 'start' && (
+                                    <svg className="animate-spin h-3 w-3 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  )}
+                                  {loadingServices[svc.id] === 'start' ? 'Starting...' : 'Start'}
                                 </button>
                               )}
                               <button
+                                disabled={!!loadingServices[svc.id]}
                                 onClick={() => handleServiceAction(svc.id, 'restart')}
-                                className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 px-2 py-1 rounded-lg"
+                                className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 px-2 py-1 rounded-lg flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
                               >
-                                Restart
+                                {loadingServices[svc.id] === 'restart' && (
+                                  <svg className="animate-spin h-3 w-3 text-slate-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                )}
+                                {loadingServices[svc.id] === 'restart' ? 'Restarting...' : 'Restart'}
                               </button>
                             </div>
                           </div>

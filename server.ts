@@ -177,6 +177,25 @@ function getServicesStatus() {
   const hasSystemctl = fs.existsSync("/bin/systemctl") || fs.existsSync("/usr/bin/systemctl");
   const services: any[] = [];
   
+  let simulatedStates: any = {};
+  if (!hasSystemctl) {
+    try {
+      const db = readDb();
+      simulatedStates = db.servicesStatus || {
+        synapse: "active",
+        element: "active",
+        postgres: "active",
+        coturn: "active",
+        nginx: "active",
+        redis: "inactive",
+        fail2ban: "active",
+        prometheus: "inactive"
+      };
+    } catch (e) {
+      // ignore
+    }
+  }
+  
   for (const [clientId, systemdName] of Object.entries(serviceMap)) {
     let status = "inactive";
     if (hasSystemctl) {
@@ -188,10 +207,7 @@ function getServicesStatus() {
         // systemctl returns non-zero code for inactive
       }
     } else {
-      // Sandbox simulation
-      if (["synapse", "postgres", "nginx", "redis", "coturn", "element", "fail2ban"].includes(clientId)) {
-        status = "active";
-      }
+      status = simulatedStates[clientId] || "inactive";
     }
     services.push({ id: clientId, status });
   }
@@ -2127,19 +2143,66 @@ app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "S
   const { serviceId, action } = req.body;
   if (!serviceId || !action) return res.status(400).json({ error: "Service ID and action are required" });
 
+  const serviceMap: { [key: string]: string } = {
+    synapse: "matrix-synapse",
+    element: "nginx",
+    postgres: "postgresql",
+    coturn: "coturn",
+    nginx: "nginx",
+    redis: "redis-server",
+    fail2ban: "fail2ban",
+    prometheus: "prometheus"
+  };
+  const systemdName = serviceMap[serviceId];
+  if (!systemdName) return res.status(400).json({ error: "Unknown service" });
+
+  const hasSystemctl = fs.existsSync("/bin/systemctl") || fs.existsSync("/usr/bin/systemctl");
+  let success = true;
+  let errMsg = "";
+
   const db = readDb();
+
+  if (hasSystemctl) {
+    try {
+      execSync(`systemctl ${action} ${systemdName}`);
+    } catch (e: any) {
+      success = false;
+      errMsg = e.message || "Execution error";
+    }
+  } else {
+    // Save simulated state
+    if (!db.servicesStatus) {
+      db.servicesStatus = {
+        synapse: "active",
+        element: "active",
+        postgres: "active",
+        coturn: "active",
+        nginx: "active",
+        redis: "inactive",
+        fail2ban: "active",
+        prometheus: "inactive"
+      };
+    }
+    db.servicesStatus[serviceId] = (action === "start" || action === "restart") ? "active" : "inactive";
+  }
+
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
     timestamp: new Date().toISOString(),
     username: req.user.username,
     action: `${action.toUpperCase()} Service`,
     target: serviceId,
-    status: "success",
-    details: `Triggered service action ${action} on ${serviceId}.`
+    status: success ? "success" : "failed",
+    details: success 
+      ? `Triggered service action ${action} on ${serviceId}.`
+      : `Failed to trigger service action ${action} on ${serviceId}: ${errMsg}`
   });
   writeDb(db);
 
-  // Return success simulating service command completion
+  if (!success) {
+    return res.status(500).json({ error: `Failed to control service: ${errMsg}` });
+  }
+
   res.json({ success: true, message: `Service ${serviceId} executed ${action} successfully.` });
 });
 

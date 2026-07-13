@@ -1165,16 +1165,40 @@ def get_services_status_list() -> List[Dict[str, Any]]:
         "postgres": "postgresql",
         "coturn": "coturn",
         "nginx": "nginx",
-        "redis": "redis-server"
+        "redis": "redis-server",
+        "fail2ban": "fail2ban",
+        "prometheus": "prometheus"
     }
     
     is_sandbox = not os.path.exists("/bin/systemctl")
     services = []
     
+    simulated_states = {}
+    if is_sandbox:
+        try:
+            db = read_db()
+            simulated_states = db.get("servicesStatus", {
+                "synapse": "active",
+                "element": "active",
+                "postgres": "active",
+                "coturn": "active",
+                "nginx": "active",
+                "redis": "inactive",
+                "fail2ban": "active",
+                "prometheus": "inactive"
+            })
+        except Exception:
+            pass
+    
     for client_id, systemd_name in service_map.items():
-        name_title = "Matrix Synapse" if client_id == "synapse" else client_id.capitalize()
-        if client_id == "element": name_title = "Element Web Messenger"
-        if client_id == "coturn": name_title = "Coturn STUN/TURN"
+        name_title = "Matrix Synapse Server" if client_id == "synapse" else client_id.capitalize()
+        if client_id == "element": name_title = "Element Web client"
+        if client_id == "postgres": name_title = "PostgreSQL Database"
+        if client_id == "redis": name_title = "Redis Worker Queue"
+        if client_id == "coturn": name_title = "coturn TURN Server"
+        if client_id == "nginx": name_title = "Nginx Web Proxy"
+        if client_id == "fail2ban": name_title = "fail2ban Brute Protection"
+        if client_id == "prometheus": name_title = "Prometheus Monitoring"
         
         status = "inactive"
         if not is_sandbox:
@@ -1188,9 +1212,7 @@ def get_services_status_list() -> List[Dict[str, Any]]:
             except Exception:
                 pass
         else:
-            # Sandbox simulate
-            if client_id in ["synapse", "postgres", "nginx", "redis", "coturn", "element"]:
-                status = "active"
+            status = simulated_states.get(client_id, "active" if client_id not in ["redis", "prometheus"] else "inactive")
                 
         services.append({
             "id": client_id,
@@ -1211,7 +1233,7 @@ async def get_services_status(user: Dict[str, Any] = Depends(get_current_user)):
 
 @app.post("/api/services/action")
 async def service_action(payload: Dict[str, str], user: Dict[str, Any] = Depends(require_roles(["Owner", "Super Admin", "Moderator"]))):
-    service_id = payload.get("id")
+    service_id = payload.get("id") or payload.get("serviceId")
     action = payload.get("action") # start, stop, restart
     
     if not service_id or not action:
@@ -1226,7 +1248,9 @@ async def service_action(payload: Dict[str, str], user: Dict[str, Any] = Depends
         "postgres": "postgresql",
         "coturn": "coturn",
         "nginx": "nginx",
-        "redis": "redis-server"
+        "redis": "redis-server",
+        "fail2ban": "fail2ban",
+        "prometheus": "prometheus"
     }
     systemd_name = service_map.get(service_id)
     if not systemd_name:
@@ -1242,6 +1266,26 @@ async def service_action(payload: Dict[str, str], user: Dict[str, Any] = Depends
             if res.returncode != 0:
                 success = False
                 err_msg = res.stderr.strip()
+        except Exception as e:
+            success = False
+            err_msg = str(e)
+    else:
+        # Save simulated state
+        try:
+            db = read_db()
+            if "servicesStatus" not in db:
+                db["servicesStatus"] = {
+                    "synapse": "active",
+                    "element": "active",
+                    "postgres": "active",
+                    "coturn": "active",
+                    "nginx": "active",
+                    "redis": "inactive",
+                    "fail2ban": "active",
+                    "prometheus": "inactive"
+                }
+            db["servicesStatus"][service_id] = "active" if action in ["start", "restart"] else "inactive"
+            write_db(db)
         except Exception as e:
             success = False
             err_msg = str(e)
