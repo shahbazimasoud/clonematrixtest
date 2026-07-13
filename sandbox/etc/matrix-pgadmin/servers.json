@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Matrix Synapse DB",
+      "Group": "Servers",
+      "Host": "localhost",
+      "Port": 5432,
+      "MaintenanceDB": "synapse",
+      "Username": "synapse_user",
+      "SSLMode": "prefer"
+    }
+  }
+}

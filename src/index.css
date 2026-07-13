@@ -1,0 +1,305 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  
+  --color-spatial-bg: #030712;
+  --color-spatial-glass: rgba(15, 23, 42, 0.7);
+  --color-spatial-glass-hover: rgba(30, 41, 59, 0.85);
+  --color-spatial-glow-cyan: #6366f1;
+  --color-spatial-glow-purple: #8b5cf6;
+  --color-spatial-glow-amber: #f59e0b;
+}
+
+/* Light Theme Variables & Overrides */
+.theme-light {
+  --color-spatial-bg: #f1f5f9;
+  --color-spatial-glass: #ffffff;
+  --color-spatial-glass-hover: #ffffff;
+  --color-spatial-glow-cyan: #4f46e5;
+  --color-spatial-glow-purple: #7c3aed;
+  --color-spatial-glow-amber: #d97706;
+  color: #0f172a !important;
+  background-color: #f1f5f9 !important;
+}
+
+.theme-light .spatial-glass {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.04),
+    0 1px 3px rgba(0, 0, 0, 0.02) !important;
+}
+
+.theme-light .spatial-glass-hover:hover {
+  background: #ffffff !important;
+  border-color: #6366f1 !important;
+  box-shadow: 
+    0 20px 40px rgba(99, 102, 241, 0.08),
+    0 0 20px rgba(99, 102, 241, 0.04) !important;
+}
+
+.theme-light .ambient-glow-background {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.06) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.03) 0%, transparent 60%),
+    #f1f5f9 !important;
+}
+
+/* Light Theme Text Contrast Fixes */
+.theme-light h1,
+.theme-light h2,
+.theme-light h3,
+.theme-light h4,
+.theme-light h5,
+.theme-light h6,
+.theme-light .text-white,
+.theme-light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+.theme-light p,
+.theme-light span,
+.theme-light label {
+  color: #334155 !important;
+}
+
+.theme-light .text-slate-200 { color: #1e293b !important; }
+.theme-light .text-slate-300 { color: #334155 !important; }
+.theme-light .text-slate-400 { color: #475569 !important; }
+.theme-light .text-slate-500 { color: #64748b !important; }
+.theme-light .text-gray-400 { color: #475569 !important; }
+.theme-light .text-indigo-400 { color: #4f46e5 !important; }
+.theme-light .text-purple-400 { color: #7c3aed !important; }
+.theme-light .text-amber-400 { color: #b45309 !important; }
+.theme-light .text-emerald-400 { color: #047857 !important; }
+.theme-light .text-red-400 { color: #b91c1c !important; }
+
+/* Custom Glow Texts in Light Mode */
+.theme-light .glow-text-cyan,
+.theme-light .glow-text-purple {
+  text-shadow: none !important;
+  color: #0f172a !important;
+}
+
+/* Light Theme Elements & Borders */
+.theme-light .border-white\/5,
+.theme-light .border-white\/10,
+.theme-light .border-white\/20,
+.theme-light .border-slate-800 {
+  border-color: #cbd5e1 !important;
+}
+
+.theme-light .bg-black\/20 {
+  background-color: #e2e8f0 !important;
+}
+
+.theme-light .bg-black\/25 {
+  background-color: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.theme-light .bg-black\/40 {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.theme-light .bg-black\/40:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+}
+
+.theme-light .bg-white\/5 {
+  background-color: #e2e8f0 !important;
+  color: #1e293b !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.theme-light .bg-white\/5:hover {
+  background-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+/* Active buttons and tabs in Light Mode */
+.theme-light .bg-white\/10 {
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15) !important;
+}
+
+.theme-light .bg-white\/10 * {
+  color: #ffffff !important;
+}
+
+.theme-light input::placeholder {
+  color: #94a3b8 !important;
+}
+
+.theme-light select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.theme-light select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Custom indicator states in Light Mode */
+.theme-light .bg-emerald-500\/5 { background-color: rgba(16, 185, 129, 0.12) !important; }
+.theme-light .bg-indigo-500\/5 { background-color: rgba(99, 102, 241, 0.12) !important; }
+.theme-light .bg-purple-500\/5 { background-color: rgba(139, 92, 246, 0.12) !important; }
+.theme-light .bg-amber-500\/5 { background-color: rgba(245, 158, 11, 0.12) !important; }
+
+/* Bottom Dock - Floating Mac-like Bar (Force Elegant Dark Glass Profile) */
+.fixed.bottom-6 .spatial-glass {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 
+    0 25px 60px rgba(0, 0, 0, 0.45),
+    0 0 30px rgba(99, 102, 241, 0.15) !important;
+  backdrop-filter: blur(30px) !important;
+  -webkit-backdrop-filter: blur(30px) !important;
+}
+
+.fixed.bottom-6 button {
+  color: rgba(148, 163, 184, 0.9) !important;
+}
+
+.fixed.bottom-6 button:hover {
+  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.fixed.bottom-6 button[id^="nav-btn-"].bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.3) !important;
+}
+
+.fixed.bottom-6 button[id^="nav-btn-"].bg-white\/10 * {
+  color: #ffffff !important;
+}
+
+.fixed.bottom-6 span {
+  color: #ffffff !important;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-spatial-bg);
+    color: #e2e8f0;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+}
+
+/* Spatial Glassmorphism Profile */
+.spatial-glass {
+  background: var(--color-spatial-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+.spatial-glass-hover:hover {
+  background: var(--color-spatial-glass-hover);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 
+    0 15px 50px rgba(0, 0, 0, 0.7),
+    0 0 20px rgba(99, 102, 241, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12);
+}
+
+/* Spatial 3D hover layout depth */
+.spatial-depth-card {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
+  transform-style: preserve-3d;
+}
+
+.spatial-depth-card:hover {
+  transform: translateY(-6px) translateZ(10px) rotateX(1.5deg) rotateY(1.5deg);
+}
+
+/* Custom glow animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(99, 102, 241, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  }
+}
+
+.pulse-glow-cyan {
+  animation: pulseGlow 4s infinite ease-in-out;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 6s infinite ease-in-out;
+}
+
+/* Glowing text effects */
+.glow-text-cyan {
+  text-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
+
+.glow-text-purple {
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+}
+
+/* Matrix Binary Background */
+.ambient-glow-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.03) 0%, transparent 60%),
+    #020617;
+}
+
+/* Custom Scrollbar for Monospace Terminal */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

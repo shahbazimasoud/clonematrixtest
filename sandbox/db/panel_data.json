@@ -1,0 +1,180 @@
+{
+  "users": [
+    {
+      "id": "usr-1",
+      "username": "admin",
+      "email": "admin@company.local",
+      "passwordHash": "$2b$10$oX6HHsc3BDS.vH9aE/vzOek0uXuYFV22mSTl9OMk0QroZlkGqRIae",
+      "role": "Owner",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=admin"
+    },
+    {
+      "id": "usr-2",
+      "username": "masoud",
+      "email": "masoud.shahbazii@gmail.com",
+      "passwordHash": "$2b$10$QPE6t1v41RcL0A9LA5pGsu56Ti2he3s.k8AJWI8vOeJy.Or9iafBS",
+      "role": "Super Admin",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=masoud"
+    },
+    {
+      "id": "usr-3",
+      "username": "moderator",
+      "email": "mod@company.local",
+      "passwordHash": "$2b$10$TBrHPNVEOqZnBxTknN0MeO.6/DX864MJ8.2iFyuIV5M4Uw07Hackm",
+      "role": "Moderator",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=moderator"
+    },
+    {
+      "id": "usr-4",
+      "username": "viewer",
+      "email": "viewer@company.local",
+      "passwordHash": "$2b$10$kK4vi/4n6y0I3SLkVphmeuMbd3o7sY0TgSS8apm8SDXeI7U62Xwly",
+      "role": "Viewer",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=viewer"
+    }
+  ],
+  "matrixUsers": [
+    {
+      "mxid": "@masoud:matrix.company.local",
+      "isAdmin": true,
+      "isDeactivated": false
+    },
+    {
+      "mxid": "@alice:matrix.company.local",
+      "isAdmin": false,
+      "isDeactivated": false
+    },
+    {
+      "mxid": "@bob:matrix.company.local",
+      "isAdmin": false,
+      "isDeactivated": false
+    },
+    {
+      "mxid": "@welcome:matrix.company.local",
+      "isAdmin": false,
+      "isDeactivated": true
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "log-1783923562751",
+      "timestamp": "2026-07-13T06:19:22.751Z",
+      "username": "admin",
+      "action": "Save Configuration",
+      "target": "System",
+      "status": "success",
+      "details": "Modified server stack and Synapse homeserver parameters."
+    },
+    {
+      "id": "log-1783922630416",
+      "timestamp": "2026-07-13T06:03:50.416Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "install",
+      "status": "success",
+      "details": "Executed system command: install"
+    },
+    {
+      "id": "log-1783922625292",
+      "timestamp": "2026-07-13T06:03:45.292Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "backup",
+      "status": "success",
+      "details": "Executed system command: backup"
+    },
+    {
+      "id": "log-1783922624840",
+      "timestamp": "2026-07-13T06:03:44.840Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "workers_enable",
+      "status": "success",
+      "details": "Executed system command: workers_enable"
+    },
+    {
+      "id": "log-1783922624839",
+      "timestamp": "2026-07-13T06:03:44.839Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "workers_enable",
+      "status": "success",
+      "details": "Executed system command: workers_enable"
+    },
+    {
+      "id": "log-1783922624236",
+      "timestamp": "2026-07-13T06:03:44.236Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "e2ee_disable",
+      "status": "success",
+      "details": "Executed system command: e2ee_disable"
+    },
+    {
+      "id": "log-1",
+      "timestamp": "2026-07-13T03:42:25.034Z",
+      "username": "system",
+      "action": "Server Booted",
+      "target": "Server",
+      "status": "success",
+      "details": "Matrix Stack Manager Web Panel initiated successfully."
+    },
+    {
+      "id": "log-2",
+      "timestamp": "2026-07-13T04:42:25.035Z",
+      "username": "admin",
+      "action": "Configure LDAP",
+      "target": "LDAP Auth",
+      "status": "success",
+      "details": "Tested LDAP connection and saved changes."
+    }
+  ],
+  "backups": [
+    {
+      "id": "bak-1",
+      "filename": "matrix-backup-20260710-120000.tar.gz",
+      "size": "142.8 MB",
+      "timestamp": "2026-07-10T12:00:00.000Z",
+      "hasSSL": true
+    },
+    {
+      "id": "bak-2",
+      "filename": "matrix-backup-20260711-120000.tar.gz",
+      "size": "143.2 MB",
+      "timestamp": "2026-07-11T12:00:00.000Z",
+      "hasSSL": true
+    }
+  ],
+  "undoHistory": [
+    {
+      "id": "undo-1",
+      "timestamp": "2026-07-13T04:42:25.035Z",
+      "description": "Update LDAP Settings",
+      "files": [
+        "/etc/matrix-stack-ldap.conf",
+        "/etc/matrix-synapse/homeserver.yaml"
+      ]
+    }
+  ],
+  "ldapConfig": {
+    "enabled": false,
+    "uri": "ldap://ldap.company.local:389",
+    "base": "ou=users,dc=company,dc=local",
+    "mode": "search",
+    "start_tls": false,
+    "bind_dn": "cn=svc-matrix,dc=company,dc=local",
+    "uid_attr": "sAMAccountName",
+    "mail_attr": "mail",
+    "name_attr": "cn"
+  },
+  "workersConfig": {
+    "enabled": true,
+    "count": 2,
+    "federationSender": false,
+    "basePort": 8083
+  }
+}
