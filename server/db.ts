@@ -114,6 +114,9 @@ export function initializeSandbox() {
     "PROFILE_EDIT_AVATAR_ENABLED=true"
   ].join("\n"));
 
+  // matrix-stack-ldap.conf
+  readSandboxFile("/etc/matrix-stack-ldap.conf", "LDAP_URI=ldap://ldap.company.local:389\n");
+
   // homeserver.yaml
   readSandboxFile("/etc/matrix-synapse/homeserver.yaml", [
     "# Matrix Synapse Homeserver Configuration",

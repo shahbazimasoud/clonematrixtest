@@ -2087,6 +2087,17 @@ app.get("/api/matrix/config", authenticateToken, async (req, res) => {
     try {
       const yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
       ldap = parseLdapFromYaml(yaml);
+
+      // Overwrite/fallback from /etc/matrix-stack-ldap.conf
+      try {
+        const ldapConfRaw = await readConfigContent("/etc/matrix-stack-ldap.conf");
+        const uriMatch = ldapConfRaw.match(/^LDAP_URI=(.+)$/m);
+        if (uriMatch) {
+          ldap.uri = uriMatch[1].trim();
+        }
+      } catch (err) {
+        console.warn("Could not read or parse /etc/matrix-stack-ldap.conf", err);
+      }
     } catch (err) {
       console.error("Error reading and parsing remote LDAP configuration:", err);
     }
@@ -2193,11 +2204,13 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
 
   // Backup existing config first so we can rollback if validation fails
   let backupStackConf = "";
+  let backupStackLdapConf = "";
   let backupYaml = "";
   let backupElementJson = "";
 
   try {
     backupStackConf = await readConfigContent("/etc/matrix-stack.conf");
+    backupStackLdapConf = await readConfigContent("/etc/matrix-stack-ldap.conf");
     backupYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
     backupElementJson = await readConfigContent("/var/www/element/config.json", "{}");
   } catch (err) {
@@ -2241,6 +2254,10 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
     }
 
     if (ldap) {
+      if (ldap.uri) {
+        await writeConfigContent("/etc/matrix-stack-ldap.conf", `LDAP_URI=${ldap.uri}\n`);
+      }
+
       let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
       if (!yaml.includes("modules:")) {
         yaml += "\nmodules: []";
@@ -2319,6 +2336,7 @@ fi
     if (!configValid) {
       // Rollback config files
       if (backupStackConf) await writeConfigContent("/etc/matrix-stack.conf", backupStackConf);
+      if (backupStackLdapConf) await writeConfigContent("/etc/matrix-stack-ldap.conf", backupStackLdapConf);
       if (backupYaml) await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", backupYaml);
       if (backupElementJson) await writeConfigContent("/var/www/element/config.json", backupElementJson);
 
@@ -2358,6 +2376,7 @@ fi
   } catch (saveErr: any) {
     // Rollback config files on unhandled error
     if (backupStackConf) await writeConfigContent("/etc/matrix-stack.conf", backupStackConf);
+    if (backupStackLdapConf) await writeConfigContent("/etc/matrix-stack-ldap.conf", backupStackLdapConf);
     if (backupYaml) await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", backupYaml);
     if (backupElementJson) await writeConfigContent("/var/www/element/config.json", backupElementJson);
 
@@ -2499,8 +2518,17 @@ app.get("/api/matrix/ldap/status", authenticateToken, async (req, res) => {
       ldapEnabled = parsed.enabled;
       ldapUri = parsed.uri;
       ldapBase = parsed.base;
+
+      // Read LDAP_URI from /etc/matrix-stack-ldap.conf
+      try {
+        const ldapConfRaw = await readConfigContent("/etc/matrix-stack-ldap.conf");
+        const uriMatch = ldapConfRaw.match(/^LDAP_URI=(.+)$/m);
+        if (uriMatch) {
+          ldapUri = uriMatch[1].trim();
+        }
+      } catch (err) {}
     } catch (e) {
-      console.warn("Could not read homeserver.yaml for status parsing:", e);
+      console.warn("Could not read homeserver.yaml/matrix-stack-ldap.conf for status parsing:", e);
     }
 
     // 2. Get service status
