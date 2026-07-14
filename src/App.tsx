@@ -182,6 +182,23 @@ export default function App() {
   // Connection Profile states
   const [connections, setConnections] = useState<any[]>([]);
   const [activeConnection, setActiveConnection] = useState<any>({ id: 'local', name: 'Local Server (This Machine)', host: 'localhost', isActive: true });
+  const [isRefreshingStats, setIsRefreshingStats] = useState(false);
+
+  const handleRefreshStats = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      setIsRefreshingStats(true);
+      wsRef.current.send(JSON.stringify({ type: 'request_metrics' }));
+      fetchMatrixUsers();
+      fetchLogs();
+      fetchConfig();
+      setTimeout(() => {
+        setIsRefreshingStats(false);
+        showToast('success', 'Dashboard stats and connection telemetry refreshed successfully!');
+      }, 1000);
+    } else {
+      showToast('error', 'WebSocket is currently disconnected. Please wait.');
+    }
+  };
 
   // Navigation and terminal/command execution states
   const [activeView, setActiveView] = useState('dashboard');
@@ -869,13 +886,24 @@ export default function App() {
                         </div>
                       </div>
                       
-                      <button
-                        onClick={() => setActiveView('connections')}
-                        className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <span>Switch Profile</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                        <button
+                          onClick={handleRefreshStats}
+                          disabled={isRefreshingStats}
+                          className="px-4 py-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 hover:bg-teal-500/20 text-xs font-semibold text-teal-300 hover:text-white transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingStats ? 'animate-spin' : ''}`} />
+                          <span>{isRefreshingStats ? 'Refreshing...' : 'Refresh Stats'}</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => setActiveView('connections')}
+                          className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <span>Switch Profile</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1004,24 +1032,36 @@ export default function App() {
                       <div className="space-y-4 text-xs font-mono">
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Homeserver URL:</span>
-                          <span className="text-indigo-400 font-semibold">https://{config?.HS_DOMAIN || 'matrix.company.local'}</span>
+                          <span className="text-indigo-400 font-semibold">https://{config?.HS_DOMAIN || (activeConnection?.id !== 'local' ? `matrix.${activeConnection?.host}` : 'matrix.company.local')}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Element App:</span>
-                          <span className="text-purple-400 font-semibold">https://{config?.ELEMENT_DOMAIN || 'chat.company.local'}</span>
+                          <span className="text-purple-400 font-semibold">https://{config?.ELEMENT_DOMAIN || (activeConnection?.id !== 'local' ? `chat.${activeConnection?.host}` : 'chat.company.local')}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Base Domain:</span>
-                          <span className="text-slate-200">{config?.BASE_DOMAIN || 'company.local'}</span>
+                          <span className="text-slate-200">{config?.BASE_DOMAIN || (activeConnection?.id !== 'local' ? activeConnection?.host : 'company.local')}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">Server Public IP:</span>
-                          <span className="text-slate-200">{config?.PUBLIC_IP || '127.0.0.1'}</span>
+                          <span className="text-slate-200">{config?.PUBLIC_IP || (activeConnection?.id !== 'local' ? activeConnection?.host : '127.0.0.1')}</span>
                         </div>
                         <div className="flex justify-between border-b border-white/5 pb-2">
                           <span className="text-slate-400">SSL Profile:</span>
                           <span className="text-amber-400 font-semibold">{(config?.SSL_MODE || 'selfsigned').toUpperCase()}</span>
                         </div>
+                        {activeConnection?.id !== 'local' && (
+                          <>
+                            <div className="flex justify-between border-b border-white/5 pb-2">
+                              <span className="text-slate-400">SSH Tunnel:</span>
+                              <span className="text-teal-400 font-semibold">{activeConnection?.username}@{activeConnection?.host}:{activeConnection?.port}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/5 pb-2">
+                              <span className="text-slate-400">Postgres Target:</span>
+                              <span className="text-emerald-400 font-semibold">{activeConnection?.dbUser}@{activeConnection?.dbHost}:{activeConnection?.dbPort}/{activeConnection?.dbName}</span>
+                            </div>
+                          </>
+                        )}
                         <div className="flex justify-between">
                           <span className="text-slate-400">LDAP Bridging:</span>
                           <span className={ldap?.enabled ? "text-emerald-400 font-semibold" : "text-slate-500"}>

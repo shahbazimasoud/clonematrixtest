@@ -19,7 +19,8 @@ import {
   Activity,
   ArrowRight,
   Sparkles,
-  Lock
+  Lock,
+  Edit
 } from 'lucide-react';
 
 export interface ConnectionProfile {
@@ -84,6 +85,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
   const [homeserverLogPath, setHomeserverLogPath] = useState('/var/log/matrix-synapse/homeserver.log');
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const fetchProfiles = () => {
     if (!authToken || authToken === 'null' || authToken === 'undefined') return;
@@ -137,8 +139,11 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
       homeserverLogPath
     };
 
-    fetch('/api/connections', {
-      method: 'POST',
+    const url = editingId ? `/api/connections/${editingId}` : '/api/connections';
+    const method = editingId ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method: method,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`
@@ -146,18 +151,41 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
       body: JSON.stringify(payload)
     })
     .then(res => {
-      if (!res.ok) throw new Error("Failed to create connection profile");
+      if (!res.ok) throw new Error(editingId ? "Failed to update connection profile" : "Failed to create connection profile");
       return res.json();
     })
     .then(() => {
-      showToast('success', 'Remote Connection Profile created successfully!');
+      showToast('success', editingId ? 'Remote Connection Profile updated successfully!' : 'Remote Connection Profile created successfully!');
       setShowForm(false);
       resetForm();
       fetchProfiles();
+      onProfileChanged();
     })
     .catch(err => {
       showToast('error', err.message);
     });
+  };
+
+  const handleEditProfile = (profile: ConnectionProfile, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(profile.id);
+    setName(profile.name || '');
+    setHost(profile.host || '');
+    setPort(profile.port || 22);
+    setUsername(profile.username || 'root');
+    setAuthType(profile.authType || 'password');
+    setPassword(profile.password || '');
+    setPrivateKey(profile.privateKey || '');
+    setDbHost(profile.dbHost || 'localhost');
+    setDbPort(profile.dbPort || 5432);
+    setDbName(profile.dbName || 'synapse');
+    setDbUser(profile.dbUser || 'synapse_user');
+    setDbPass(profile.dbPass || '');
+    setConfigPath(profile.configPath || '/etc/matrix-stack.conf');
+    setHomeserverYamlPath(profile.homeserverYamlPath || '/etc/matrix-synapse/homeserver.yaml');
+    setElementConfigPath(profile.elementConfigPath || '/var/www/element/config.json');
+    setHomeserverLogPath(profile.homeserverLogPath || '/var/log/matrix-synapse/homeserver.log');
+    setShowForm(true);
   };
 
   const handleSelectProfile = (id: string) => {
@@ -277,6 +305,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
     setHomeserverYamlPath('/etc/matrix-synapse/homeserver.yaml');
     setElementConfigPath('/var/www/element/config.json');
     setHomeserverLogPath('/var/log/matrix-synapse/homeserver.log');
+    setEditingId(null);
   };
 
   return (
@@ -436,104 +465,104 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
             </button>
 
             {showAdvanced && (
-              <div className="space-y-6 mt-4 p-4 rounded-2xl bg-white/5 border border-white/5">
+              <div className="space-y-6 mt-4 p-5 rounded-2xl bg-white/[0.03] border border-white/10 shadow-2xl backdrop-blur-md">
                 {/* Remote PostgreSQL Database parameters */}
                 <div>
-                  <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
-                    <Database className="w-4 h-4 text-indigo-400" />
+                  <h4 className="text-sm font-bold text-teal-400 flex items-center gap-2 mb-4">
+                    <Database className="w-4 h-4 text-teal-400" />
                     Remote PostgreSQL Parameters
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">DB Host (Local to Remote VPS)</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">DB Host (Local to Remote VPS)</label>
                       <input
                         type="text"
                         value={dbHost}
                         onChange={e => setDbHost(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">DB Port</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">DB Port</label>
                       <input
                         type="number"
                         value={dbPort}
                         onChange={e => setDbPort(parseInt(e.target.value) || 5432)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">DB Name</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">DB Name</label>
                       <input
                         type="text"
                         value={dbName}
                         onChange={e => setDbName(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">DB Username</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">DB Username</label>
                       <input
                         type="text"
                         value={dbUser}
                         onChange={e => setDbUser(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-[11px] text-slate-400 mb-1.5">DB Password</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">DB Password</label>
                       <input
                         type="password"
                         placeholder="••••••••••••"
                         value={dbPass}
                         onChange={e => setDbPass(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* Custom system files paths */}
-                <div className="border-t border-white/5 pt-4">
-                  <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
-                    <Terminal className="w-4 h-4 text-emerald-400" />
+                <div className="border-t border-white/10 pt-5">
+                  <h4 className="text-sm font-bold text-teal-400 flex items-center gap-2 mb-4">
+                    <Terminal className="w-4 h-4 text-teal-400" />
                     Configuration File Paths (On Remote)
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">Matrix Stack Config Path</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">Matrix Stack Config Path</label>
                       <input
                         type="text"
                         value={configPath}
                         onChange={e => setConfigPath(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">Homeserver YAML Path</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">Homeserver YAML Path</label>
                       <input
                         type="text"
                         value={homeserverYamlPath}
                         onChange={e => setHomeserverYamlPath(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">Element Client Config Path</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">Element Client Config Path</label>
                       <input
                         type="text"
                         value={elementConfigPath}
                         onChange={e => setElementConfigPath(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1.5">Synapse Log File Path</label>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">Synapse Log File Path</label>
                       <input
                         type="text"
                         value={homeserverLogPath}
                         onChange={e => setHomeserverLogPath(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
                       />
                     </div>
                   </div>
@@ -610,8 +639,9 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         {isLocal ? <Server className="w-6 h-6" /> : <Globe className="w-6 h-6" />}
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-white group-hover:text-teal-400 transition-colors">
+                        <h3 className="text-lg font-bold text-white group-hover:text-teal-400 transition-colors flex items-center gap-2">
                           {profile.name}
+                          {isActive && <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-500/10 animate-pulse" />}
                         </h3>
                         <p className="text-xs font-mono text-slate-400 mt-1">
                           {isLocal ? 'local-loopback' : `${profile.username}@${profile.host}:${profile.port}`}
@@ -655,6 +685,16 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin text-teal-400' : ''}`} />
                           {isTesting ? 'Testing...' : 'Test Sync'}
+                        </button>
+                      )}
+
+                       {!isLocal && (
+                        <button
+                          onClick={(e) => handleEditProfile(profile, e)}
+                          className="p-1.5 rounded-lg hover:bg-teal-500/10 text-slate-400 hover:text-teal-400 transition-colors"
+                          title="Edit Connection"
+                        >
+                          <Edit className="w-4 h-4" />
                         </button>
                       )}
 

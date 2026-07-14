@@ -353,10 +353,22 @@ function getServicesStatus() {
 
 async function getRemoteCPUUsage(config: ConnectionProfile): Promise<number> {
   try {
-    const cmd = "top -bn1 | grep 'Cpu(s)' | awk '{print $2 + $4}' || cat /proc/loadavg | awk '{print $1 * 20}'";
-    const res = await executeSSHCommand(config, cmd);
-    const parsed = parseFloat(res.trim());
-    return isNaN(parsed) ? 12.5 : parseFloat(parsed.toFixed(1));
+    // Read CPU load percentage from /proc/stat or top or /proc/loadavg
+    const cmd = "grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print usage}'";
+    let res = await executeSSHCommand(config, cmd);
+    let parsed = parseFloat(res.trim());
+    if (isNaN(parsed) || parsed <= 0 || parsed > 100) {
+      // Fallback 1: loadavg
+      const loadRes = await executeSSHCommand(config, "cat /proc/loadavg");
+      const load = parseFloat(loadRes.trim().split(" ")[0]);
+      parsed = load * 15; // approximate load to percentage
+    }
+    if (isNaN(parsed) || parsed <= 0 || parsed > 100) {
+      // Fallback 2: top
+      const topRes = await executeSSHCommand(config, "top -bn1 | grep -i 'cpu' | head -1 | awk '{print $2+$4}'");
+      parsed = parseFloat(topRes.trim());
+    }
+    return isNaN(parsed) || parsed <= 0 ? 12.5 : parseFloat(Math.min(parsed, 100).toFixed(1));
   } catch (e) {
     return 15.2;
   }
@@ -364,20 +376,37 @@ async function getRemoteCPUUsage(config: ConnectionProfile): Promise<number> {
 
 async function getRemoteMemoryUsage(config: ConnectionProfile) {
   try {
-    const cmd = "free -m | grep Mem";
+    const cmd = "awk '/MemTotal/ {t=$2} /MemAvailable/ {a=$2} END {print t, a}' /proc/meminfo";
     const res = await executeSSHCommand(config, cmd);
-    const parts = res.replace(/\s+/g, " ").trim().split(" ");
-    const total = parseFloat(parts[1]); // in MB
-    const free = parseFloat(parts[3]) + parseFloat(parts[5]); // free + cache in MB
-    const used = total - free;
-    const pct = parseFloat(((used / total) * 100).toFixed(1));
+    const parts = res.trim().split(" ");
+    const totalKB = parseFloat(parts[0]);
+    const availKB = parseFloat(parts[1]);
+    if (isNaN(totalKB) || isNaN(availKB)) throw new Error("Fallback to free");
+    const usedKB = totalKB - availKB;
+    const pct = parseFloat(((usedKB / totalKB) * 100).toFixed(1));
     return {
       pct: isNaN(pct) ? 45.0 : pct,
-      total: isNaN(total) ? 8.0 : parseFloat((total / 1024).toFixed(1)),
-      free: isNaN(free) ? 4.0 : parseFloat((free / 1024).toFixed(1))
+      total: isNaN(totalKB) ? 8.0 : parseFloat((totalKB / 1024 / 1024).toFixed(1)),
+      free: isNaN(availKB) ? 4.0 : parseFloat((availKB / 1024 / 1024).toFixed(1))
     };
   } catch (e) {
-    return { pct: 45.0, total: 8.0, free: 4.4 };
+    // Fallback using free -m
+    try {
+      const cmd = "free -m | grep Mem";
+      const res = await executeSSHCommand(config, cmd);
+      const parts = res.replace(/\s+/g, " ").trim().split(" ");
+      const total = parseFloat(parts[1]); // in MB
+      const free = parseFloat(parts[3]) + (parseFloat(parts[5]) || 0); // free + cache in MB
+      const used = total - free;
+      const pct = parseFloat(((used / total) * 100).toFixed(1));
+      return {
+        pct: isNaN(pct) ? 45.0 : pct,
+        total: isNaN(total) ? 8.0 : parseFloat((total / 1024).toFixed(1)),
+        free: isNaN(free) ? 4.0 : parseFloat((free / 1024).toFixed(1))
+      };
+    } catch (err) {
+      return { pct: 45.0, total: 8.0, free: 4.4 };
+    }
   }
 }
 
@@ -386,6 +415,22 @@ async function getRemoteDiskUsage(config: ConnectionProfile) {
     const cmd = "df -k / | tail -1";
     const res = await executeSSHCommand(config, cmd);
     const parts = res.replace(/\s+/g, " ").trim().split(" ");
+    if (parts.length < 4) {
+      // Try parsing with awk to get exactly columns $2, $3, $4
+      const cmdAwk = "df -k / | tail -1 | awk '{print $2, $3, $4, $5}'";
+      const resAwk = await executeSSHCommand(config, cmdAwk);
+      const partsAwk = resAwk.trim().split(" ");
+      const totalKB = parseInt(partsAwk[0]);
+      const usedKB = parseInt(partsAwk[1]);
+      const freeKB = parseInt(partsAwk[2]);
+      const pct = parseFloat(partsAwk[3].replace("%", ""));
+      return {
+        pct: isNaN(pct) ? 35.0 : pct,
+        total: isNaN(totalKB) ? 80.0 : parseFloat((totalKB / 1024 / 1024).toFixed(1)),
+        free: isNaN(freeKB) ? 50.0 : parseFloat((freeKB / 1024 / 1024).toFixed(1))
+      };
+    }
+    
     const totalKB = parseInt(parts[1]);
     const usedKB = parseInt(parts[2]);
     const freeKB = parseInt(parts[3]);
@@ -2200,7 +2245,8 @@ app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "S
     } else {
       // Remote SSH command execution
       try {
-        await executeSSHCommand(activeConn, `sudo systemctl ${action} ${systemdName}`);
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        await executeSSHCommand(activeConn, `${sudoPrefix}systemctl ${action} ${systemdName}`);
       } catch (err: any) {
         success = false;
         errMsg = err.message || "SSH command failed";
@@ -2322,9 +2368,15 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       // Query active registered user count from Postgres if available
       let activeUsers = 1;
       try {
-        const rows = await queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated = 0 OR deactivated IS NULL");
-        if (rows.length > 0) {
-          activeUsers = parseInt(rows[0].count);
+        let rows = [];
+        try {
+          rows = await queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated = 0 OR deactivated IS NULL");
+        } catch (dbErr) {
+          // If deactivated = 0 fails due to boolean type, try deactivated IS NOT TRUE
+          rows = await queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated IS NOT TRUE");
+        }
+        if (rows && rows.length > 0) {
+          activeUsers = parseInt(rows[0].count || rows[0].coalesce || "1");
         }
       } catch (e) {
         // Fallback: simple varying counts from virtual DB or random
@@ -2388,6 +2440,11 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
       if (!isAuthorized) {
         ws.send(JSON.stringify({ type: "error", message: "Connection is unauthorized" }));
+        return;
+      }
+
+      if (data.type === "request_metrics") {
+        sendMetrics();
         return;
       }
 
