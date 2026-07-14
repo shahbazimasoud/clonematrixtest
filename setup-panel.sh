@@ -434,6 +434,18 @@ systemctl daemon-reload
 systemctl enable matrix-manager
 systemctl restart matrix-manager
 
+# Ensure firewall allows the custom port if ufw or firewalld is active
+if command -v ufw &>/dev/null && ufw status | grep -q "active"; then
+  log_info "UFW firewall is active. Allowing TCP traffic on port $PANEL_PORT..."
+  ufw allow "$PANEL_PORT/tcp" || log_warning "Failed to configure UFW rule for port $PANEL_PORT."
+fi
+
+if command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
+  log_info "Firewalld is active. Allowing TCP traffic on port $PANEL_PORT..."
+  firewall-cmd --permanent --add-port="$PANEL_PORT/tcp" || true
+  firewall-cmd --reload || true
+fi
+
 # ------------------------------------------------------------------------------
 # 5.5 Nginx Routing Integration & Conflict Resolution
 # ------------------------------------------------------------------------------

@@ -50,7 +50,7 @@ try:
 except ImportError:
     HAS_SQLITE = False
 
-PORT = 3000
+PORT = int(os.environ.get("PORT", 3000))
 JWT_SECRET = os.environ.get("JWT_SECRET", "spatial-matrix-secret-key-9988")
 SANDBOX_DIR = os.path.join(os.getcwd(), "sandbox")
 

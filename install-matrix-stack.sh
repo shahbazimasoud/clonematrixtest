@@ -388,6 +388,40 @@ EOF
   log_success "Nginx proxy configurations loaded & running."
 fi
 
+# Ensure firewall allows standard Matrix and Nginx services
+if command -v ufw &>/dev/null && ufw status | grep -q "active"; then
+  log_info "UFW firewall is active. Allowing standard HTTP, HTTPS, coturn, and Synapse federation ports..."
+  ufw allow 80/tcp || true
+  ufw allow 443/tcp || true
+  ufw allow 8008/tcp || true
+  ufw allow 8448/tcp || true
+  ufw allow 3478/tcp || true
+  ufw allow 3478/udp || true
+  ufw allow 5349/tcp || true
+  ufw allow 5349/udp || true
+  ufw allow 49152:65535/udp || true
+  if [ "$PG_HOST" != "localhost" ] && [ "$PG_HOST" != "127.0.0.1" ]; then
+    ufw allow "$PG_PORT/tcp" || true
+  fi
+fi
+
+if command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
+  log_info "Firewalld is active. Allowing standard HTTP, HTTPS, coturn, and Synapse federation ports..."
+  firewall-cmd --permanent --add-service=http || true
+  firewall-cmd --permanent --add-service=https || true
+  firewall-cmd --permanent --add-port=8008/tcp || true
+  firewall-cmd --permanent --add-port=8448/tcp || true
+  firewall-cmd --permanent --add-port=3478/tcp || true
+  firewall-cmd --permanent --add-port=3478/udp || true
+  firewall-cmd --permanent --add-port=5349/tcp || true
+  firewall-cmd --permanent --add-port=5349/udp || true
+  firewall-cmd --permanent --add-port=49152-65535/udp || true
+  if [ "$PG_HOST" != "localhost" ] && [ "$PG_HOST" != "127.0.0.1" ]; then
+    firewall-cmd --permanent --add-port="$PG_PORT/tcp" || true
+  fi
+  firewall-cmd --reload || true
+fi
+
 # ------------------------------------------------------------------------------
 # 7. Complete and Save Configuration
 # ------------------------------------------------------------------------------

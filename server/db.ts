@@ -296,11 +296,80 @@ export function initializeSandbox() {
 }
 
 export function readDb(): any {
-  const content = readSandboxFile("/db/panel_data.json", "{}");
-  const data = JSON.parse(content);
+  let content = "{}";
+  try {
+    content = readSandboxFile("/db/panel_data.json", "{}");
+    if (!content || !content.trim()) {
+      content = "{}";
+    }
+  } catch (err) {
+    console.error("Failed to read panel_data.json, using default seed template:", err);
+    content = "{}";
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(content);
+  } catch (err) {
+    console.error("Failed to parse panel_data.json JSON, resetting to empty state:", err);
+    data = {};
+  }
   
   let updated = false;
-  if (!data.matrixRooms) {
+
+  if (!data.users || !Array.isArray(data.users)) {
+    data.users = [
+      {
+        id: "usr-1",
+        username: "admin",
+        email: "admin@company.local",
+        passwordHash: "$2b$10$oX6HHsc3BDS.vH9aE/vzOek0uXuYFV22mSTl9OMk0QroZlkGqRIae",
+        role: "Owner",
+        isActive: true,
+        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=admin"
+      },
+      {
+        id: "usr-2",
+        username: "masoud",
+        email: "masoud.shahbazii@gmail.com",
+        passwordHash: "$2b$10$QPE6t1v41RcL0A9LA5pGsu56Ti2he3s.k8AJWI8vOeJy.Or9iafBS",
+        role: "Super Admin",
+        isActive: true,
+        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=masoud"
+      },
+      {
+        id: "usr-3",
+        username: "moderator",
+        email: "mod@company.local",
+        passwordHash: "$2b$10$TBrHPNVEOqZnBxTknN0MeO.6/DX864MJ8.2iFyuIV5M4Uw07Hackm",
+        role: "Moderator",
+        isActive: true,
+        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=moderator"
+      },
+      {
+        id: "usr-4",
+        username: "viewer",
+        email: "viewer@company.local",
+        passwordHash: "$2b$10$kK4vi/4n6y0I3SLkVphmeuMbd3o7sY0TgSS8apm8SDXeI7U62Xwly",
+        role: "Viewer",
+        isActive: true,
+        avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=viewer"
+      }
+    ];
+    updated = true;
+  }
+
+  if (!data.matrixUsers || !Array.isArray(data.matrixUsers)) {
+    data.matrixUsers = [
+      { mxid: "@masoud:matrix.company.local", isAdmin: true, isDeactivated: false },
+      { mxid: "@alice:matrix.company.local", isAdmin: false, isDeactivated: false },
+      { mxid: "@bob:matrix.company.local", isAdmin: false, isDeactivated: false },
+      { mxid: "@welcome:matrix.company.local", isAdmin: false, isDeactivated: true }
+    ];
+    updated = true;
+  }
+
+  if (!data.matrixRooms || !Array.isArray(data.matrixRooms)) {
     data.matrixRooms = [
       {
         id: "!room1:matrix.company.local",
@@ -323,21 +392,21 @@ export function readDb(): any {
     updated = true;
   }
   
-  if (!data.matrixMedia) {
+  if (!data.matrixMedia || !Array.isArray(data.matrixMedia)) {
     data.matrixMedia = [
       { id: "mxc://matrix.company.local/img9988ff", fileName: "corporate_logo.png", fileSize: 1542000, mimeType: "image/png", uploadedBy: "@masoud:matrix.company.local", uploadedAt: "2026-07-12T12:10:00.000Z", isCached: false }
     ];
     updated = true;
   }
   
-  if (!data.registrationTokens) {
+  if (!data.registrationTokens || !Array.isArray(data.registrationTokens)) {
     data.registrationTokens = [
       { token: "ORG-STAFF-PROMO-2026", usesAllowed: 50, usesCount: 12, expiryTime: "2026-12-31T23:59:59.000Z", isActive: true }
     ];
     updated = true;
   }
 
-  if (!data.connections) {
+  if (!data.connections || !Array.isArray(data.connections)) {
     data.connections = [
       {
         id: "local",
@@ -352,8 +421,60 @@ export function readDb(): any {
     updated = true;
   }
 
+  if (!data.auditLogs || !Array.isArray(data.auditLogs)) {
+    data.auditLogs = [
+      { id: "log-1", timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), username: "system", action: "Server Booted", target: "Server", status: "success", details: "Matrix Stack Manager Web Panel initiated successfully." },
+      { id: "log-2", timestamp: new Date(Date.now() - 3600000).toISOString(), username: "admin", action: "Configure LDAP", target: "LDAP Auth", status: "success", details: "Tested LDAP connection and saved changes." }
+    ];
+    updated = true;
+  }
+
+  if (!data.backups || !Array.isArray(data.backups)) {
+    data.backups = [
+      { id: "bak-1", filename: "matrix-backup-20260710-120000.tar.gz", size: "142.8 MB", timestamp: "2026-07-10T12:00:00.000Z", hasSSL: true },
+      { id: "bak-2", filename: "matrix-backup-20260711-120000.tar.gz", size: "143.2 MB", timestamp: "2026-07-11T12:00:00.000Z", hasSSL: true }
+    ];
+    updated = true;
+  }
+
+  if (!data.undoHistory || !Array.isArray(data.undoHistory)) {
+    data.undoHistory = [
+      { id: "undo-1", timestamp: new Date(Date.now() - 3600000).toISOString(), description: "Update LDAP Settings", files: ["/etc/matrix-stack-ldap.conf", "/etc/matrix-synapse/homeserver.yaml"] }
+    ];
+    updated = true;
+  }
+
+  if (!data.ldapConfig || typeof data.ldapConfig !== "object") {
+    data.ldapConfig = {
+      enabled: false,
+      uri: "ldap://ldap.company.local:389",
+      base: "ou=users,dc=company,dc=local",
+      mode: "search",
+      start_tls: false,
+      bind_dn: "cn=svc-matrix,dc=company,dc=local",
+      uid_attr: "sAMAccountName",
+      mail_attr: "mail",
+      name_attr: "cn"
+    };
+    updated = true;
+  }
+
+  if (!data.workersConfig || typeof data.workersConfig !== "object") {
+    data.workersConfig = {
+      enabled: false,
+      count: 2,
+      federationSender: false,
+      basePort: 8083
+    };
+    updated = true;
+  }
+
   if (updated) {
-    writeSandboxFile("/db/panel_data.json", JSON.stringify(data, null, 2));
+    try {
+      writeSandboxFile("/db/panel_data.json", JSON.stringify(data, null, 2));
+    } catch (err) {
+      console.error("Failed to persist updated db schema state:", err);
+    }
   }
 
   return data;

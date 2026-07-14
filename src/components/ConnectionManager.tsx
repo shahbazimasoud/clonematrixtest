@@ -86,6 +86,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const fetchProfiles = () => {
+    if (!authToken || authToken === 'null' || authToken === 'undefined') return;
     setIsLoading(true);
     fetch('/api/connections', {
       headers: { 'Authorization': `Bearer ${authToken}` }
@@ -105,7 +106,9 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
   };
 
   useEffect(() => {
-    fetchProfiles();
+    if (authToken && authToken !== 'null' && authToken !== 'undefined') {
+      fetchProfiles();
+    }
   }, [authToken]);
 
   const handleCreateProfile = (e: React.FormEvent) => {

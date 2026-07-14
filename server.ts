@@ -510,29 +510,34 @@ app.get("/api/auth/verify", authenticateToken, (req, res) => {
 
 // Connection Profiles management
 app.get("/api/connections", authenticateToken, (req, res) => {
-  const db = readDb();
-  if (!db.connections) {
-    db.connections = [
-      {
-        id: "local",
-        name: "Local Server (This Machine)",
-        host: "localhost",
-        port: 22,
-        username: "",
-        authType: "key",
-        isActive: true
-      }
-    ];
-    writeDb(db);
+  try {
+    const db = readDb();
+    if (!db.connections || !Array.isArray(db.connections)) {
+      db.connections = [
+        {
+          id: "local",
+          name: "Local Server (This Machine)",
+          host: "localhost",
+          port: 22,
+          username: "",
+          authType: "key",
+          isActive: true
+        }
+      ];
+      writeDb(db);
+    }
+    res.json(db.connections);
+  } catch (error: any) {
+    console.error("Error fetching connection profiles:", error);
+    res.status(500).json({ error: "Failed to fetch connection profiles", message: error.message });
   }
-  res.json(db.connections);
 });
 
 app.post("/api/connections", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
   try {
     const profile = req.body;
     const db = readDb();
-    if (!db.connections) {
+    if (!db.connections || !Array.isArray(db.connections)) {
       db.connections = [
         {
           id: "local",
@@ -2290,70 +2295,74 @@ wss.on("connection", (ws: WebSocket, request: any) => {
   }
 
   const sendMetrics = async () => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-
-    const activeConn = getActiveConnection();
-    let cpu = 0;
-    let mem = { pct: 0, total: 0, free: 0 };
-    let disk = { pct: 0, total: 0, free: 0 };
-    let uptimeStr = "";
-    let activeServices: any[] = [];
-
-    if (activeConn && activeConn.id !== "local") {
-      cpu = await getRemoteCPUUsage(activeConn);
-      mem = await getRemoteMemoryUsage(activeConn);
-      disk = await getRemoteDiskUsage(activeConn);
-      uptimeStr = await getRemoteUptime(activeConn);
-      activeServices = await getRemoteServicesStatus(activeConn);
-    } else {
-      cpu = getCPUUsage();
-      mem = getMemoryUsage();
-      disk = getDiskUsage();
-      uptimeStr = getUptime();
-      activeServices = getServicesStatus();
-    }
-
-    // Query active registered user count from Postgres if available
-    let activeUsers = 1;
     try {
-      const rows = await queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated = 0 OR deactivated IS NULL");
-      if (rows.length > 0) {
-        activeUsers = parseInt(rows[0].count);
+      if (ws.readyState !== WebSocket.OPEN) return;
+
+      const activeConn = getActiveConnection();
+      let cpu = 0;
+      let mem = { pct: 0, total: 0, free: 0 };
+      let disk = { pct: 0, total: 0, free: 0 };
+      let uptimeStr = "";
+      let activeServices: any[] = [];
+
+      if (activeConn && activeConn.id !== "local") {
+        cpu = await getRemoteCPUUsage(activeConn);
+        mem = await getRemoteMemoryUsage(activeConn);
+        disk = await getRemoteDiskUsage(activeConn);
+        uptimeStr = await getRemoteUptime(activeConn);
+        activeServices = await getRemoteServicesStatus(activeConn);
+      } else {
+        cpu = getCPUUsage();
+        mem = getMemoryUsage();
+        disk = getDiskUsage();
+        uptimeStr = getUptime();
+        activeServices = getServicesStatus();
       }
-    } catch (e) {
-      // Fallback: simple varying counts from virtual DB or random
+
+      // Query active registered user count from Postgres if available
+      let activeUsers = 1;
       try {
-        const db = readDb();
-        activeUsers = db.matrixUsers ? db.matrixUsers.filter((u: any) => !u.isDeactivated).length : 192;
-      } catch (err) {
-        activeUsers = 192;
+        const rows = await queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated = 0 OR deactivated IS NULL");
+        if (rows.length > 0) {
+          activeUsers = parseInt(rows[0].count);
+        }
+      } catch (e) {
+        // Fallback: simple varying counts from virtual DB or random
+        try {
+          const db = readDb();
+          activeUsers = db.matrixUsers ? db.matrixUsers.filter((u: any) => !u.isDeactivated).length : 192;
+        } catch (err) {
+          activeUsers = 192;
+        }
       }
+
+      const time = new Date().toLocaleTimeString().slice(0, 8);
+
+      trends.push({ time, cpu, memory: mem.pct, activeUsers, disk: disk.pct });
+      if (trends.length > 20) trends.shift();
+
+      const stats = {
+        cpuUsage: cpu,
+        memoryUsage: mem.pct,
+        memoryTotal: mem.total,
+        memoryFree: mem.free,
+        diskUsage: disk.pct,
+        diskTotal: disk.total,
+        diskFree: disk.free,
+        networkIn: Math.floor(Math.random() * 450) + 50,
+        networkOut: Math.floor(Math.random() * 850) + 150,
+        activeUsers,
+        federationServers: 34,
+        messageVolume24h: 12450 + Math.floor(Math.random() * 50),
+        uptime: uptimeStr,
+        trends,
+        services: activeServices
+      };
+
+      ws.send(JSON.stringify({ type: "metrics", stats }));
+    } catch (error: any) {
+      console.error("Error in sendMetrics background interval:", error);
     }
-
-    const time = new Date().toLocaleTimeString().slice(0, 8);
-
-    trends.push({ time, cpu, memory: mem.pct, activeUsers, disk: disk.pct });
-    if (trends.length > 20) trends.shift();
-
-    const stats = {
-      cpuUsage: cpu,
-      memoryUsage: mem.pct,
-      memoryTotal: mem.total,
-      memoryFree: mem.free,
-      diskUsage: disk.pct,
-      diskTotal: disk.total,
-      diskFree: disk.free,
-      networkIn: Math.floor(Math.random() * 450) + 50,
-      networkOut: Math.floor(Math.random() * 850) + 150,
-      activeUsers,
-      federationServers: 34,
-      messageVolume24h: 12450 + Math.floor(Math.random() * 50),
-      uptime: uptimeStr,
-      trends,
-      services: activeServices
-    };
-
-    ws.send(JSON.stringify({ type: "metrics", stats }));
   };
 
   const metricsInterval = setInterval(sendMetrics, 3000);
