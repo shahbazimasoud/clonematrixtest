@@ -410,7 +410,7 @@ export default function App() {
   };
 
   // REST mutations
-  const handleSaveConfig = (data: { config?: Partial<MatrixConfig>; ldap?: Partial<LDAPConfig> }) => {
+  const handleSaveConfig = (data: { config?: Partial<MatrixConfig>; ldap?: Partial<LDAPConfig>; workers?: any }) => {
     fetch('/api/matrix/config/save', {
       method: 'POST',
       headers: {

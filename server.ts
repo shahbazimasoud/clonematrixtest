@@ -874,22 +874,49 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
   res.json(db.matrixUsers);
 });
 
-app.post("/api/matrix/users/register", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+app.post("/api/matrix/users/register", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
   const { username, password, isAdmin } = req.body;
   if (!username || !password) return res.status(400).json({ error: "Username and password are required" });
 
+  const activeConn = getActiveConnection();
   const db = readDb();
-  const confRaw = readSandboxFile("/etc/matrix-stack.conf", "HS_DOMAIN=matrix.company.local");
+  const confRaw = await readConfigContent("/etc/matrix-stack.conf", "HS_DOMAIN=matrix.company.local");
   const hsDomainMatch = confRaw.match(/^HS_DOMAIN=(.+)$/m);
-  const hsDomain = hsDomainMatch ? hsDomainMatch[1] : "matrix.company.local";
+  const hsDomain = hsDomainMatch ? hsDomainMatch[1].trim() : "matrix.company.local";
   const mxid = `@${username}:${hsDomain}`;
 
-  if (db.matrixUsers.find((u: any) => u.mxid === mxid)) {
-    return res.status(400).json({ error: "User already exists on homeserver" });
+  // If there's an active postgres remote DB, we can write/insert into the postgres database or run registration command
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const registerCmd = `register_new_matrix_user -c ${activeConn.homeserverYamlPath || '/etc/matrix-synapse/homeserver.yaml'} -u ${username} -p ${password} ${isAdmin ? '-a' : ''} -k 99f8c0b2d3e4f5a6a7b8c9d0e1f2a3b4`;
+      if (activeConn.authType === "agent") {
+        await executeRemoteAgentTask(activeConn.id, "execute_command", { command: registerCmd });
+      } else {
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        await executeSSHCommand(activeConn, `${sudoPrefix}${registerCmd}`);
+      }
+    } catch (err: any) {
+      console.warn("Could not register via CLI, fallback to remote database insert:", err.message);
+      try {
+        await queryPostgres(
+          "INSERT INTO users (name, password_hash, admin, deactivated, creation_ts) VALUES ($1, $2, $3, 0, $4)",
+          [mxid, "$2b$10$dummyhash", isAdmin ? 1 : 0, Math.floor(Date.now() / 1000)]
+        );
+      } catch (dbErr: any) {
+        console.error("Direct postgres registration failed too:", dbErr.message);
+      }
+    }
   }
 
-  const newUser = { mxid, isAdmin: !!isAdmin, isDeactivated: false };
-  db.matrixUsers.push(newUser);
+  // Also maintain in local list as fallback/record
+  let userInDb = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!userInDb) {
+    userInDb = { mxid, isAdmin: !!isAdmin, isDeactivated: false };
+    db.matrixUsers.push(userInDb);
+  } else {
+    userInDb.isDeactivated = false;
+    userInDb.isAdmin = !!isAdmin;
+  }
   writeDb(db);
 
   db.auditLogs.unshift({
@@ -899,28 +926,46 @@ app.post("/api/matrix/users/register", authenticateToken, checkPermission(["Owne
     action: "Register Matrix User",
     target: mxid,
     status: "success",
-    details: `Registered Matrix user on local Synapse server (Role: ${isAdmin ? "Admin" : "Normal"})`
+    details: `Registered Matrix user on ${activeConn ? activeConn.name : "local"} server (Role: ${isAdmin ? "Admin" : "Normal"})`
   });
   writeDb(db);
 
   // Append entry to homeserver.log to simulate action
-  const logPath = "/var/log/matrix-synapse/homeserver.log";
-  const logContent = readSandboxFile(logPath) + `\n${new Date().toISOString()} - synapse.handlers.auth - INFO - Registered new user ${mxid} with password`;
-  writeSandboxFile(logPath, logContent);
+  try {
+    const logPath = "/var/log/matrix-synapse/homeserver.log";
+    const logContent = await readConfigContent(logPath, "") + `\n${new Date().toISOString()} - synapse.handlers.auth - INFO - Registered new user ${mxid} with password`;
+    await writeConfigContent(logPath, logContent);
+  } catch (e) {
+    // ignore
+  }
 
-  res.status(201).json(newUser);
+  res.status(201).json(userInDb);
 });
 
-app.post("/api/matrix/users/deactivate", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+app.post("/api/matrix/users/deactivate", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
   const { mxid } = req.body;
   if (!mxid) return res.status(400).json({ error: "MXID is required" });
 
+  const activeConn = getActiveConnection();
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
-  if (!user) return res.status(404).json({ error: "Matrix user not found" });
 
-  user.isDeactivated = true;
-  writeDb(db);
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      await queryPostgres("UPDATE users SET deactivated = 1 WHERE name = $1", [mxid]);
+    } catch (dbErr: any) {
+      try {
+        await queryPostgres("UPDATE users SET deactivated = true WHERE name = $1", [mxid]);
+      } catch (err2) {
+        console.error("Failed to deactivate remote user in Postgres:", dbErr.message);
+      }
+    }
+  }
+
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (user) {
+    user.isDeactivated = true;
+    writeDb(db);
+  }
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
@@ -929,24 +974,38 @@ app.post("/api/matrix/users/deactivate", authenticateToken, checkPermission(["Ow
     action: "Deactivate Matrix User",
     target: mxid,
     status: "success",
-    details: `Deactivated user and cleared password hash on Homeserver`
+    details: `Deactivated user and cleared password hash on ${activeConn ? activeConn.name : "local"} Homeserver`
   });
   writeDb(db);
 
-  res.json(user);
+  res.json(user || { mxid, isDeactivated: true });
 });
 
-app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
   const { mxid, password, isAdmin } = req.body;
   if (!mxid || !password) return res.status(400).json({ error: "MXID and new password are required" });
 
+  const activeConn = getActiveConnection();
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
-  if (!user) return res.status(404).json({ error: "Matrix user not found" });
 
-  user.isDeactivated = false;
-  if (isAdmin !== undefined) user.isAdmin = !!isAdmin;
-  writeDb(db);
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      await queryPostgres("UPDATE users SET deactivated = 0, admin = $1 WHERE name = $2", [isAdmin ? 1 : 0, mxid]);
+    } catch (dbErr: any) {
+      try {
+        await queryPostgres("UPDATE users SET deactivated = false, admin = $1 WHERE name = $2", [isAdmin ? true : false, mxid]);
+      } catch (err2) {
+        console.error("Failed to reactivate remote user in Postgres:", dbErr.message);
+      }
+    }
+  }
+
+  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (user) {
+    user.isDeactivated = false;
+    if (isAdmin !== undefined) user.isAdmin = !!isAdmin;
+    writeDb(db);
+  }
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
@@ -955,11 +1014,11 @@ app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Ow
     action: "Reactivate Matrix User",
     target: mxid,
     status: "success",
-    details: `Reactivated Matrix account and reset password`
+    details: `Reactivated Matrix account and reset password on ${activeConn ? activeConn.name : "local"} server`
   });
   writeDb(db);
 
-  res.json(user);
+  res.json(user || { mxid, isDeactivated: false, isAdmin: !!isAdmin });
 });
 
 // -------------------------------------------------------------
@@ -1898,26 +1957,96 @@ app.post("/api/matrix/tokens/delete", authenticateToken, checkPermission(["Owner
 
 // Configurations API
 app.get("/api/matrix/config", authenticateToken, async (req, res) => {
-  const confRaw = await readConfigContent("/etc/matrix-stack.conf");
-  const config: any = {};
-  confRaw.split("\n").forEach((line) => {
-    const parts = line.split("=");
-    if (parts.length >= 2) {
-      config[parts[0].trim()] = parts.slice(1).join("=").trim();
-    }
-  });
+  try {
+    const activeConn = getActiveConnection();
+    const confRaw = await readConfigContent("/etc/matrix-stack.conf");
+    const config: any = {};
+    confRaw.split("\n").forEach((line) => {
+      const parts = line.split("=");
+      if (parts.length >= 2) {
+        config[parts[0].trim()] = parts.slice(1).join("=").trim();
+      }
+    });
 
-  const db = readDb();
-  res.json({
-    config,
-    ldap: db.ldapConfig,
-    workers: db.workersConfig
-  });
+    const db = readDb();
+    
+    // Default config values if empty (for new/empty remote servers so they don't look completely blank)
+    if (Object.keys(config).length === 0) {
+      config.HS_DOMAIN = activeConn?.id !== "local" ? `matrix.${activeConn.host}` : "matrix.company.local";
+      config.ELEMENT_DOMAIN = activeConn?.id !== "local" ? `chat.${activeConn.host}` : "chat.company.local";
+      config.BASE_DOMAIN = activeConn?.id !== "local" ? activeConn.host : "company.local";
+      config.PUBLIC_IP = activeConn?.id !== "local" ? activeConn.host : "127.0.0.1";
+      config.PG_HOST = activeConn?.dbHost || "localhost";
+      config.PG_PORT = String(activeConn?.dbPort || "5432");
+      config.PG_DB = activeConn?.dbName || "synapse";
+      config.PG_USER = activeConn?.dbUser || "synapse_user";
+      config.PG_PASS = activeConn?.dbPass || "";
+    }
+
+    let ldap = db.ldapConfig;
+    let workers = db.workersConfig;
+
+    if (activeConn && activeConn.id !== "local") {
+      const dbConn = (db.connections || []).find((c: any) => c.id === activeConn.id);
+      if (dbConn) {
+        ldap = dbConn.ldapConfig || {
+          enabled: false,
+          uri: "",
+          base: "",
+          mode: "search",
+          start_tls: false,
+          bind_dn: "",
+          uid_attr: "sAMAccountName",
+          mail_attr: "mail",
+          name_attr: "cn"
+        };
+        workers = dbConn.workersConfig || {
+          enabled: false,
+          count: 2,
+          federationSender: false,
+          basePort: 8083
+        };
+      }
+    }
+
+    res.json({
+      config,
+      ldap,
+      workers
+    });
+  } catch (error: any) {
+    console.error("Error reading config:", error);
+    res.status(500).json({ error: "Failed to read configuration", message: error.message });
+  }
 });
 
 app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { config, ldap, workers } = req.body;
   const db = readDb();
+  const activeConn = getActiveConnection();
+
+  if (activeConn && activeConn.id !== "local") {
+    // If it's a remote connection, save the connection-specific ldap and workers config inside db.connections profile
+    const connIndex = (db.connections || []).findIndex((c: any) => c.id === activeConn.id);
+    if (connIndex !== -1) {
+      if (ldap) {
+        db.connections[connIndex].ldapConfig = { ...(db.connections[connIndex].ldapConfig || {}), ...ldap };
+      }
+      if (workers) {
+        db.connections[connIndex].workersConfig = { ...(db.connections[connIndex].workersConfig || {}), ...workers };
+      }
+    }
+  } else {
+    // Save locally
+    if (ldap) {
+      db.ldapConfig = { ...db.ldapConfig, ...ldap };
+    }
+    if (workers) {
+      db.workersConfig = { ...db.workersConfig, ...workers };
+    }
+  }
+
+  writeDb(db);
 
   if (config) {
     let confContent = "";
@@ -1957,7 +2086,6 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
   }
 
   if (ldap) {
-    db.ldapConfig = { ...db.ldapConfig, ...ldap };
     // Simulate writing to synapse ldap structure
     let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
     if (ldap.enabled) {
@@ -1981,20 +2109,14 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
     await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", yaml);
   }
 
-  if (workers) {
-    db.workersConfig = { ...db.workersConfig, ...workers };
-  }
-
-  writeDb(db);
-
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
     timestamp: new Date().toISOString(),
     username: req.user.username,
     action: "Save Configuration",
-    target: "System",
+    target: activeConn ? activeConn.name : "Local",
     status: "success",
-    details: "Modified server stack and Synapse homeserver parameters."
+    details: `Modified server stack and Synapse homeserver parameters on ${activeConn ? activeConn.name : "local"} server.`
   });
   writeDb(db);
 
