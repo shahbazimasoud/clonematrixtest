@@ -357,7 +357,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                 value={name}
                 onChange={e => setName(e.target.value)}
                 required
-                className="w-full bg-slate-900/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-teal-500 transition-colors"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-teal-500 transition-colors placeholder-slate-400"
               />
             </div>
 
@@ -370,7 +370,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                   value={host}
                   onChange={e => setHost(e.target.value)}
                   required
-                  className="w-full bg-slate-900/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-teal-500 transition-colors"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-teal-500 transition-colors placeholder-slate-400"
                 />
               </div>
               <div>
@@ -381,7 +381,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                   value={port}
                   onChange={e => setPort(parseInt(e.target.value) || 22)}
                   required
-                  className="w-full bg-slate-900/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-teal-500 transition-colors"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-teal-500 transition-colors placeholder-slate-400"
                 />
               </div>
             </div>
@@ -394,7 +394,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 required
-                className="w-full bg-slate-900/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-teal-500 transition-colors"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-teal-500 transition-colors placeholder-slate-400"
               />
             </div>
 
@@ -435,7 +435,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                     placeholder="••••••••••••"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-slate-900/60 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-teal-500 transition-colors"
+                    className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-teal-500 transition-colors placeholder-slate-400"
                   />
                   <Key className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 </div>
@@ -447,7 +447,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                   placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
                   value={privateKey}
                   onChange={e => setPrivateKey(e.target.value)}
-                  className="w-full h-32 bg-slate-900/60 border border-white/10 rounded-xl p-4 text-xs font-mono text-emerald-400 focus:outline-none focus:border-teal-500 transition-colors"
+                  className="w-full h-32 bg-white border border-slate-300 rounded-xl p-4 text-xs font-mono text-slate-900 focus:outline-none focus:border-teal-500 transition-colors placeholder-slate-400"
                 />
               </div>
             )}
@@ -479,7 +479,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={dbHost}
                         onChange={e => setDbHost(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                     <div>
@@ -488,7 +488,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="number"
                         value={dbPort}
                         onChange={e => setDbPort(parseInt(e.target.value) || 5432)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                     <div>
@@ -497,7 +497,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={dbName}
                         onChange={e => setDbName(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                     <div>
@@ -506,7 +506,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={dbUser}
                         onChange={e => setDbUser(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                     <div className="md:col-span-2">
@@ -516,7 +516,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         placeholder="••••••••••••"
                         value={dbPass}
                         onChange={e => setDbPass(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                   </div>
@@ -535,7 +535,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={configPath}
                         onChange={e => setConfigPath(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                     <div>
@@ -544,7 +544,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={homeserverYamlPath}
                         onChange={e => setHomeserverYamlPath(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                     <div>
@@ -553,7 +553,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={elementConfigPath}
                         onChange={e => setElementConfigPath(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                     <div>
@@ -562,7 +562,7 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={homeserverLogPath}
                         onChange={e => setHomeserverLogPath(e.target.value)}
-                        className="w-full bg-slate-950/90 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/30 font-medium transition-all shadow-inner"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>
                   </div>

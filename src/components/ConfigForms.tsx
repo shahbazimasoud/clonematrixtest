@@ -21,7 +21,8 @@ import {
   Sliders,
   Mail,
   Layout,
-  ShieldCheck
+  ShieldCheck,
+  Video
 } from 'lucide-react';
 import { MatrixConfig, LDAPConfig, MatrixUser } from '../types';
 
@@ -41,9 +42,10 @@ interface ConfigFormsProps {
   onReactivateUser: (mxid: string, pass: string, isAdmin: boolean) => void;
   userRole: string;
   authToken: string;
+  showToast?: (type: 'success' | 'error', text: string) => void;
 }
 
-type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users';
+type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video';
 
 export default function ConfigForms({ 
   config, 
@@ -55,7 +57,8 @@ export default function ConfigForms({
   onDeactivateUser, 
   onReactivateUser,
   userRole,
-  authToken
+  authToken,
+  showToast
 }: ConfigFormsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('homeserver');
   
@@ -500,6 +503,19 @@ export default function ConfigForms({
         >
           <Layout className="w-5 h-5 text-sky-400" />
           <span>Client Defaults</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('video')}
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+            activeTab === 'video' 
+              ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(245,158,11,0.15)]' 
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+          id="tab-video"
+        >
+          <Video className="w-5 h-5 text-amber-400" />
+          <span>Media & Calling</span>
         </button>
 
         <button
@@ -1660,6 +1676,45 @@ export default function ConfigForms({
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW 8: MEDIA & VIDEO CALLING CONFS */}
+        {activeTab === 'video' && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-white/5">
+              <Video className="w-6 h-6 text-amber-400" />
+              <div>
+                <h2 className="text-xl font-display font-bold text-white">Media & Video Conferencing</h2>
+                <p className="text-xs text-slate-400 font-sans">Point Element Web at self-hosted Jitsi or Element Call instances.</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Preferred Jitsi Domain</label>
+                <input
+                  type="text"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none"
+                  defaultValue="meet.jit.si"
+                  placeholder="e.g. meet.jit.si"
+                  id="jitsi-input"
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl bg-black/25 border border-white/5 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-semibold text-white">Allow Group Video Rooms / Screenshare</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">Configures experimental Element Web video rooms capability flag.</p>
+                </div>
+                <button
+                  onClick={() => showToast ? showToast('success', "Updated group call rooms toggle.") : console.log("Updated group call rooms toggle.")}
+                  className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs shadow-md"
+                >
+                  Enable Feature
+                </button>
               </div>
             </div>
           </div>

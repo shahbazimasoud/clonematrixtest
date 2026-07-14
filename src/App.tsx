@@ -1103,6 +1103,7 @@ export default function App() {
                 onReactivateUser={handleReactivateMatrixUser}
                 userRole={currentUser?.role || 'Viewer'}
                 authToken={authToken || ''}
+                showToast={showToast}
               />
             )}
 
@@ -1115,45 +1116,6 @@ export default function App() {
                 showToast={showToast}
                 isLightMode={isLightMode}
               />
-            )}
-
-            {/* VIEW 3: MEDIA & VIDEO CALLING CONFS */}
-            {activeView === 'video' && (
-              <div className="spatial-glass rounded-3xl p-6 border border-white/5 max-w-2xl mx-auto space-y-6">
-                <div className="flex items-center gap-3 pb-4 border-b border-white/5">
-                  <Video className="w-6 h-6 text-amber-400" />
-                  <div>
-                    <h2 className="text-xl font-display font-bold text-white">Media & Video Conferencing</h2>
-                    <p className="text-xs text-slate-400 font-sans">Point Element Web at self-hosted Jitsi or Element Call instances.</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Preferred Jitsi Domain</label>
-                    <input
-                      type="text"
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none"
-                      defaultValue="meet.jit.si"
-                      placeholder="e.g. meet.jit.si"
-                      id="jitsi-input"
-                    />
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-black/25 border border-white/5 flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-semibold text-white">Allow Group Video Rooms / Screenshare</h4>
-                      <p className="text-[11px] text-slate-400 mt-1">Configures experimental Element Web video rooms capability flag.</p>
-                    </div>
-                    <button
-                      onClick={() => showToast('success', "Updated group call rooms toggle.")}
-                      className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs shadow-md"
-                    >
-                      Enable Feature
-                    </button>
-                  </div>
-                </div>
-              </div>
             )}
 
             {/* VIEW 4: SECURITY & AUTH LOCKDOWNS */}
