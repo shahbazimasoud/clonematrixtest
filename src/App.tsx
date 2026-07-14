@@ -1099,6 +1099,7 @@ export default function App() {
                 onDeactivateUser={handleDeactivateMatrixUser}
                 onReactivateUser={handleReactivateMatrixUser}
                 userRole={currentUser?.role || 'Viewer'}
+                authToken={authToken || ''}
               />
             )}
 

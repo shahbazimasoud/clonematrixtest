@@ -40,6 +40,7 @@ interface ConfigFormsProps {
   onDeactivateUser: (mxid: string) => void;
   onReactivateUser: (mxid: string, pass: string, isAdmin: boolean) => void;
   userRole: string;
+  authToken: string;
 }
 
 type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users';
@@ -53,7 +54,8 @@ export default function ConfigForms({
   onRegisterUser, 
   onDeactivateUser, 
   onReactivateUser,
-  userRole 
+  userRole,
+  authToken
 }: ConfigFormsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('homeserver');
   
@@ -79,6 +81,8 @@ export default function ConfigForms({
   const [ldapMode, setLdapMode] = useState<'search' | 'simple'>('search');
   const [ldapStartTls, setLdapStartTls] = useState(false);
   const [ldapBindDn, setLdapBindDn] = useState('');
+  const [ldapBindPassword, setLdapBindPassword] = useState('');
+  const [ldapActiveDirectory, setLdapActiveDirectory] = useState(false);
   const [ldapUidAttr, setLdapUidAttr] = useState('sAMAccountName');
   const [ldapMailAttr, setLdapMailAttr] = useState('mail');
   const [ldapNameAttr, setLdapNameAttr] = useState('cn');
@@ -183,6 +187,8 @@ export default function ConfigForms({
       setLdapMode(ldap.mode || 'search');
       setLdapStartTls(ldap.start_tls || false);
       setLdapBindDn(ldap.bind_dn || '');
+      setLdapBindPassword(ldap.bind_password || '');
+      setLdapActiveDirectory(ldap.active_directory || false);
       setLdapUidAttr(ldap.uid_attr || 'sAMAccountName');
       setLdapMailAttr(ldap.mail_attr || 'mail');
       setLdapNameAttr(ldap.name_attr || 'cn');
@@ -234,6 +240,8 @@ export default function ConfigForms({
         mode: ldapMode,
         start_tls: ldapStartTls,
         bind_dn: ldapBindDn,
+        bind_password: ldapBindPassword,
+        active_directory: ldapActiveDirectory,
         uid_attr: ldapUidAttr,
         mail_attr: ldapMailAttr,
         name_attr: ldapNameAttr
@@ -314,20 +322,39 @@ export default function ConfigForms({
     setLdapTesting(true);
     setLdapTestResult(null);
 
-    setTimeout(() => {
-      setLdapTesting(false);
-      if (ldapUri.includes('company.local') || ldapUri.includes('192.168.')) {
-        setLdapTestResult({
-          success: true,
-          msg: "✅ LDAP Connection Successful: Securely bound to " + ldapUri + " and successfully queried base DN " + ldapBase
-        });
-      } else {
+    fetch('/api/matrix/ldap/test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        uri: ldapUri,
+        base: ldapBase,
+        mode: ldapMode,
+        start_tls: ldapStartTls,
+        bind_dn: ldapBindDn,
+        bind_password: ldapBindPassword,
+        active_directory: ldapActiveDirectory,
+        uid_attr: ldapUidAttr
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setLdapTesting(false);
+        if (data.success) {
+          setLdapTestResult({ success: true, msg: data.msg });
+        } else {
+          setLdapTestResult({ success: false, msg: data.msg || "❌ Unknown connection failure." });
+        }
+      })
+      .catch(err => {
+        setLdapTesting(false);
         setLdapTestResult({
           success: false,
-          msg: "❌ Connection Timeout: Could not reach port 389 on " + (ldapUri || "unknown host") + ". Please verify route, port, and Active Directory DNS settings."
+          msg: "❌ Connection Error: " + err.message
         });
-      }
-    }, 2000);
+      });
   };
 
   // Handle register user
@@ -680,7 +707,7 @@ export default function ConfigForms({
                   value={ldapMode}
                   onChange={(e) => setLdapMode(e.target.value as any)}
                   disabled={isReadOnly || isModerator}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500/50"
                 >
                   <option value="search">Search Bind Account (Recommended)</option>
                   <option value="simple">Direct Bind / Simple User Verification</option>
@@ -688,16 +715,51 @@ export default function ConfigForms({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Bind Account DN</label>
-                <input
-                  type="text"
-                  value={ldapBindDn}
-                  onChange={(e) => setLdapBindDn(e.target.value)}
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Active Directory (AD)?</label>
+                <select
+                  value={ldapActiveDirectory ? "true" : "false"}
+                  onChange={(e) => {
+                    const isAd = e.target.value === "true";
+                    setLdapActiveDirectory(isAd);
+                    if (isAd) {
+                      setLdapUidAttr('sAMAccountName');
+                    }
+                  }}
                   disabled={isReadOnly || isModerator}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none"
-                  placeholder="cn=svc-matrix,dc=company,dc=local"
-                />
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500/50"
+                >
+                  <option value="false">No (Standard LDAP Server)</option>
+                  <option value="true">Yes (Active Directory Domain Controller)</option>
+                </select>
               </div>
+
+              {ldapMode === 'search' && (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Bind Account DN (Service Account)</label>
+                    <input
+                      type="text"
+                      value={ldapBindDn}
+                      onChange={(e) => setLdapBindDn(e.target.value)}
+                      disabled={isReadOnly || isModerator}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500/50"
+                      placeholder="CN=Administrator,CN=Users,DC=test,DC=lab"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Bind Password</label>
+                    <input
+                      type="password"
+                      value={ldapBindPassword}
+                      onChange={(e) => setLdapBindPassword(e.target.value)}
+                      disabled={isReadOnly || isModerator}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500/50"
+                      placeholder="••••••••••••"
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">STARTTLS Integration</label>
@@ -705,7 +767,7 @@ export default function ConfigForms({
                   value={ldapStartTls ? "true" : "false"}
                   onChange={(e) => setLdapStartTls(e.target.value === "true")}
                   disabled={isReadOnly || isModerator}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500/50"
                 >
                   <option value="false">Implicit/None Plain</option>
                   <option value="true">Enable STARTTLS (Encrypt Communication Channel)</option>

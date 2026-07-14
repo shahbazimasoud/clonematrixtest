@@ -269,6 +269,8 @@ export function initializeSandbox() {
       mode: "search",
       start_tls: false,
       bind_dn: "cn=svc-matrix,dc=company,dc=local",
+      bind_password: "",
+      active_directory: false,
       uid_attr: "sAMAccountName",
       mail_attr: "mail",
       name_attr: "cn"
@@ -452,6 +454,8 @@ export function readDb(): any {
       mode: "search",
       start_tls: false,
       bind_dn: "cn=svc-matrix,dc=company,dc=local",
+      bind_password: "",
+      active_directory: false,
       uid_attr: "sAMAccountName",
       mail_attr: "mail",
       name_attr: "cn"

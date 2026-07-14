@@ -165,6 +165,8 @@ export interface LDAPConfig {
   mode: 'search' | 'simple';
   start_tls: boolean;
   bind_dn?: string;
+  bind_password?: string;
+  active_directory?: boolean;
   uid_attr: string;
   mail_attr: string;
   name_attr: string;
