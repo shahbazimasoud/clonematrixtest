@@ -43,9 +43,11 @@ interface ConfigFormsProps {
   userRole: string;
   authToken: string;
   showToast?: (type: 'success' | 'error', text: string) => void;
+  isExecuting?: boolean;
+  onExecuteCommand?: (cmd: string) => void;
 }
 
-type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video';
+type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security';
 
 export default function ConfigForms({ 
   config, 
@@ -58,7 +60,9 @@ export default function ConfigForms({
   onReactivateUser,
   userRole,
   authToken,
-  showToast
+  showToast,
+  isExecuting = false,
+  onExecuteCommand
 }: ConfigFormsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('homeserver');
   
@@ -516,6 +520,19 @@ export default function ConfigForms({
         >
           <Video className="w-5 h-5 text-amber-400" />
           <span>Media & Calling</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('security')}
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+            activeTab === 'security' 
+              ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(16,185,129,0.15)]' 
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+          id="tab-security"
+        >
+          <ShieldCheck className="w-5 h-5 text-emerald-400" />
+          <span>Security & Auth</span>
         </button>
 
         <button
@@ -1714,6 +1731,43 @@ export default function ConfigForms({
                   className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs shadow-md"
                 >
                   Enable Feature
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW 9: SECURITY & AUTH LOCKDOWNS */}
+        {activeTab === 'security' && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-white/5">
+              <ShieldCheck className="w-6 h-6 text-emerald-400" />
+              <div>
+                <h2 className="text-xl font-display font-bold text-white">Security Controls & E2EE</h2>
+                <p className="text-xs text-slate-400 font-sans">Disable End-to-End Encryption org-wide or setup rate limiting filters.</p>
+              </div>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-red-500/5 border border-red-500/10 space-y-4">
+              <div className="flex items-start gap-3 text-red-400">
+                <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5 animate-pulse" />
+                <div>
+                  <h3 className="text-sm font-bold font-display uppercase tracking-wider">E2EE Organization Lockdown</h3>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed font-sans">
+                    Locking down homeserver encryption ensures all messages are stored in plain SQL text on the server (accessible via pgAdmin).
+                    This disables local client keys backup requests, prevents lost key messages warnings, and enhances enterprise auditing.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs text-slate-400 font-sans font-semibold">Four-layer strict enforcement:</span>
+                <button
+                  onClick={() => onExecuteCommand && onExecuteCommand('e2ee_disable')}
+                  disabled={isExecuting || userRole === 'Viewer' || userRole === 'Moderator'}
+                  className="px-4 py-2 rounded-xl bg-red-500 text-white font-bold text-xs shadow-lg hover:bg-red-600 disabled:opacity-50"
+                >
+                  {isExecuting ? 'Executing...' : 'Disable Encryption Org-Wide'}
                 </button>
               </div>
             </div>

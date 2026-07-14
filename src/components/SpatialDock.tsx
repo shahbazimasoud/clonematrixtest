@@ -29,8 +29,6 @@ export default function SpatialDock({ activeView, onViewChange, onLogout, userRo
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-indigo-400' },
     { id: 'config', label: 'Homeserver', icon: Settings, color: 'text-purple-400' },
     { id: 'admin', label: 'Matrix Admin', icon: Users, color: 'text-pink-400' },
-    { id: 'security', label: 'Security & Auth', icon: ShieldCheck, color: 'text-emerald-400' },
-    { id: 'backups', label: 'Archiving', icon: Database, color: 'text-blue-400' },
     { id: 'terminal', label: 'Web Console', icon: Terminal, color: 'text-rose-400' },
     { id: 'reporting', label: 'Analytics', icon: BarChart3, color: 'text-indigo-400' },
     { id: 'connections', label: 'Connections', icon: Globe, color: 'text-teal-400' },

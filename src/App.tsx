@@ -1104,6 +1104,8 @@ export default function App() {
                 userRole={currentUser?.role || 'Viewer'}
                 authToken={authToken || ''}
                 showToast={showToast}
+                isExecuting={isExecuting}
+                onExecuteCommand={handleExecuteCommand}
               />
             )}
 
@@ -1115,60 +1117,6 @@ export default function App() {
                 currentUser={currentUser}
                 showToast={showToast}
                 isLightMode={isLightMode}
-              />
-            )}
-
-            {/* VIEW 4: SECURITY & AUTH LOCKDOWNS */}
-            {activeView === 'security' && (
-              <div className="spatial-glass rounded-3xl p-6 border border-white/5 max-w-2xl mx-auto space-y-6">
-                <div className="flex items-center gap-3 pb-4 border-b border-white/5">
-                  <ShieldCheck className="w-6 h-6 text-emerald-400" />
-                  <div>
-                    <h2 className="text-xl font-display font-bold text-white">Security Controls & E2EE</h2>
-                    <p className="text-xs text-slate-400 font-sans">Disable End-to-End Encryption org-wide or setup rate limiting filters.</p>
-                  </div>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-red-500/5 border border-red-500/10 space-y-4">
-                  <div className="flex items-start gap-3 text-red-400">
-                    <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5 animate-pulse" />
-                    <div>
-                      <h3 className="text-sm font-bold font-display uppercase tracking-wider">E2EE Organization Lockdown</h3>
-                      <p className="text-xs text-slate-400 mt-2 leading-relaxed font-sans">
-                        Locking down homeserver encryption ensures all messages are stored in plain SQL text on the server (accessible via pgAdmin).
-                        This disables local client keys backup requests, prevents lost key messages warnings, and enhances enterprise auditing.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center pt-2">
-                    <span className="text-xs text-slate-400 font-sans font-semibold">Four-layer strict enforcement:</span>
-                    <button
-                      onClick={() => handleExecuteCommand('e2ee_disable')}
-                      disabled={isExecuting || currentUser?.role === 'Viewer' || currentUser?.role === 'Moderator'}
-                      className="px-4 py-2 rounded-xl bg-red-500 text-white font-bold text-xs shadow-lg hover:bg-red-600 disabled:opacity-50"
-                    >
-                      Disable Encryption Org-Wide
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* VIEW 5: BACKUP & ARCHIVING */}
-            {activeView === 'backups' && (
-              <ReportingPanel
-                stats={stats}
-                panelUsers={panelUsers}
-                auditLogs={auditLogs}
-                backups={backups}
-                undoHistory={undoHistory}
-                onCreatePanelUser={handleCreatePanelUser}
-                onChangeUserRole={handleChangeUserRole}
-                onDeletePanelUser={handleDeletePanelUser}
-                onDeleteBackup={handleDeleteBackup}
-                onCreateBackup={handleCreateBackup}
-                userRole={currentUser?.role || 'Viewer'}
               />
             )}
 
