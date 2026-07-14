@@ -529,90 +529,110 @@ app.get("/api/connections", authenticateToken, (req, res) => {
 });
 
 app.post("/api/connections", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
-  const profile = req.body;
-  const db = readDb();
-  if (!db.connections) {
-    db.connections = [
-      {
-        id: "local",
-        name: "Local Server (This Machine)",
-        host: "localhost",
-        port: 22,
-        username: "",
-        authType: "key",
-        isActive: true
-      }
-    ];
+  try {
+    const profile = req.body;
+    const db = readDb();
+    if (!db.connections) {
+      db.connections = [
+        {
+          id: "local",
+          name: "Local Server (This Machine)",
+          host: "localhost",
+          port: 22,
+          username: "",
+          authType: "key",
+          isActive: true
+        }
+      ];
+    }
+    
+    const isAgent = profile.authType === "agent";
+    const newProfile = {
+      ...profile,
+      id: `remote-${Date.now()}`,
+      isActive: false,
+      status: isAgent ? "pending" : "offline",
+      token: isAgent ? `reg-${Math.random().toString(36).substring(2, 11)}` : undefined,
+      createdAt: new Date().toISOString()
+    };
+    
+    db.connections.push(newProfile);
+    writeDb(db);
+    res.status(201).json(newProfile);
+  } catch (error: any) {
+    console.error("Error creating connection profile:", error);
+    res.status(500).json({ error: "Failed to create connection profile", message: error.message });
   }
-  
-  const isAgent = profile.authType === "agent";
-  const newProfile = {
-    ...profile,
-    id: `remote-${Date.now()}`,
-    isActive: false,
-    status: isAgent ? "pending" : "offline",
-    token: isAgent ? `reg-${Math.random().toString(36).substring(2, 11)}` : undefined,
-    createdAt: new Date().toISOString()
-  };
-  
-  db.connections.push(newProfile);
-  writeDb(db);
-  res.status(201).json(newProfile);
 });
 
 app.put("/api/connections/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
-  const { id } = req.params;
-  const profile = req.body;
-  const db = readDb();
-  
-  if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
-  const index = db.connections.findIndex((c: any) => c.id === id);
-  if (index === -1) return res.status(404).json({ error: "Connection profile not found" });
-  
-  db.connections[index] = {
-    ...db.connections[index],
-    ...profile,
-    id // keep original ID
-  };
-  
-  writeDb(db);
-  res.json(db.connections[index]);
+  try {
+    const { id } = req.params;
+    const profile = req.body;
+    const db = readDb();
+    
+    if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
+    const index = db.connections.findIndex((c: any) => c.id === id);
+    if (index === -1) return res.status(404).json({ error: "Connection profile not found" });
+    
+    db.connections[index] = {
+      ...db.connections[index],
+      ...profile,
+      id // keep original ID
+    };
+    
+    writeDb(db);
+    res.json(db.connections[index]);
+  } catch (error: any) {
+    console.error("Error updating connection profile:", error);
+    res.status(500).json({ error: "Failed to update connection profile", message: error.message });
+  }
 });
 
 app.delete("/api/connections/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
-  const { id } = req.params;
-  if (id === "local") return res.status(400).json({ error: "Cannot delete local system profile" });
-  
-  const db = readDb();
-  if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
-  
-  const index = db.connections.findIndex((c: any) => c.id === id);
-  if (index === -1) return res.status(404).json({ error: "Connection profile not found" });
-  
-  const deleted = db.connections[index];
-  db.connections = db.connections.filter((c: any) => c.id !== id);
-  
-  // If the deleted profile was active, default back to local
-  if (deleted.isActive) {
-    const localProfile = db.connections.find((c: any) => c.id === "local");
-    if (localProfile) localProfile.isActive = true;
+  try {
+    const { id } = req.params;
+    if (id === "local") return res.status(400).json({ error: "Cannot delete local system profile" });
+    
+    const db = readDb();
+    if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
+    
+    const index = db.connections.findIndex((c: any) => c.id === id);
+    if (index === -1) return res.status(404).json({ error: "Connection profile not found" });
+    
+    const deleted = db.connections[index];
+    db.connections = db.connections.filter((c: any) => c.id !== id);
+    
+    // If the deleted profile was active, default back to local
+    if (deleted.isActive) {
+      const localProfile = db.connections.find((c: any) => c.id === "local");
+      if (localProfile) localProfile.isActive = true;
+    }
+    
+    writeDb(db);
+    res.json({ message: "Connection profile deleted successfully" });
+  } catch (error: any) {
+    console.error("Error deleting connection profile:", error);
+    res.status(500).json({ error: "Failed to delete connection profile", message: error.message });
   }
-  
-  writeDb(db);
-  res.json({ message: "Connection profile deleted successfully" });
 });
 
 app.post("/api/connections/select", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
-  const { id } = req.body;
-  const db = readDb();
-  if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
-  
-  db.connections.forEach((c: any) => {
-    c.isActive = (c.id === id);
-  });
-  
-  writeDb(db);
-  res.json({ message: "Connection profile activated successfully" });
+  try {
+    const { id } = req.body;
+    const db = readDb();
+    if (!db.connections) return res.status(404).json({ error: "No connection profiles found" });
+    
+    db.connections.forEach((c: any) => {
+      c.isActive = (c.id === id);
+    });
+    
+    writeDb(db);
+    res.json({ message: "Connection profile activated successfully" });
+  } catch (error: any) {
+    console.error("Error selecting connection profile:", error);
+    res.status(500).json({ error: "Failed to activate connection profile", message: error.message });
+  }
 });
 
 app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
@@ -2876,6 +2896,18 @@ server.on("upgrade", (request, socket, head) => {
   } else {
     socket.destroy();
   }
+});
+
+// -------------------------------------------------------------
+// Global Error Handler Middleware
+// -------------------------------------------------------------
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("Unhandled server error:", err);
+  res.status(500).json({
+    error: "Internal Server Error",
+    message: err.message || String(err),
+    stack: process.env.NODE_ENV !== "production" ? err.stack : undefined
+  });
 });
 
 // -------------------------------------------------------------
