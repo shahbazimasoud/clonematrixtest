@@ -746,16 +746,5 @@
       "expiryTime": "2026-07-20T12:00:00.000Z",
       "isActive": true
     }
-  ],
-  "connections": [
-    {
-      "id": "local",
-      "name": "Local Server (This Machine)",
-      "host": "localhost",
-      "port": 22,
-      "username": "",
-      "authType": "key",
-      "isActive": true
-    }
   ]
 }
