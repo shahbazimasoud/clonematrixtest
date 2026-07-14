@@ -90,6 +90,33 @@ export default function ConfigForms({
   const [ldapTesting, setLdapTesting] = useState(false);
   const [ldapTestResult, setLdapTestResult] = useState<{ success: boolean; msg: string } | null>(null);
 
+  const [ldapStatus, setLdapStatus] = useState<{
+    ldapEnabled: boolean;
+    serviceStatus: string;
+    ldapStatus: string;
+    configStatus: string;
+  } | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState<boolean>(false);
+
+  const fetchLdapStatus = () => {
+    if (!authToken) return;
+    setLoadingStatus(true);
+    fetch('/api/matrix/ldap/status', {
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setLdapStatus(data);
+        setLoadingStatus(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch LDAP status", err);
+        setLoadingStatus(false);
+      });
+  };
+
   // 3. Workers Config State
   const [workersEnabled, setWorkersEnabled] = useState(false);
   const [workersCount, setWorkersCount] = useState(2);
@@ -203,6 +230,12 @@ export default function ConfigForms({
       setWorkersBasePort(workers.basePort || 8083);
     }
   }, [workers]);
+
+  useEffect(() => {
+    if (activeTab === 'ldap' && authToken) {
+      fetchLdapStatus();
+    }
+  }, [ldap, activeTab, authToken]);
 
   const isReadOnly = userRole === 'Viewer';
   const isModerator = userRole === 'Moderator';
@@ -347,6 +380,7 @@ export default function ConfigForms({
         } else {
           setLdapTestResult({ success: false, msg: data.msg || "❌ Unknown connection failure." });
         }
+        fetchLdapStatus();
       })
       .catch(err => {
         setLdapTesting(false);
@@ -354,6 +388,7 @@ export default function ConfigForms({
           success: false,
           msg: "❌ Connection Error: " + err.message
         });
+        fetchLdapStatus();
       });
   };
 
@@ -673,6 +708,67 @@ export default function ConfigForms({
                     ldapEnabled ? 'translate-x-6' : 'translate-x-0'
                   }`} />
                 </button>
+              </div>
+            </div>
+
+            {/* Live Remote Server LDAP & Active Directory Status Dashboard */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-white/5 flex flex-col justify-between min-h-[90px]">
+                <span className="text-slate-400 text-xs font-semibold tracking-wider uppercase">LDAP Module</span>
+                <div className="flex items-center justify-between mt-2">
+                  <span className={`text-sm font-bold ${ldapStatus?.ldapEnabled ? 'text-purple-400' : 'text-slate-500'}`}>
+                    {loadingStatus ? 'Checking...' : (ldapStatus?.ldapEnabled ? 'ENABLED' : 'DISABLED')}
+                  </span>
+                  <div className={`w-2 h-2 rounded-full ${ldapStatus?.ldapEnabled ? 'bg-purple-500 animate-pulse' : 'bg-slate-600'}`} />
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-white/5 flex flex-col justify-between min-h-[90px]">
+                <span className="text-slate-400 text-xs font-semibold tracking-wider uppercase">Service Status</span>
+                <div className="flex items-center justify-between mt-2">
+                  <span className={`text-sm font-bold ${
+                    ldapStatus?.serviceStatus === 'active' ? 'text-emerald-400' : 
+                    ldapStatus?.serviceStatus === 'failed' ? 'text-red-400' : 'text-amber-400'
+                  }`}>
+                    {loadingStatus ? 'Checking...' : (ldapStatus ? ldapStatus.serviceStatus.toUpperCase() : 'UNKNOWN')}
+                  </span>
+                  <div className={`w-2 h-2 rounded-full ${
+                    ldapStatus?.serviceStatus === 'active' ? 'bg-emerald-500 animate-pulse' : 
+                    ldapStatus?.serviceStatus === 'failed' ? 'bg-red-500' : 'bg-amber-500'
+                  }`} />
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-white/5 flex flex-col justify-between min-h-[90px]">
+                <span className="text-slate-400 text-xs font-semibold tracking-wider uppercase">LDAP Connection</span>
+                <div className="flex items-center justify-between mt-2">
+                  <span className={`text-sm font-bold ${
+                    ldapStatus?.ldapStatus === 'Connected' ? 'text-indigo-400' : 
+                    ldapStatus?.ldapStatus === 'Unreachable' ? 'text-red-400' : 'text-slate-500'
+                  }`}>
+                    {loadingStatus ? 'Checking...' : (ldapStatus ? ldapStatus.ldapStatus.toUpperCase() : 'OFFLINE')}
+                  </span>
+                  <div className={`w-2 h-2 rounded-full ${
+                    ldapStatus?.ldapStatus === 'Connected' ? 'bg-indigo-500 animate-pulse' : 
+                    ldapStatus?.ldapStatus === 'Unreachable' ? 'bg-red-500' : 'bg-slate-600'
+                  }`} />
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-900/40 border border-white/5 flex flex-col justify-between min-h-[90px]">
+                <span className="text-slate-400 text-xs font-semibold tracking-wider uppercase">Config Integrity</span>
+                <div className="flex items-center justify-between mt-2">
+                  <span className={`text-sm font-bold ${
+                    ldapStatus?.configStatus === 'Valid' ? 'text-emerald-400' : 
+                    ldapStatus?.configStatus === 'Invalid' ? 'text-red-400' : 'text-slate-500'
+                  }`}>
+                    {loadingStatus ? 'Checking...' : (ldapStatus ? ldapStatus.configStatus.toUpperCase() : 'UNKNOWN')}
+                  </span>
+                  <div className={`w-2 h-2 rounded-full ${
+                    ldapStatus?.configStatus === 'Valid' ? 'bg-emerald-500 animate-pulse' : 
+                    ldapStatus?.configStatus === 'Invalid' ? 'bg-red-500' : 'bg-slate-600'
+                  }`} />
+                </div>
               </div>
             </div>
 

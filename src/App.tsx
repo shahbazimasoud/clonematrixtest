@@ -419,8 +419,11 @@ export default function App() {
       },
       body: JSON.stringify(data)
     })
-    .then(res => {
-      if (!res.ok) throw new Error("Could not save configuration settings.");
+    .then(async res => {
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || "Could not save configuration settings.");
+      }
       return res.json();
     })
     .then(() => {
