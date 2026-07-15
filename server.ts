@@ -1162,7 +1162,7 @@ async function getAdminToken(): Promise<string | null> {
       `);
       if (adminRows && adminRows.length > 0) {
         const adminUser = adminRows[0].name;
-        const newToken = "syt_ketesa_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const newToken = "syt_matrix_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         
         try {
           await queryPostgres(`

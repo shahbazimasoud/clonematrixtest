@@ -155,7 +155,10 @@ const faTranslations = {
   errorAction: "خطا در برقراری ارتباط با هسته Synapse.",
   viewMembers: "مشاهده اعضا",
   memberList: "لیست اعضای اتاق",
-  powerLevel: "سطح دسترسی (Power Level)"
+  powerLevel: "سطح دسترسی (Power Level)",
+  syncUsersBtn: "همگام‌سازی کاربران",
+  syncingUsers: "در حال همگام‌سازی کاربران با سرور...",
+  syncSuccess: "کاربران ماتریکس با موفقیت همگام‌سازی شدند."
 };
 
 const enTranslations = {
@@ -249,7 +252,7 @@ const enTranslations = {
   
   // General Buttons & Alerts
   unauthorizedMsg: "Access Denied: Your panel role as 'Viewer' does not permit Matrix server write access.",
-  loading: "Syncing Ketesa engine...",
+  loading: "Syncing Matrix engine...",
   save: "Save Changes",
   cancel: "Cancel",
   delete: "Delete",
@@ -257,7 +260,10 @@ const enTranslations = {
   errorAction: "Failed to communicate with Synapse homeserver.",
   viewMembers: "View Members",
   memberList: "Room Members List",
-  powerLevel: "Power Level"
+  powerLevel: "Power Level",
+  syncUsersBtn: "Sync Users",
+  syncingUsers: "Syncing users with server...",
+  syncSuccess: "Users synced successfully with homeserver."
 };
 
 export default function KetesaAdmin({ lang, authToken, currentUser, showToast, isLightMode = false }: KetesaAdminProps) {
@@ -267,6 +273,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer'>('users');
   const [loading, setLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Custom Installer & System Maintenance States
   const [installerConfig, setInstallerConfig] = useState<any>({
@@ -476,7 +483,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       if (res.ok) {
         showToast('success', t.successAction);
         fetchUserDetails(selectedUserMxid, false, true);
-        fetchAll();
+        fetchAll(true);
       } else {
         showToast('error', t.errorAction);
       }
@@ -808,8 +815,8 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     fetchAll();
   }, [authToken]);
 
-  const fetchAll = async () => {
-    setLoading(true);
+  const fetchAll = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const headers = { 'Authorization': `Bearer ${authToken}` };
       const [usersRes, roomsRes, mediaRes, tokensRes] = await Promise.all([
@@ -826,7 +833,26 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     } catch (e) {
       showToast('error', t.errorAction);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const handleSyncUsers = async () => {
+    setIsSyncing(true);
+    showToast('success', t.syncingUsers || "Syncing users with server...");
+    try {
+      const headers = { 'Authorization': `Bearer ${authToken}` };
+      const res = await fetch('/api/matrix/users', { headers });
+      if (res.ok) {
+        setUsers(await res.json());
+        showToast('success', t.syncSuccess || "Users synced successfully with homeserver.");
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -1414,16 +1440,36 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                 </div>
               </div>
 
-              {hasWriteAccess && (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setShowAddUserModal(true)}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm rounded-lg transition-all duration-300 shadow-md"
-                  id="add-user-btn"
+                  onClick={handleSyncUsers}
+                  disabled={isSyncing}
+                  className={`flex items-center justify-center gap-2 px-4 py-2.5 font-medium text-sm rounded-lg transition-all duration-300 shadow-sm border ${
+                    isLightMode
+                      ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 disabled:opacity-50'
+                      : 'bg-white/5 hover:bg-white/10 border-white/5 text-gray-300 disabled:opacity-50'
+                  }`}
+                  id="sync-users-btn"
                 >
-                  <UserPlus className="h-4 w-4" />
-                  <span>{t.addUserBtn}</span>
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
+                  <span>{t.syncUsersBtn}</span>
                 </button>
-              )}
+
+                {hasWriteAccess && (
+                  <button
+                    onClick={() => setShowAddUserModal(true)}
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5 font-medium text-sm rounded-lg transition-all duration-300 shadow-md border ${
+                      isLightMode
+                        ? 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700'
+                        : 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 hover:from-indigo-500/30 hover:to-purple-500/30 border-indigo-500/30 text-indigo-200'
+                    }`}
+                    id="add-user-btn"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span>{t.addUserBtn}</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Users Table */}
@@ -3065,7 +3111,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       <span>{selectedUserMxid}</span>
                     </h3>
                     <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-500'}`}>
-                      {isRtl ? 'پیکربندی و نظارت پیشرفته کاربر ماتریکس (Ketesa Admin)' : 'Advanced Matrix User Configuration & Monitoring (Ketesa Admin)'}
+                      {isRtl ? 'پیکربندی و نظارت پیشرفته کاربر ماتریکس (Matrix Admin)' : 'Advanced Matrix User Configuration & Monitoring (Matrix Admin)'}
                     </p>
                   </div>
                 </div>
@@ -3266,7 +3312,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                             </div>
                             <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
                               <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>User type:</span>
-                              <span className="text-indigo-500 font-semibold uppercase">{selectedUserDetails.userType || 'ketesa'}</span>
+                              <span className="text-indigo-500 font-semibold uppercase">{selectedUserDetails.userType || 'matrix'}</span>
                             </div>
                             <div className={`flex justify-between items-center border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2 min-h-[36px]`}>
                               <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>Display name:</span>
