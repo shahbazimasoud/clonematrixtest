@@ -4017,7 +4017,7 @@ systemctl enable redis-server
 systemctl start redis-server
 
 echo "🔑 [2/12] Generating replication secret..."
-REPLICATION_SECRET=\\\$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+REPLICATION_SECRET=\$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
 
 echo "🔌 [3/12] Configuring homeserver.yaml with replication and redis..."
 mkdir -p /etc/matrix-synapse/workers
@@ -4058,7 +4058,7 @@ if not has_replication:
         ]
     })
 
-cfg['replication_shared_secret'] = "\\\${REPLICATION_SECRET}"
+cfg['replication_shared_secret'] = "\${REPLICATION_SECRET}"
 
 with open('/etc/matrix-synapse/homeserver.yaml', 'w') as f:
     yaml.safe_dump(cfg, f, default_flow_style=False)
@@ -4071,36 +4071,36 @@ BASE_PORT=8083
 UPSTREAM_SERVERS=""
 
 for ((i=1; i<=WORKER_COUNT; i++)); do
-  PORT=\\\$((BASE_PORT + i - 1))
-  WORKER_NAME="generic_worker\\\${i}"
-  WORKER_FILE="/etc/matrix-synapse/workers/\\\${WORKER_NAME}.yaml"
+  PORT=\$((BASE_PORT + i - 1))
+  WORKER_NAME="generic_worker\${i}"
+  WORKER_FILE="/etc/matrix-synapse/workers/\${WORKER_NAME}.yaml"
   
-  echo "   Creating \\\${WORKER_FILE} on port \\\${PORT}..."
+  echo "   Creating \${WORKER_FILE} on port \${PORT}..."
   
-  cat <<WFEOF > "\\\${WORKER_FILE}"
+  cat <<WFEOF > "\${WORKER_FILE}"
 worker_app: synapse.app.generic_worker
-worker_name: \\\${WORKER_NAME}
-worker_log_config: /etc/matrix-synapse/conf.d/\\\$WORKER_NAME.log.config
+worker_name: \${WORKER_NAME}
+worker_log_config: /etc/matrix-synapse/conf.d/\${WORKER_NAME}.log.config
 
 worker_replication_host: 127.0.0.1
 worker_replication_port: 9093
 
 worker_listeners:
   - type: http
-    port: \\\${PORT}
+    port: \${PORT}
     bind_addresses: ['127.0.0.1']
     resources:
       - names: [client, federation]
 WFEOF
 
-  UPSTREAM_SERVERS="\\\${UPSTREAM_SERVERS}    server 127.0.0.1:\\\${PORT};\\n"
+  UPSTREAM_SERVERS="\${UPSTREAM_SERVERS}    server 127.0.0.1:\${PORT};\\n"
   
   echo "📝 [5/12] Creating worker log configuration file..."
   if [ -f /etc/matrix-synapse/homeserver.log.config ]; then
-    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\\\${WORKER_NAME}.log.config"
-    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\\\${WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\\\${WORKER_NAME}.log.config"
+    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\${WORKER_NAME}.log.config"
+    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\${WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\${WORKER_NAME}.log.config"
   else
-    cat <<LCFE > "/etc/matrix-synapse/conf.d/\\\${WORKER_NAME}.log.config"
+    cat <<LCFE > "/etc/matrix-synapse/conf.d/\${WORKER_NAME}.log.config"
 version: 1
 formatters:
   precise:
@@ -4109,7 +4109,7 @@ handlers:
   file:
     class: logging.handlers.RotatingFileHandler
     formatter: precise
-    filename: /var/log/matrix-synapse/\\\${WORKER_NAME}.log
+    filename: /var/log/matrix-synapse/\${WORKER_NAME}.log
     maxBytes: 104857600
     backupCount: 10
     encoding: utf8
@@ -4123,15 +4123,15 @@ LCFE
   fi
 done
 
-if [ "\\\${ENABLE_FED_SENDER}" = "true" ]; then
+if [ "\${ENABLE_FED_SENDER}" = "true" ]; then
   FED_WORKER_NAME="federation_sender1"
-  FED_WORKER_FILE="/etc/matrix-synapse/workers/\\\${FED_WORKER_NAME}.yaml"
+  FED_WORKER_FILE="/etc/matrix-synapse/workers/\${FED_WORKER_NAME}.yaml"
   echo "🚀 [6/12] Configuring dedicated federation sender worker..."
   
-  cat <<FSWE > "\\\${FED_WORKER_FILE}"
+  cat <<FSWE > "\${FED_WORKER_FILE}"
 worker_app: synapse.app.federation_sender
-worker_name: \\\${FED_WORKER_NAME}
-worker_log_config: /etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config
+worker_name: \${FED_WORKER_NAME}
+worker_log_config: /etc/matrix-synapse/conf.d/\${FED_WORKER_NAME}.log.config
 
 worker_replication_host: 127.0.0.1
 worker_replication_port: 9093
@@ -4139,10 +4139,10 @@ FSWE
 
   echo "📝 Creating log config for federation_sender1..."
   if [ -f /etc/matrix-synapse/homeserver.log.config ]; then
-    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config"
-    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\\\${FED_WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config"
+    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\${FED_WORKER_NAME}.log.config"
+    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\${FED_WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\${FED_WORKER_NAME}.log.config"
   else
-    cat <<LCFS > "/etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config"
+    cat <<LCFS > "/etc/matrix-synapse/conf.d/\${FED_WORKER_NAME}.log.config"
 version: 1
 formatters:
   precise:
@@ -4151,7 +4151,7 @@ handlers:
   file:
     class: logging.handlers.RotatingFileHandler
     formatter: precise
-    filename: /var/log/matrix-synapse/\\\${FED_WORKER_NAME}.log
+    filename: /var/log/matrix-synapse/\${FED_WORKER_NAME}.log
     maxBytes: 104857600
     backupCount: 10
     encoding: utf8
@@ -4191,28 +4191,28 @@ SD_EOF
 echo "🔀 [8/12] Creating Nginx workers upstream configuration..."
 cat << UP_EOF > /etc/nginx/conf.d/matrix-workers-upstream.conf
 upstream synapse_workers {
-\\\$(echo -e "\\\${UPSTREAM_SERVERS}")    keepalive 32;
+\$(echo -e "\${UPSTREAM_SERVERS}")    keepalive 32;
 }
 UP_EOF
 
 echo "📝 [9/12] Adjusting Nginx site config with upstreams..."
 NGINX_SITE="/etc/nginx/sites-available/matrix-stack"
-if [ -f "\\\${NGINX_SITE}" ]; then
-  perl -i -0777 -pe 's/location ~ \\^\\/_matrix\\/client\\/\\(v3\\|r0\\)\\/sync.*?\\}//gs' "\\\${NGINX_SITE}"
-  perl -i -0777 -pe 's/location ~ \\^\\/_matrix\\/client\\/\\(api\\/v1\\|v3\\|unstable\\)\\/rooms\\/.*?\\}//gs' "\\\${NGINX_SITE}"
+if [ -f "\${NGINX_SITE}" ]; then
+  perl -i -0777 -pe 's/location ~ \^\/_matrix\/client\/(v3\|r0)\/sync.*?\}//gs' "\${NGINX_SITE}"
+  perl -i -0777 -pe 's/location ~ \^\/_matrix\/client\/(api\/v1\|v3\|unstable)\/rooms\/.*?\}//gs' "\${NGINX_SITE}"
   
   SYNC_LOC="    location ~ ^/_matrix/client/(v3|r0)/sync$ {\\\\n        proxy_pass http://synapse_workers;\\\\n        proxy_set_header X-Forwarded-For \\\\\\\\\\\$remote_addr;\\\\n        proxy_set_header X-Forwarded-Proto \\\\\\\\\\\$scheme;\\\\n        proxy_set_header Host \\\\\\\\\\\$host;\\\\n        client_max_body_size 50M;\\\\n    }"
   SEND_LOC="    location ~ ^/_matrix/client/(api/v1|v3|unstable)/rooms/.*/(send|state|join|invite)$ {\\\\n        proxy_pass http://synapse_workers;\\\\n        proxy_set_header X-Forwarded-For \\\\\\\\\\\$remote_addr;\\\\n        proxy_set_header X-Forwarded-Proto \\\\\\\\\\\$scheme;\\\\n        proxy_set_header Host \\\\\\\\\\\$host;\\\\n        client_max_body_size 50M;\\\\n    }"
   
-  perl -i -0777 -pe "s/(location \\\\/ \\\\{)/\\\\\$SYNC_LOC\\\\n\\\\n\\\\\$SEND_LOC\\\\n\\\\n    \\\\\\\\\\$1/g" "\\\${NGINX_SITE}"
+  perl -i -0777 -pe "s/(location \\\\/ \\\\{)/\\\\\$SYNC_LOC\\\\n\\\\n\\\\\$SEND_LOC\\\\n\\\\n    \\\\\\\\\\$1/g" "\${NGINX_SITE}"
 fi
 
 echo "🔄 [10/12] Enabling and starting worker services..."
 for ((i=1; i<=WORKER_COUNT; i++)); do
-  systemctl enable matrix-synapse-worker@generic_worker\\\${i}.service
+  systemctl enable matrix-synapse-worker@generic_worker\${i}.service
 done
 
-if [ "\\\${ENABLE_FED_SENDER}" = "true" ]; then
+if [ "\${ENABLE_FED_SENDER}" = "true" ]; then
   systemctl enable matrix-synapse-worker@federation_sender1.service
 fi
 
@@ -4221,10 +4221,10 @@ systemctl daemon-reload
 systemctl restart matrix-synapse
 
 for ((i=1; i<=WORKER_COUNT; i++)); do
-  systemctl restart matrix-synapse-worker@generic_worker\\\${i}.service
+  systemctl restart matrix-synapse-worker@generic_worker\${i}.service
 done
 
-if [ "\\\${ENABLE_FED_SENDER}" = "true" ]; then
+if [ "\${ENABLE_FED_SENDER}" = "true" ]; then
   systemctl restart matrix-synapse-worker@federation_sender1.service
 fi
 
