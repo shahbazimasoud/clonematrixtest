@@ -2683,6 +2683,192 @@ async function restartSynapseService(activeConn: any): Promise<boolean> {
   }
 }
 
+app.get("/api/matrix/workers/status", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    if (activeConn && activeConn.id !== "local") {
+      const checkScript = `
+TEMPLATE_EXISTS="false"
+if [ -f /etc/systemd/system/matrix-synapse-worker@.service ]; then
+  TEMPLATE_EXISTS="true"
+fi
+
+WORKERS_DIR_EXISTS="false"
+WORKER_FILES=""
+GENERIC_COUNT=0
+BASE_PORT=0
+FED_SENDER="false"
+if [ -d /etc/matrix-synapse/workers ]; then
+  WORKERS_DIR_EXISTS="true"
+  FILES=$(ls -1 /etc/matrix-synapse/workers/*.yaml 2>/dev/null || true)
+  if [ -n "$FILES" ]; then
+    WORKER_FILES=$(echo "$FILES" | xargs -n1 basename | tr '\\n' ',' | sed 's/,$//')
+    GENERIC_COUNT=$(echo "$FILES" | grep -c "generic_worker" || echo 0)
+    
+    FIRST_WORKER=$(echo "$FILES" | grep "generic_worker" | head -n 1 || true)
+    if [ -n "$FIRST_WORKER" ] && [ -f "$FIRST_WORKER" ]; then
+      PORT=$(grep -E "port:" "$FIRST_WORKER" | awk '{print $2}' | tr -d '"'\\'' ' | head -n 1 || echo 0)
+      if [ "$PORT" -gt 0 ]; then
+        BASE_PORT=$PORT
+      fi
+    fi
+    
+    if echo "$FILES" | grep -q "federation_sender"; then
+      FED_SENDER="true"
+    fi
+  fi
+fi
+
+NGINX_UPSTREAM="false"
+if [ -f /etc/nginx/conf.d/matrix-workers-upstream.conf ]; then
+  NGINX_UPSTREAM="true"
+fi
+
+HS_REPLICATION="false"
+if [ -f /etc/matrix-synapse/homeserver.yaml ]; then
+  if grep -q "replication" /etc/matrix-synapse/homeserver.yaml || grep -q "instance_map" /etc/matrix-synapse/homeserver.yaml; then
+    HS_REPLICATION="true"
+  fi
+fi
+
+REDIS_INSTALLED="false"
+if dpkg -l | grep -q redis-server || which redis-server >/dev/null 2>&1; then
+  REDIS_INSTALLED="true"
+fi
+
+REDIS_RUNNING="false"
+if systemctl is-active redis-server >/dev/null 2>&1 || systemctl is-active redis >/dev/null 2>&1; then
+  REDIS_RUNNING="true"
+fi
+
+REDIS_ENABLED="false"
+if systemctl is-enabled redis-server >/dev/null 2>&1 || systemctl is-enabled redis >/dev/null 2>&1; then
+  REDIS_ENABLED="true"
+fi
+
+REDIS_PORT=6379
+if [ -f /etc/redis/redis.conf ]; then
+  PORT_CFG=$(grep -E "^port " /etc/redis/redis.conf | awk '{print $2}' || echo 6379)
+  if [ -n "$PORT_CFG" ]; then
+    REDIS_PORT=$PORT_CFG
+  fi
+fi
+
+REDIS_REPLICATION="false"
+if [ -f /etc/matrix-synapse/homeserver.yaml ]; then
+  if grep -q "redis:" /etc/matrix-synapse/homeserver.yaml; then
+    REDIS_REPLICATION="true"
+  fi
+fi
+
+WORKER_SERVICES_ACTIVE="false"
+if systemctl list-units --type=service --all 2>/dev/null | grep -q "matrix-synapse-worker@"; then
+  if systemctl list-units --type=service 2>/dev/null | grep -q "matrix-synapse-worker@"; then
+    WORKER_SERVICES_ACTIVE="true"
+  fi
+fi
+
+WORKERS_DETAILS=""
+if systemctl list-units --type=service --all 2>/dev/null | grep -q "matrix-synapse-worker@"; then
+  WORKERS_DETAILS=$(systemctl list-units --type=service --all 2>/dev/null | grep "matrix-synapse-worker@" | awk '{print $1":"$3":"$4}' | tr '\n' ',' | sed 's/,$//')
+fi
+
+cat << JSON
+{
+  "matrixSynapseWorkerTemplateExists": \${TEMPLATE_EXISTS},
+  "workersDirExists": \${WORKERS_DIR_EXISTS},
+  "workerFiles": "\${WORKER_FILES}",
+  "genericWorkersCount": \${GENERIC_COUNT},
+  "workerBasePort": \${BASE_PORT},
+  "federationSenderEnabled": \${FED_SENDER},
+  "nginxUpstreamExists": \${NGINX_UPSTREAM},
+  "homeserverHasReplication": \${HS_REPLICATION},
+  "redisInstalled": \${REDIS_INSTALLED},
+  "redisRunning": \${REDIS_RUNNING},
+  "redisEnabled": \${REDIS_ENABLED},
+  "redisPort": \${REDIS_PORT},
+  "redisReplicationConfigured": \${REDIS_REPLICATION},
+  "workerServicesActive": \${WORKER_SERVICES_ACTIVE},
+  "workersDetails": "\${WORKERS_DETAILS}"
+}
+JSON
+      `;
+      
+      const b64 = Buffer.from(checkScript).toString("base64");
+      const cmd = `echo "${b64}" | base64 -d | sudo bash`;
+      let output = "";
+      if (activeConn.authType === "agent") {
+        output = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: cmd });
+      } else {
+        output = await executeSSHCommand(activeConn, cmd);
+      }
+      
+      const statusData = JSON.parse(output.trim());
+      const detailsStr = statusData.workersDetails || "";
+      const detailsArr = detailsStr ? detailsStr.split(",") : [];
+      const activeCount = detailsArr.filter((w: string) => w.includes(":active") || w.includes(":running")).length;
+
+      const formattedData = {
+        enabled: statusData.matrixSynapseWorkerTemplateExists && statusData.redisReplicationConfigured,
+        hasWorkersTemplate: statusData.matrixSynapseWorkerTemplateExists,
+        configuredWorkersCount: statusData.genericWorkersCount,
+        workerBasePort: statusData.workerBasePort || 8083,
+        federationSenderEnabled: statusData.federationSenderEnabled,
+        redisInstalled: statusData.redisInstalled,
+        redisRunning: statusData.redisRunning,
+        redisPort: String(statusData.redisPort || "6379"),
+        synapseWorkersActiveCount: activeCount,
+        workersDetails: detailsArr,
+        ...statusData
+      };
+      return res.json(formattedData);
+    } else {
+      // Local Sandbox mock configuration
+      const db = readDb();
+      const enabled = db.workersConfig?.enabled || false;
+      const count = db.workersConfig?.count || 2;
+      const federationSender = db.workersConfig?.federationSender || false;
+      const basePort = db.workersConfig?.basePort || 8083;
+      
+      const workersDetails = [];
+      if (enabled) {
+        for (let i = 1; i <= count; i++) {
+          workersDetails.push(`matrix-synapse-worker@generic_worker${i}.service:active:running`);
+        }
+        if (federationSender) {
+          workersDetails.push("matrix-synapse-worker@federation_sender1.service:active:running");
+        }
+      }
+      
+      return res.json({
+        enabled,
+        hasWorkersTemplate: enabled,
+        configuredWorkersCount: enabled ? count : 0,
+        workerBasePort: enabled ? basePort : 0,
+        federationSenderEnabled: enabled ? federationSender : false,
+        redisInstalled: enabled,
+        redisRunning: enabled,
+        redisPort: "6379",
+        synapseWorkersActiveCount: enabled ? (count + (federationSender ? 1 : 0)) : 0,
+        workersDetails,
+        
+        matrixSynapseWorkerTemplateExists: enabled,
+        workersDirExists: enabled,
+        workerFiles: enabled ? Array.from({ length: count }, (_, i) => `generic_worker${i+1}.yaml`).join(",") : "",
+        genericWorkersCount: enabled ? count : 0,
+        nginxUpstreamExists: enabled,
+        homeserverHasReplication: enabled,
+        redisEnabled: enabled,
+        redisReplicationConfigured: enabled,
+        workerServicesActive: enabled
+      });
+    }
+  } catch (error: any) {
+    console.error("Error reading workers status:", error);
+    res.status(500).json({ error: "Failed to read workers status", message: error.message });
+  }
+});
+
 app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { config, ldap, workers } = req.body;
   const db = readDb();
@@ -3815,6 +4001,241 @@ wss.on("connection", (ws: WebSocket, request: any) => {
               envStr += `INSTALL_COTURN='${selectedComponents.includes("coturn")}' `;
               envStr += `INSTALL_NGINX='${selectedComponents.includes("nginx")}' `;
               fullCmd = `${envStr} bash ./install-matrix-stack.sh`;
+            } else if (command === "install_workers") {
+              const workerCount = args?.count || 2;
+              const enableFed = args?.federationSender ? "true" : "false";
+              
+              const installScript = `#!/usr/bin/env bash
+set -eo pipefail
+
+WORKER_COUNT=${workerCount}
+ENABLE_FED_SENDER="${enableFed}"
+
+echo "⚙️ [1/12] Installing Redis Server..."
+apt-get update && apt-get install -y redis-server python3-yaml
+systemctl enable redis-server
+systemctl start redis-server
+
+echo "🔑 [2/12] Generating replication secret..."
+REPLICATION_SECRET=\\\$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+
+echo "🔌 [3/12] Configuring homeserver.yaml with replication and redis..."
+mkdir -p /etc/matrix-synapse/workers
+mkdir -p /etc/matrix-synapse/conf.d
+
+python3 - <<EOF
+import yaml
+
+with open('/etc/matrix-synapse/homeserver.yaml', 'r') as f:
+    cfg = yaml.safe_load(f) or {}
+
+cfg['redis'] = {
+    'enabled': True,
+    'host': '127.0.0.1',
+    'port': 6379
+}
+
+if 'listeners' not in cfg or not isinstance(cfg['listeners'], list):
+    cfg['listeners'] = []
+
+has_replication = False
+for l in cfg['listeners']:
+    if l.get('type') == 'http':
+        for res in l.get('resources', []):
+            if 'replication' in res.get('names', []):
+                has_replication = True
+                break
+
+if not has_replication:
+    cfg['listeners'].append({
+        'port': 9093,
+        'bind_addresses': ['127.0.0.1'],
+        'type': 'http',
+        'resources': [
+            {
+                'names': ['replication']
+            }
+        ]
+    })
+
+cfg['replication_shared_secret'] = "\\\${REPLICATION_SECRET}"
+
+with open('/etc/matrix-synapse/homeserver.yaml', 'w') as f:
+    yaml.safe_dump(cfg, f, default_flow_style=False)
+EOF
+
+echo "👷 [4/12] Creating worker YAML configuration files..."
+rm -f /etc/matrix-synapse/workers/generic_worker*.yaml
+
+BASE_PORT=8083
+UPSTREAM_SERVERS=""
+
+for ((i=1; i<=WORKER_COUNT; i++)); do
+  PORT=\\\$((BASE_PORT + i - 1))
+  WORKER_NAME="generic_worker\\\${i}"
+  WORKER_FILE="/etc/matrix-synapse/workers/\\\${WORKER_NAME}.yaml"
+  
+  echo "   Creating \\\${WORKER_FILE} on port \\\${PORT}..."
+  
+  cat <<WFEOF > "\\\${WORKER_FILE}"
+worker_app: synapse.app.generic_worker
+worker_name: \\\${WORKER_NAME}
+worker_log_config: /etc/matrix-synapse/conf.d/\\\$WORKER_NAME.log.config
+
+worker_replication_host: 127.0.0.1
+worker_replication_port: 9093
+
+worker_listeners:
+  - type: http
+    port: \\\${PORT}
+    bind_addresses: ['127.0.0.1']
+    resources:
+      - names: [client, federation]
+WFEOF
+
+  UPSTREAM_SERVERS="\\\${UPSTREAM_SERVERS}    server 127.0.0.1:\\\${PORT};\\n"
+  
+  echo "📝 [5/12] Creating worker log configuration file..."
+  if [ -f /etc/matrix-synapse/homeserver.log.config ]; then
+    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\\\${WORKER_NAME}.log.config"
+    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\\\${WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\\\${WORKER_NAME}.log.config"
+  else
+    cat <<LCFE > "/etc/matrix-synapse/conf.d/\\\${WORKER_NAME}.log.config"
+version: 1
+formatters:
+  precise:
+    format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s'
+handlers:
+  file:
+    class: logging.handlers.RotatingFileHandler
+    formatter: precise
+    filename: /var/log/matrix-synapse/\\\${WORKER_NAME}.log
+    maxBytes: 104857600
+    backupCount: 10
+    encoding: utf8
+loggers:
+  synapse:
+    level: INFO
+root:
+  level: INFO
+  handlers: [file]
+LCFE
+  fi
+done
+
+if [ "\\\${ENABLE_FED_SENDER}" = "true" ]; then
+  FED_WORKER_NAME="federation_sender1"
+  FED_WORKER_FILE="/etc/matrix-synapse/workers/\\\${FED_WORKER_NAME}.yaml"
+  echo "🚀 [6/12] Configuring dedicated federation sender worker..."
+  
+  cat <<FSWE > "\\\${FED_WORKER_FILE}"
+worker_app: synapse.app.federation_sender
+worker_name: \\\${FED_WORKER_NAME}
+worker_log_config: /etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config
+
+worker_replication_host: 127.0.0.1
+worker_replication_port: 9093
+FSWE
+
+  echo "📝 Creating log config for federation_sender1..."
+  if [ -f /etc/matrix-synapse/homeserver.log.config ]; then
+    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config"
+    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\\\${FED_WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config"
+  else
+    cat <<LCFS > "/etc/matrix-synapse/conf.d/\\\${FED_WORKER_NAME}.log.config"
+version: 1
+formatters:
+  precise:
+    format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s'
+handlers:
+  file:
+    class: logging.handlers.RotatingFileHandler
+    formatter: precise
+    filename: /var/log/matrix-synapse/\\\${FED_WORKER_NAME}.log
+    maxBytes: 104857600
+    backupCount: 10
+    encoding: utf8
+loggers:
+  synapse:
+    level: INFO
+root:
+  level: INFO
+  handlers: [file]
+LCFS
+  fi
+fi
+
+echo "⚙️ [7/12] Creating systemd template unit..."
+cat << 'SD_EOF' > /etc/systemd/system/matrix-synapse-worker@.service
+[Unit]
+Description=Synapse Worker %i
+After=matrix-synapse.service redis-server.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=matrix-synapse
+Group=matrix-synapse
+WorkingDirectory=/var/lib/matrix-synapse
+ExecStart=/opt/venvs/matrix-synapse/bin/python -m synapse.app.homeserver --config-path=/etc/matrix-synapse/homeserver.yaml --config-path=/etc/matrix-synapse/workers/%i.yaml
+ExecReload=/bin/kill -HUP \\\$MAINPID
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SD_EOF
+
+echo "🔀 [8/12] Creating Nginx workers upstream configuration..."
+cat << UP_EOF > /etc/nginx/conf.d/matrix-workers-upstream.conf
+upstream synapse_workers {
+\\\$(echo -e "\\\${UPSTREAM_SERVERS}")    keepalive 32;
+}
+UP_EOF
+
+echo "📝 [9/12] Adjusting Nginx site config with upstreams..."
+NGINX_SITE="/etc/nginx/sites-available/matrix-stack"
+if [ -f "\\\${NGINX_SITE}" ]; then
+  perl -i -0777 -pe 's/location ~ \\^\\/_matrix\\/client\\/\\(v3\\|r0\\)\\/sync.*?\\}//gs' "\\\${NGINX_SITE}"
+  perl -i -0777 -pe 's/location ~ \\^\\/_matrix\\/client\\/\\(api\\/v1\\|v3\\|unstable\\)\\/rooms\\/.*?\\}//gs' "\\\${NGINX_SITE}"
+  
+  SYNC_LOC="    location ~ ^/_matrix/client/(v3|r0)/sync$ {\\\\n        proxy_pass http://synapse_workers;\\\\n        proxy_set_header X-Forwarded-For \\\\\\\\\\\$remote_addr;\\\\n        proxy_set_header X-Forwarded-Proto \\\\\\\\\\\$scheme;\\\\n        proxy_set_header Host \\\\\\\\\\\$host;\\\\n        client_max_body_size 50M;\\\\n    }"
+  SEND_LOC="    location ~ ^/_matrix/client/(api/v1|v3|unstable)/rooms/.*/(send|state|join|invite)$ {\\\\n        proxy_pass http://synapse_workers;\\\\n        proxy_set_header X-Forwarded-For \\\\\\\\\\\$remote_addr;\\\\n        proxy_set_header X-Forwarded-Proto \\\\\\\\\\\$scheme;\\\\n        proxy_set_header Host \\\\\\\\\\\$host;\\\\n        client_max_body_size 50M;\\\\n    }"
+  
+  perl -i -0777 -pe "s/(location \\\\/ \\\\{)/\\\\\$SYNC_LOC\\\\n\\\\n\\\\\$SEND_LOC\\\\n\\\\n    \\\\\\\\\\$1/g" "\\\${NGINX_SITE}"
+fi
+
+echo "🔄 [10/12] Enabling and starting worker services..."
+for ((i=1; i<=WORKER_COUNT; i++)); do
+  systemctl enable matrix-synapse-worker@generic_worker\\\${i}.service
+done
+
+if [ "\\\${ENABLE_FED_SENDER}" = "true" ]; then
+  systemctl enable matrix-synapse-worker@federation_sender1.service
+fi
+
+echo "🔄 [11/12] Reloading systemd daemon and restarting synapse stack..."
+systemctl daemon-reload
+systemctl restart matrix-synapse
+
+for ((i=1; i<=WORKER_COUNT; i++)); do
+  systemctl restart matrix-synapse-worker@generic_worker\\\${i}.service
+done
+
+if [ "\\\${ENABLE_FED_SENDER}" = "true" ]; then
+  systemctl restart matrix-synapse-worker@federation_sender1.service
+fi
+
+echo "🌐 [12/12] Validating Nginx and reloading Nginx proxy..."
+nginx -t
+systemctl reload nginx
+
+echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
+`;
+              const b64 = Buffer.from(installScript).toString("base64");
+              fullCmd = `echo "${b64}" | base64 -d | sudo bash`;
             }
             
             conn.exec(fullCmd, (err, stream) => {
@@ -3828,6 +4249,28 @@ wss.on("connection", (ws: WebSocket, request: any) => {
               stream.on("close", (code, signal) => {
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: `🏁 [REMOTE] Command completed with exit code: ${code}` }));
                 ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
+                
+                if (command === "install_workers" && (code === 0 || !code)) {
+                  try {
+                    const db = readDb();
+                    const workerCount = args?.count || 2;
+                    const enableFed = args?.federationSender || false;
+                    db.workersConfig = {
+                      enabled: true,
+                      count: Number(workerCount),
+                      federationSender: enableFed,
+                      basePort: 8083
+                    };
+                    const connIndex = db.connections.findIndex((c: any) => c.id === activeConn.id);
+                    if (connIndex !== -1) {
+                      db.connections[connIndex].workersConfig = db.workersConfig;
+                    }
+                    writeDb(db);
+                  } catch (e) {
+                    console.error("Failed to update database workers configuration:", e);
+                  }
+                }
+                
                 conn.end();
               }).on("data", (data: any) => {
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
@@ -3917,6 +4360,266 @@ wss.on("connection", (ws: WebSocket, request: any) => {
               details: `Executed production install shell script. Exit code: ${code}`
             });
             writeDb(db);
+          });
+          return;
+        }
+
+        if (!isSandbox && command === "install_workers") {
+          const workerCount = args?.count || 2;
+          const enableFed = args?.federationSender ? "true" : "false";
+          
+          const installScript = `#!/usr/bin/env bash
+set -eo pipefail
+
+WORKER_COUNT=${workerCount}
+ENABLE_FED_SENDER="${enableFed}"
+
+echo "⚙️ [1/12] Installing Redis Server..."
+apt-get update && apt-get install -y redis-server python3-yaml
+systemctl enable redis-server
+systemctl start redis-server
+
+echo "🔑 [2/12] Generating replication secret..."
+REPLICATION_SECRET=\$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+
+echo "🔌 [3/12] Configuring homeserver.yaml with replication and redis..."
+mkdir -p /etc/matrix-synapse/workers
+mkdir -p /etc/matrix-synapse/conf.d
+
+python3 - <<EOF
+import yaml
+
+with open('/etc/matrix-synapse/homeserver.yaml', 'r') as f:
+    cfg = yaml.safe_load(f) or {}
+
+cfg['redis'] = {
+    'enabled': True,
+    'host': '127.0.0.1',
+    'port': 6379
+}
+
+if 'listeners' not in cfg or not isinstance(cfg['listeners'], list):
+    cfg['listeners'] = []
+
+has_replication = False
+for l in cfg['listeners']:
+    if l.get('type') == 'http':
+        for res in l.get('resources', []):
+            if 'replication' in res.get('names', []):
+                has_replication = True
+                break
+
+if not has_replication:
+    cfg['listeners'].append({
+        'port': 9093,
+        'bind_addresses': ['127.0.0.1'],
+        'type': 'http',
+        'resources': [
+            {
+                'names': ['replication']
+            }
+        ]
+    })
+
+cfg['replication_shared_secret'] = "\${REPLICATION_SECRET}"
+
+with open('/etc/matrix-synapse/homeserver.yaml', 'w') as f:
+    yaml.safe_dump(cfg, f, default_flow_style=False)
+EOF
+
+echo "👷 [4/12] Creating worker YAML configuration files..."
+rm -f /etc/matrix-synapse/workers/generic_worker*.yaml
+
+BASE_PORT=8083
+UPSTREAM_SERVERS=""
+
+for ((i=1; i<=WORKER_COUNT; i++)); do
+  PORT=\$((BASE_PORT + i - 1))
+  WORKER_NAME="generic_worker\${i}"
+  WORKER_FILE="/etc/matrix-synapse/workers/\${WORKER_NAME}.yaml"
+  
+  echo "   Creating \${WORKER_FILE} on port \${PORT}..."
+  
+  cat <<WFEOF > "\${WORKER_FILE}"
+worker_app: synapse.app.generic_worker
+worker_name: \${WORKER_NAME}
+worker_log_config: /etc/matrix-synapse/conf.d/\$WORKER_NAME.log.config
+
+worker_replication_host: 127.0.0.1
+worker_replication_port: 9093
+
+worker_listeners:
+  - type: http
+    port: \${PORT}
+    bind_addresses: ['127.0.0.1']
+    resources:
+      - names: [client, federation]
+WFEOF
+
+  UPSTREAM_SERVERS="\${UPSTREAM_SERVERS}    server 127.0.0.1:\${PORT};\n"
+  
+  echo "📝 [5/12] Creating worker log configuration file..."
+  if [ -f /etc/matrix-synapse/homeserver.log.config ]; then
+    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\${WORKER_NAME}.log.config"
+    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\${WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\${WORKER_NAME}.log.config"
+  else
+    cat <<LCFE > "/etc/matrix-synapse/conf.d/\${WORKER_NAME}.log.config"
+version: 1
+formatters:
+  precise:
+    format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s'
+handlers:
+  file:
+    class: logging.handlers.RotatingFileHandler
+    formatter: precise
+    filename: /var/log/matrix-synapse/\${WORKER_NAME}.log
+    maxBytes: 104857600
+    backupCount: 10
+    encoding: utf8
+loggers:
+  synapse:
+    level: INFO
+root:
+  level: INFO
+  handlers: [file]
+LCFE
+  fi
+done
+
+if [ "\${ENABLE_FED_SENDER}" = "true" ]; then
+  FED_WORKER_NAME="federation_sender1"
+  FED_WORKER_FILE="/etc/matrix-synapse/workers/\${FED_WORKER_NAME}.yaml"
+  echo "🚀 [6/12] Configuring dedicated federation sender worker..."
+  
+  cat <<FSWE > "\${FED_WORKER_FILE}"
+worker_app: synapse.app.federation_sender
+worker_name: \${FED_WORKER_NAME}
+worker_log_config: /etc/matrix-synapse/conf.d/\text_worker_name.log.config
+
+worker_replication_host: 127.0.0.1
+worker_replication_port: 9093
+FSWE
+
+  echo "📝 Creating log config for federation_sender1..."
+  if [ -f /etc/matrix-synapse/homeserver.log.config ]; then
+    cp /etc/matrix-synapse/homeserver.log.config "/etc/matrix-synapse/conf.d/\${FED_WORKER_NAME}.log.config"
+    sed -i "s|/var/log/matrix-synapse/homeserver.log|/var/log/matrix-synapse/\${FED_WORKER_NAME}.log|g" "/etc/matrix-synapse/conf.d/\text_worker_name.log.config"
+  else
+    cat <<LCFS > "/etc/matrix-synapse/conf.d/\${FED_WORKER_NAME}.log.config"
+version: 1
+formatters:
+  precise:
+    format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s'
+handlers:
+  file:
+    class: logging.handlers.RotatingFileHandler
+    formatter: precise
+    filename: /var/log/matrix-synapse/\${FED_WORKER_NAME}.log
+    maxBytes: 104857600
+    backupCount: 10
+    encoding: utf8
+loggers:
+  synapse:
+    level: INFO
+root:
+  level: INFO
+  handlers: [file]
+LCFS
+  fi
+fi
+
+echo "⚙️ [7/12] Creating systemd template unit..."
+cat << 'SD_EOF' > /etc/systemd/system/matrix-synapse-worker@.service
+[Unit]
+Description=Synapse Worker %i
+After=matrix-synapse.service redis-server.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=matrix-synapse
+Group=matrix-synapse
+WorkingDirectory=/var/lib/matrix-synapse
+ExecStart=/opt/venvs/matrix-synapse/bin/python -m synapse.app.homeserver --config-path=/etc/matrix-synapse/homeserver.yaml --config-path=/etc/matrix-synapse/workers/%i.yaml
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SD_EOF
+
+echo "🔀 [8/12] Creating Nginx workers upstream configuration..."
+cat << UP_EOF > /etc/nginx/conf.d/matrix-workers-upstream.conf
+upstream synapse_workers {
+\$(echo -e "\${UPSTREAM_SERVERS}")    keepalive 32;
+}
+UP_EOF
+
+echo "📝 [9/12] Adjusting Nginx site config with upstreams..."
+NGINX_SITE="/etc/nginx/sites-available/matrix-stack"
+if [ -f "\${NGINX_SITE}" ]; then
+  perl -i -0777 -pe 's/location ~ \\^\\/_matrix\\/client\\/\\(v3\\|r0\\)\\/sync.*?\\}//gs' "\${NGINX_SITE}"
+  perl -i -0777 -pe 's/location ~ \\^\\/_matrix\\/client\\/\\(api\\/v1\\|v3\\|unstable\\)\\/rooms\\/.*?\\}//gs' "\$NGINX_SITE"
+  
+  SYNC_LOC="    location ~ ^/_matrix/client/(v3|r0)/sync$ {\\n        proxy_pass http://synapse_workers;\\n        proxy_set_header X-Forwarded-For \\\\\\\$remote_addr;\\n        proxy_set_header X-Forwarded-Proto \\\\\\\$scheme;\\n        proxy_set_header Host \\\\\\\$host;\\n        client_max_body_size 50M;\\n    }"
+  SEND_LOC="    location ~ ^/_matrix/client/(api/v1|v3|unstable)/rooms/.*/(send|state|join|invite)$ {\\n        proxy_pass http://synapse_workers;\\n        proxy_set_header X-Forwarded-For \\\\\\\$remote_addr;\\n        proxy_set_header X-Forwarded-Proto \\\\\\\$scheme;\\n        proxy_set_header Host \\\\\\\$host;\\n        client_max_body_size 50M;\\n    }"
+  
+  perl -i -0777 -pe "s/(location \\\\/ \\\\{)/\\\$SYNC_LOC\\n\\n\\\$SEND_LOC\\n\\n    \\\\\\$1/g" "\${NGINX_SITE}"
+fi
+
+echo "🔄 [10/12] Enabling and starting worker services..."
+for ((i=1; i<=WORKER_COUNT; i++)); do
+  systemctl enable matrix-synapse-worker@generic_worker\${i}.service
+done
+
+if [ "\${ENABLE_FED_SENDER}" = "true" ]; then
+  systemctl enable matrix-synapse-worker@federation_sender1.service
+fi
+
+echo "🔄 [11/12] Reloading systemd daemon and restarting synapse stack..."
+systemctl daemon-reload
+systemctl restart matrix-synapse
+
+for ((i=1; i<=WORKER_COUNT; i++)); do
+  systemctl restart matrix-synapse-worker@generic_worker\${i}.service
+done
+
+if [ "\${ENABLE_FED_SENDER}" = "true" ]; then
+  systemctl restart matrix-synapse-worker@federation_sender1.service
+fi
+
+echo "🌐 [12/12] Validating Nginx and reloading Nginx proxy..."
+nginx -t
+systemctl reload nginx
+
+echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
+`;
+          const child = spawn("bash", ["-c", installScript]);
+
+          child.stdout.on("data", (data) => {
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+          });
+
+          child.stderr.on("data", (data) => {
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+          });
+
+          child.on("close", (code) => {
+            ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
+
+            if (code === 0) {
+              const db = readDb();
+              db.workersConfig = {
+                enabled: true,
+                count: Number(workerCount),
+                federationSender: args?.federationSender || false,
+                basePort: 8083
+              };
+              writeDb(db);
+            }
           });
           return;
         }
@@ -4178,27 +4881,44 @@ wss.on("connection", (ws: WebSocket, request: any) => {
             `✅ BACKUP COMPLETE: /root/matrix-backups/matrix-backup-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.tar.gz`,
             "🧹 Cleaning temporary files..."
           ];
-        } else if (command === "workers_enable") {
+        } else if (command === "workers_enable" || command === "install_workers") {
+          const count = args?.count || 2;
+          const fedSender = args?.federationSender || false;
+          
           steps = [
             "🛠️  [INFO] Setting up Synapse Workers (Scaling)...",
+            `   Worker Count Target: ${count}`,
+            `   Dedicated Federation Sender: ${fedSender ? "Enabled" : "Disabled"}`,
             "📦 Installing redis-server requirement...",
             "   Starting redis-server.service...",
             "🔌 Enabling HTTP replication listener on main process...",
             "   homeserver.yaml: listeners updated with replication channel.",
             "🔁 Enabling Redis-based replication in config...",
-            "👷 Writing worker YAML templates at /etc/matrix-synapse/workers/...",
-            "   Created generic_worker1.yaml on port 8083",
-            "   Created generic_worker2.yaml on port 8084",
+            "👷 Writing worker YAML templates at /etc/matrix-synapse/workers/..."
+          ];
+          for (let i = 1; i <= count; i++) {
+            steps.push(`   Created generic_worker${i}.yaml on port ${8082 + i}`);
+          }
+          if (fedSender) {
+            steps.push("   Created federation_sender1.yaml configuration.");
+          }
+          steps.push(
             "⚙️  Setting up systemd templates for matrix-synapse-worker@...",
             "🔀 Adjusting Nginx reverse proxy routes with worker upstreams...",
             "   Pinning cross-signing /device_signing/upload and Admin API to Master process...",
             "🔄 Restarting master Homeserver & reloading Nginx...",
-            "   ✅ Workers successfully registered and active."
-          ];
+            "   ✅ Workers successfully registered and active.",
+            "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
+          );
 
           // Save to config
           const db = readDb();
-          db.workersConfig.enabled = true;
+          db.workersConfig = {
+            enabled: true,
+            count: Number(count),
+            federationSender: fedSender,
+            basePort: 8083
+          };
           writeDb(db);
         } else if (command === "e2ee_disable") {
           steps = [

@@ -51,7 +51,7 @@ interface ConfigFormsProps {
   authToken: string;
   showToast?: (type: 'success' | 'error', text: string) => void;
   isExecuting?: boolean;
-  onExecuteCommand?: (cmd: string) => void;
+  onExecuteCommand?: (cmd: string, args?: any) => void;
 }
 
 type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security' | 'api';
@@ -128,6 +128,52 @@ export default function ConfigForms({
       .catch(err => {
         console.error("Failed to fetch LDAP status", err);
         setLoadingStatus(false);
+      });
+  };
+
+  const [workersStatus, setWorkersStatus] = useState<{
+    enabled: boolean;
+    hasWorkersTemplate: boolean;
+    configuredWorkersCount: number;
+    workerBasePort: number;
+    federationSenderEnabled: boolean;
+    redisInstalled: boolean;
+    redisRunning: boolean;
+    redisPort: string;
+    synapseWorkersActiveCount: number;
+    workersDetails: string[];
+    errors?: string[];
+  } | null>(null);
+  const [loadingWorkers, setLoadingWorkers] = useState<boolean>(false);
+
+  const fetchWorkersStatus = () => {
+    if (!authToken) return;
+    setLoadingWorkers(true);
+    fetch('/api/matrix/workers/status', {
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setWorkersStatus(data);
+        if (data.enabled !== undefined) {
+          setWorkersEnabled(data.enabled);
+        }
+        if (data.configuredWorkersCount !== undefined && data.configuredWorkersCount > 0) {
+          setWorkersCount(data.configuredWorkersCount);
+        }
+        if (data.workerBasePort !== undefined && data.workerBasePort > 0) {
+          setWorkersBasePort(data.workerBasePort);
+        }
+        if (data.federationSenderEnabled !== undefined) {
+          setWorkersFedSender(data.federationSenderEnabled);
+        }
+        setLoadingWorkers(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch workers status", err);
+        setLoadingWorkers(false);
       });
   };
 
@@ -323,6 +369,12 @@ export default function ConfigForms({
       fetchLdapStatus();
     }
   }, [ldap, activeTab, authToken]);
+
+  useEffect(() => {
+    if (activeTab === 'workers' && authToken) {
+      fetchWorkersStatus();
+    }
+  }, [activeTab, authToken]);
 
   const isReadOnly = userRole === 'Viewer';
   const isModerator = userRole === 'Moderator';
@@ -1055,110 +1107,246 @@ export default function ConfigForms({
         )}
 
         {/* VIEW 3: WORKERS & SCALING */}
-        {activeTab === 'workers' && (
-          <form onSubmit={handleSaveWorkers} className="space-y-6" id="form-workers">
-            <div className="flex items-center justify-between pb-4 border-b border-white/5">
-              <div className="flex items-center gap-3">
-                <Cpu className="w-6 h-6 text-rose-400" />
-                <div>
-                  <h2 className="text-xl font-display font-bold text-white">Workers & Performance Scaling</h2>
-                  <p className="text-xs text-slate-400">Scale the homeserver using multi-process Redis workers.</p>
+        {activeTab === 'workers' && (() => {
+          const isWorkersProvisioned = !!(workersStatus?.hasWorkersTemplate && workersStatus?.redisInstalled && workersStatus?.redisRunning);
+          return (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                <div className="flex items-center gap-3">
+                  <Cpu className="w-6 h-6 text-rose-400" />
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-xl font-display font-bold text-white">Workers & Performance Scaling</h2>
+                      {loadingWorkers ? (
+                        <span className="text-[10px] bg-slate-500/10 text-slate-400 border border-slate-500/20 px-2 py-0.5 rounded-full font-bold animate-pulse font-sans">CHECKING SERVER...</span>
+                      ) : isWorkersProvisioned ? (
+                        <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold font-sans flex items-center gap-1">
+                          <Check className="w-3 h-3" /> ACTIVE & SCALED
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-rose-500/15 text-rose-400 border border-rose-500/30 px-2.5 py-0.5 rounded-full font-bold font-sans animate-pulse">
+                          NOT PROVISIONED
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400">Scale the homeserver using multi-process Redis workers.</p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Workers Status */}
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Active:</span>
                 <button
                   type="button"
-                  onClick={() => !isReadOnly && !isModerator && setWorkersEnabled(!workersEnabled)}
-                  disabled={isReadOnly || isModerator}
-                  className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 focus:outline-none ${
-                    workersEnabled ? 'bg-rose-500' : 'bg-slate-700'
-                  }`}
+                  onClick={fetchWorkersStatus}
+                  disabled={loadingWorkers}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-xs text-slate-300 font-medium transition"
                 >
-                  <div className={`w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
-                    workersEnabled ? 'translate-x-6' : 'translate-x-0'
-                  }`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingWorkers ? 'animate-spin' : ''}`} />
+                  Refresh Status
                 </button>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Generic Workers Count</label>
-                <select
-                  value={workersCount}
-                  onChange={(e) => setWorkersCount(Number(e.target.value))}
-                  disabled={isReadOnly || isModerator || !workersEnabled}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-rose-500/50 disabled:opacity-40"
-                >
-                  <option value={1}>1 Worker (Low Traffic / VPS)</option>
-                  <option value={2}>2 Workers (Standard Balanced - Recommended)</option>
-                  <option value={3}>3 Workers (Enterprise Dedicated)</option>
-                  <option value={4}>4 Workers (High Volume Federation Load)</option>
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">Number of generic worker processes spawned on host port interfaces.</p>
-              </div>
+              {/* Diagnostic Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-2xl bg-black/35 border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400 font-semibold tracking-wider uppercase font-sans">Redis Service</span>
+                    {loadingWorkers ? (
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-500 animate-pulse" />
+                    ) : workersStatus?.redisRunning ? (
+                      <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold font-mono">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        RUNNING
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-[10px] text-rose-400 font-bold font-mono">
+                        <span className="w-2 h-2 rounded-full bg-rose-500" />
+                        STOPPED
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-slate-300 font-medium font-sans">
+                      Installed: <span className="font-mono text-white">{workersStatus?.redisInstalled ? "Yes" : "No"}</span>
+                    </p>
+                    <p className="text-xs text-slate-300 font-medium font-sans">
+                      Port Binding: <span className="font-mono text-white">{workersStatus?.redisPort || "N/A"}</span>
+                    </p>
+                  </div>
+                </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Worker Base TCP Port</label>
-                <input
-                  type="number"
-                  value={workersBasePort}
-                  onChange={(e) => setWorkersBasePort(Number(e.target.value))}
-                  disabled={isReadOnly || isModerator || !workersEnabled}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-rose-500/50 disabled:opacity-40"
-                  min={1024}
-                  max={65535}
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Starting port for allocating generic worker thread bindings (Redis queues).</p>
-              </div>
+                <div className="p-4 rounded-2xl bg-black/35 border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400 font-semibold tracking-wider uppercase font-sans">Systemd Template</span>
+                    {loadingWorkers ? (
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-500 animate-pulse" />
+                    ) : workersStatus?.hasWorkersTemplate ? (
+                      <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold font-mono">
+                        <Check className="w-3.5 h-3.5" />
+                        ACTIVE
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold font-mono">
+                        ABSENT
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1 font-sans">
+                    <p className="text-[11px] text-slate-400 leading-normal">
+                      Template: <span className="font-mono text-slate-300">matrix-synapse-worker@.service</span>
+                    </p>
+                    <p className="text-[11px] text-slate-400 leading-normal">
+                      Directories: <span className="font-mono text-slate-300">/workers/</span>, <span className="font-mono text-slate-300">/conf.d/</span>
+                    </p>
+                  </div>
+                </div>
 
-              <div className="md:col-span-2">
-                <div className="flex items-start gap-3 p-4 rounded-2xl bg-black/25 border border-white/5">
-                  <input
-                    type="checkbox"
-                    id="workers-fed-sender"
-                    checked={workersFedSender}
-                    onChange={(e) => setWorkersFedSender(e.target.checked)}
-                    disabled={isReadOnly || isModerator || !workersEnabled}
-                    className="rounded border-white/10 bg-black/40 text-rose-500 focus:ring-0 mt-0.5 disabled:opacity-40"
-                  />
-                  <div className={!workersEnabled ? 'opacity-40' : ''}>
-                    <label htmlFor="workers-fed-sender" className="text-xs font-bold text-white block">
-                      Isolate Federation Senders
-                    </label>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Spawns a dedicated worker exclusively handling outbound federation traffic and room syncs, ensuring local chat latency remains untouched.
+                <div className="p-4 rounded-2xl bg-black/35 border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between font-sans">
+                    <span className="text-xs text-slate-400 font-semibold tracking-wider uppercase">Active Workers</span>
+                    <span className="font-mono text-xs text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded">
+                      {loadingWorkers ? "..." : (workersStatus?.synapseWorkersActiveCount || 0)} Spawned
+                    </span>
+                  </div>
+                  <div className="space-y-1 font-sans">
+                    <p className="text-xs text-slate-300 font-medium">
+                      Configured count: <span className="font-mono text-white">{workersStatus?.configuredWorkersCount || 0}</span>
+                    </p>
+                    <p className="text-xs text-slate-300 font-medium">
+                      Federation Sender: <span className="font-mono text-white">{workersStatus?.federationSenderEnabled ? "Yes" : "No"}</span>
                     </p>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/10 flex gap-3 text-rose-400">
-              <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
-              <div>
-                <h5 className="text-xs font-bold uppercase tracking-wider">Redis Server Dependency</h5>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Enabling workers transforms Synapse into a multi-process matrix stack. This requires a background Redis daemon to route cross-worker communications. If disabled or port 6379 is blocked, services will fail to authenticate.
-                </p>
-              </div>
-            </div>
+              {/* Active Workers List */}
+              {workersStatus?.workersDetails && workersStatus.workersDetails.length > 0 && (
+                <div className="p-4 rounded-2xl bg-black/20 border border-white/5">
+                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5 font-sans">Detected Systemd Worker Instances</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    {workersStatus.workersDetails.map((w, index) => {
+                      const isFed = w.includes("federation_sender");
+                      const isActive = w.includes("active") || w.includes("running");
+                      return (
+                        <div key={index} className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/5">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            <span className="font-mono text-xs text-slate-200">{w.split(':')[0]}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">
+                            {isFed ? "FED SENDER" : "GENERIC"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-            {!isReadOnly && !isModerator && (
-              <div className="flex justify-end pt-4">
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-rose-500 text-white font-bold text-sm shadow-[0_0_15px_rgba(244,63,94,0.3)] hover:scale-105 transition-transform"
-                >
-                  Save & Apply Workers
-                </button>
-              </div>
-            )}
-          </form>
-        )}
+              {/* Form */}
+              <form onSubmit={handleSaveWorkers} className="space-y-6" id="form-workers">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Generic Workers Count</label>
+                    <select
+                      value={workersCount}
+                      onChange={(e) => setWorkersCount(Number(e.target.value))}
+                      disabled={isReadOnly || isModerator}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-rose-500/50 disabled:opacity-40"
+                    >
+                      <option value={1}>1 Worker (Low Traffic / VPS)</option>
+                      <option value={2}>2 Workers (Standard Balanced - Recommended)</option>
+                      <option value={3}>3 Workers (Enterprise Dedicated)</option>
+                      <option value={4}>4 Workers (High Volume Federation Load)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">Number of generic worker processes spawned on host port interfaces.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Worker Base TCP Port</label>
+                    <input
+                      type="number"
+                      value={workersBasePort}
+                      onChange={(e) => setWorkersBasePort(Number(e.target.value))}
+                      disabled={isReadOnly || isModerator}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-rose-500/50 disabled:opacity-40"
+                      min={1024}
+                      max={65535}
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">Starting port for allocating generic worker thread bindings (Redis queues).</p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="flex items-start gap-3 p-4 rounded-2xl bg-black/25 border border-white/5">
+                      <input
+                        type="checkbox"
+                        id="workers-fed-sender"
+                        checked={workersFedSender}
+                        onChange={(e) => setWorkersFedSender(e.target.checked)}
+                        disabled={isReadOnly || isModerator}
+                        className="rounded border-white/10 bg-black/40 text-rose-500 focus:ring-0 mt-0.5 disabled:opacity-40"
+                      />
+                      <div>
+                        <label htmlFor="workers-fed-sender" className="text-xs font-bold text-white block">
+                          Isolate Federation Senders
+                        </label>
+                        <p className="text-[11px] text-slate-400 mt-0.5 font-sans leading-normal">
+                          Spawns a dedicated worker exclusively handling outbound federation traffic and room syncs, ensuring local chat latency remains untouched.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/10 flex gap-3 text-rose-400">
+                  <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                    <h5 className="text-xs font-bold uppercase tracking-wider">Redis Server & Upstream Reverse Proxy Routing</h5>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
+                      Enabling multi-process workers routes high-load matrix traffic channels (such as `/sync` and room state send actions) directly to separate thread pools. Clicking the button below runs the complete live remote provisioning sequence over your established SSH connection.
+                    </p>
+                  </div>
+                </div>
+
+                {!isReadOnly && !isModerator && (
+                  <div className="flex gap-3 justify-end pt-4 font-sans">
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm hover:bg-white/10 transition"
+                    >
+                      Save Config Only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onExecuteCommand && onExecuteCommand('install_workers', { count: workersCount, federationSender: workersFedSender })}
+                      disabled={isExecuting}
+                      className={`px-6 py-2.5 rounded-xl text-white font-bold text-sm shadow-lg transition-all duration-200 ${
+                        isExecuting 
+                          ? 'bg-rose-500/50 cursor-not-allowed opacity-70' 
+                          : isWorkersProvisioned
+                            ? 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:scale-105 active:scale-95'
+                            : 'bg-rose-500 hover:bg-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.3)] hover:scale-105 active:scale-95 animate-pulse hover:animate-none'
+                      }`}
+                    >
+                      {isExecuting ? (
+                        <span className="flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Scaling matrix workers stack...
+                        </span>
+                      ) : isWorkersProvisioned ? (
+                        <span className="flex items-center gap-2">
+                          🔄 Update & Re-Scale Workers
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          🚀 Install & Scale Workers Stack
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </form>
+            </div>
+          );
+        })()}
 
         {/* VIEW 4: LIMITS & POLICIES */}
         {activeTab === 'policies' && (

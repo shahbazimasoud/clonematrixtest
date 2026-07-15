@@ -578,9 +578,9 @@ export default function App() {
     });
   };
 
-  const handleExecuteCommand = (command: string) => {
+  const handleExecuteCommand = (command: string, args?: any) => {
     if (!wsRef.current || isExecuting) return;
-    wsRef.current.send(JSON.stringify({ type: 'execute_command', command }));
+    wsRef.current.send(JSON.stringify({ type: 'execute_command', command, args }));
     setActiveView('terminal');
   };
 
