@@ -2124,26 +2124,6 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       }`}
                     />
                   </div>
-
-                  {/* SSL Mode */}
-                  <div className="space-y-1">
-                    <label className={`block font-semibold ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
-                      {isRtl ? 'حالت رمزگذاری SSL/TLS' : 'SSL/TLS Encryption Mode'}
-                    </label>
-                    <select
-                      value={installerConfig.SSL_MODE || 'selfsigned'}
-                      onChange={(e) => setInstallerConfig((prev: any) => ({ ...prev, SSL_MODE: e.target.value }))}
-                      className={`w-full border rounded-lg p-2.5 outline-none transition-colors duration-200 ${
-                        isLightMode 
-                          ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
-                          : 'bg-black/40 border-white/5 text-gray-200 focus:border-indigo-500'
-                      }`}
-                    >
-                      <option value="selfsigned">{isRtl ? 'گواهی داخلی خودامضا (پیش‌فرض)' : 'Self-Signed Certificate (Default)'}</option>
-                      <option value="letsencrypt">{isRtl ? 'دریافت گواهی معتبر Let\'s Encrypt' : 'Let\'s Encrypt Certificate'}</option>
-                      <option value="custom">{isRtl ? 'استفاده از گواهی‌های سفارشی (PEM)' : 'Use Custom PEM Certificates'}</option>
-                    </select>
-                  </div>
                 </div>
               </div>
 

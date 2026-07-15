@@ -182,6 +182,12 @@ export default function ConfigForms({
   const [loadingApi, setLoadingApi] = useState<boolean>(false);
   const [selectedEndpoint, setSelectedEndpoint] = useState<any>(null);
 
+  const [customApiPort, setCustomApiPort] = useState<string>('8008');
+  const [customApiBaseUrl, setCustomApiBaseUrl] = useState<string>('http://localhost:8008');
+  const [customApiToken, setCustomApiToken] = useState<string>('');
+  const [showApiSettings, setShowApiSettings] = useState<boolean>(false);
+  const [savingApiConfig, setSavingApiConfig] = useState<boolean>(false);
+
   const fetchApiReport = async () => {
     setLoadingApi(true);
     try {
@@ -196,6 +202,9 @@ export default function ConfigForms({
         if (data.endpoints && data.endpoints.length > 0) {
           setSelectedEndpoint(data.endpoints[0]);
         }
+        if (data.apiPort) setCustomApiPort(String(data.apiPort));
+        if (data.apiBaseUrl) setCustomApiBaseUrl(data.apiBaseUrl);
+        if (data.apiAdminTokenOverride) setCustomApiToken(data.apiAdminTokenOverride);
       } else {
         if (showToast) showToast('error', 'Failed to retrieve API status.');
       }
@@ -203,6 +212,35 @@ export default function ConfigForms({
       if (showToast) showToast('error', 'Error reaching backend API checker.');
     } finally {
       setLoadingApi(false);
+    }
+  };
+
+  const handleSaveApiConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingApiConfig(true);
+    try {
+      const res = await fetch('/api/matrix/api-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          apiPort: parseInt(customApiPort) || 8008,
+          apiBaseUrl: customApiBaseUrl,
+          apiAdminTokenOverride: customApiToken
+        })
+      });
+      if (res.ok) {
+        if (showToast) showToast('success', 'API configuration updated and saved successfully!');
+        fetchApiReport();
+      } else {
+        if (showToast) showToast('error', 'Failed to save API configuration.');
+      }
+    } catch (err) {
+      if (showToast) showToast('error', 'Error sending configuration update.');
+    } finally {
+      setSavingApiConfig(false);
     }
   };
 
@@ -677,20 +715,6 @@ export default function ConfigForms({
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500/50"
                   placeholder="e.g. admin@company.local"
                 />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">SSL Protocol Profile</label>
-                <select
-                  value={sslMode}
-                  onChange={(e) => setSslMode(e.target.value as any)}
-                  disabled={isReadOnly}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500/50"
-                >
-                  <option value="selfsigned">Self-Signed Root CA (Internal Network)</option>
-                  <option value="letsencrypt">Let's Encrypt TLS (Public DNS)</option>
-                  <option value="custom">Custom PEM Certificates (Manual Import)</option>
-                </select>
               </div>
             </div>
 
@@ -1832,7 +1856,7 @@ export default function ConfigForms({
         {/* VIEW 10: MATRIX & SYNAPSE APIS TESTING */}
         {activeTab === 'api' && (
           <div className="space-y-6 h-full flex flex-col">
-            <div className="flex justify-between items-center pb-4 border-b border-white/5 shrink-0">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/5 shrink-0">
               <div className="flex items-center gap-3">
                 <Activity className="w-6 h-6 text-blue-400 animate-pulse" />
                 <div>
@@ -1840,15 +1864,107 @@ export default function ConfigForms({
                   <p className="text-xs text-slate-400 font-sans">Inspect, debug, and monitor client and admin specification APIs on the connected server.</p>
                 </div>
               </div>
-              <button
-                onClick={fetchApiReport}
-                disabled={loadingApi}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingApi ? 'animate-spin' : ''}`} />
-                <span>{loadingApi ? 'Checking APIs...' : 'Refresh API Status'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowApiSettings(!showApiSettings)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                    showApiSettings 
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' 
+                      : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span>{showApiSettings ? 'Hide Custom API Settings' : 'Edit API Settings / Token Override'}</span>
+                </button>
+                <button
+                  onClick={fetchApiReport}
+                  disabled={loadingApi}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingApi ? 'animate-spin' : ''}`} />
+                  <span>{loadingApi ? 'Checking APIs...' : 'Refresh API Status'}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Target Server Indicator */}
+            {apiReport && (
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 font-mono text-xs font-bold uppercase">
+                    SSH TARGET
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Active Server Profile: <span className="text-blue-400">{apiReport.serverName || 'Local Machine'}</span></h3>
+                    <p className="text-xs text-slate-400 font-mono">Host Endpoint: {apiReport.host || 'localhost'} | Configured Port: {customApiPort || '8008'}</p>
+                  </div>
+                </div>
+                <div className="text-right text-xs text-slate-500 font-mono">
+                  Last verified: {new Date(apiReport.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+            )}
+
+            {/* Collapsible API Settings / Manual Override Panel */}
+            {showApiSettings && (
+              <form onSubmit={handleSaveApiConfig} className="p-5 rounded-2xl bg-slate-900/50 border border-blue-500/20 space-y-4 shrink-0">
+                <div className="flex items-center gap-2.5 text-blue-400 pb-2 border-b border-white/5">
+                  <Terminal className="w-4 h-4" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Manual API Configuration & Port Override</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 block mb-1">Matrix / Synapse Listener Port</label>
+                    <input
+                      type="number"
+                      placeholder="8008"
+                      value={customApiPort}
+                      onChange={(e) => setCustomApiPort(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">Default Port for Synapse is 8008 or 8448</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 block mb-1">Custom API Base URL Override</label>
+                    <input
+                      type="text"
+                      placeholder="http://localhost:8008"
+                      value={customApiBaseUrl}
+                      onChange={(e) => setCustomApiBaseUrl(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">Path used by SSH curl requests</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 block mb-1">Admin Access Token Override (Optional)</label>
+                    <input
+                      type="password"
+                      placeholder="syt_..."
+                      value={customApiToken}
+                      onChange={(e) => setCustomApiToken(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">Bypasses DB/Postgres automatic lookup</span>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowApiSettings(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingApiConfig}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
+                  >
+                    {savingApiConfig ? 'Saving Configuration...' : 'Save & Re-Verify API Connection'}
+                  </button>
+                </div>
+              </form>
+            )}
 
             {loadingApi && !apiReport ? (
               <div className="flex-1 flex flex-col items-center justify-center py-12">

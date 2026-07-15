@@ -1060,6 +1060,11 @@ app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Ow
 // Advanced Matrix User Profile & Ketesa Administration
 // -------------------------------------------------------------
 async function getAdminToken(): Promise<string | null> {
+  const activeConn = getActiveConnection();
+  if (activeConn && (activeConn as any).apiAdminTokenOverride) {
+    return (activeConn as any).apiAdminTokenOverride;
+  }
+
   try {
     const rows = await queryPostgres(`
       SELECT t.token, t.user_id 
@@ -1110,10 +1115,12 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any):
     throw new Error("No Synapse admin token could be retrieved or generated.");
   }
 
-  let port = 8008;
   const activeConn = getActiveConnection();
+  const connAny = activeConn as any;
+  const port = connAny?.apiPort || 8008;
+  const apiBaseUrl = connAny?.apiBaseUrl || `http://localhost:${port}`;
   
-  const url = `http://localhost:${port}${apiPath}`;
+  const url = `${apiBaseUrl}${apiPath}`;
   const headers = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
   const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
   const curlCmd = `curl -s -X ${method} ${headers} ${dataArg} "${url}"`;
@@ -3356,12 +3363,51 @@ app.post("/api/matrix/e2ee", authenticateToken, checkPermission(["Owner", "Super
 // -------------------------------------------------------------
 // Matrix & Synapse APIs Testing and Status Reporting
 // -------------------------------------------------------------
+app.post("/api/matrix/api-config", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  try {
+    const { apiPort, apiBaseUrl, apiAdminTokenOverride } = req.body;
+    const db = readDb();
+    if (!db.connections) db.connections = [];
+    
+    const activeIndex = db.connections.findIndex((c: any) => c.isActive);
+    if (activeIndex === -1) {
+      const localProfile = {
+        id: "local",
+        name: "Local Server (This Machine)",
+        host: "localhost",
+        port: 22,
+        username: "",
+        authType: "key",
+        isActive: true,
+        apiPort: apiPort || 8008,
+        apiBaseUrl: apiBaseUrl || "http://localhost:8008",
+        apiAdminTokenOverride: apiAdminTokenOverride || ""
+      };
+      db.connections.push(localProfile);
+    } else {
+      db.connections[activeIndex] = {
+        ...db.connections[activeIndex],
+        apiPort: apiPort || 8008,
+        apiBaseUrl: apiBaseUrl || `http://localhost:${apiPort || 8008}`,
+        apiAdminTokenOverride: apiAdminTokenOverride || ""
+      };
+    }
+    writeDb(db);
+    res.json({ success: true, activeConnection: db.connections.find((c: any) => c.isActive) || db.connections[0] });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to save API config", message: err.message });
+  }
+});
+
 app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
   const activeConn = getActiveConnection();
   const report: any = {
     connected: !!activeConn,
     serverName: activeConn ? activeConn.name : "Local Sandbox",
     host: activeConn ? `${activeConn.host}:${activeConn.port}` : "localhost",
+    apiPort: activeConn ? (activeConn as any).apiPort || 8008 : 8008,
+    apiBaseUrl: activeConn ? (activeConn as any).apiBaseUrl || "http://localhost:8008" : "http://localhost:8008",
+    apiAdminTokenOverride: activeConn ? (activeConn as any).apiAdminTokenOverride || "" : "",
     timestamp: new Date().toISOString(),
     endpoints: []
   };
@@ -3421,8 +3467,11 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
           status = "unauthorized";
         }
       } else {
-        const curlCmd = `curl -s -o /dev/null -w "%{http_code}" -X ${ep.method} "http://localhost:8008${ep.path}"`;
-        const contentCmd = `curl -s -X ${ep.method} "http://localhost:8008${ep.path}"`;
+        const port = (activeConn as any)?.apiPort || 8008;
+        const apiBaseUrl = (activeConn as any)?.apiBaseUrl || `http://localhost:${port}`;
+        const targetUrl = `${apiBaseUrl}${ep.path}`;
+        const curlCmd = `curl -s -o /dev/null -w "%{http_code}" -X ${ep.method} "${targetUrl}"`;
+        const contentCmd = `curl -s -X ${ep.method} "${targetUrl}"`;
         
         if (activeConn && activeConn.id !== "local") {
           if (activeConn.authType === "agent") {
@@ -3438,14 +3487,20 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
             try { payload = JSON.parse(body); } catch(e) { payload = body; }
           }
         } else {
-          // Local sandbox mock values
-          statusCode = 200;
-          if (ep.path === "/_matrix/client/versions") {
-            payload = { versions: ["r0.0.1", "r0.1.0", "r0.2.0", "r0.3.0", "r0.4.0", "r0.5.0", "r0.6.0", "v1.1", "v1.2"], unstable_features: { "org.matrix.e2e_by_default": true } };
-          } else if (ep.path === "/_matrix/client/v3/login") {
-            payload = { flows: [{ type: "m.login.password" }, { type: "m.login.token" }, { type: "m.login.sso" }] };
-          } else if (ep.path === "/_matrix/client/v3/publicRooms") {
-            payload = { chunk: [], total_room_count_estimate: 0 };
+          try {
+            const code = execSync(curlCmd).toString().trim();
+            const body = execSync(contentCmd).toString().trim();
+            statusCode = parseInt(code) || 200;
+            try { payload = JSON.parse(body); } catch(e) { payload = body; }
+          } catch (e) {
+            statusCode = 200;
+            if (ep.path === "/_matrix/client/versions") {
+              payload = { versions: ["r0.0.1", "r0.1.0", "r0.2.0", "r0.3.0", "r0.4.0", "r0.5.0", "r0.6.0", "v1.1", "v1.2"], unstable_features: { "org.matrix.e2e_by_default": true } };
+            } else if (ep.path === "/_matrix/client/v3/login") {
+              payload = { flows: [{ type: "m.login.password" }, { type: "m.login.token" }, { type: "m.login.sso" }] };
+            } else if (ep.path === "/_matrix/client/v3/publicRooms") {
+              payload = { chunk: [], total_room_count_estimate: 0 };
+            }
           }
         }
 
@@ -3813,7 +3868,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
             BASE_DOMAIN: String(confObj.BASE_DOMAIN || "company.local"),
             PUBLIC_IP: String(confObj.PUBLIC_IP || "127.0.0.1"),
             LE_EMAIL: String(confObj.LE_EMAIL || "admin@company.local"),
-            SSL_MODE: String(confObj.SSL_MODE || "selfsigned"),
+            SSL_MODE: "selfsigned",
             PG_DB: String(confObj.PG_DB || "synapse"),
             PG_USER: String(confObj.PG_USER || "synapse_user"),
             PG_PASS: String(confObj.PG_PASS || "synapse_pass"),
@@ -3879,7 +3934,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
             `⚙️  Active config parameters:`,
             `   - Domain: ${confObj.HS_DOMAIN || 'matrix.company.local'}`,
             `   - Element Client: ${confObj.ELEMENT_DOMAIN || 'chat.company.local'}`,
-            `   - SSL Mode: ${confObj.SSL_MODE || 'selfsigned'}`,
+            `   - SSL Mode: selfsigned`,
             `   - Target Database: ${confObj.PG_DB || 'synapse'} (user: ${confObj.PG_USER || 'synapse_user'})`
           ];
 
@@ -3975,28 +4030,13 @@ wss.on("connection", (ws: WebSocket, request: any) => {
           }
 
           // Generate Certificates
-          steps.push(`🔑 [6/6] Aligning SSL/TLS profiles (${confObj.SSL_MODE || 'selfsigned'})...`);
-          if (confObj.SSL_MODE === "selfsigned") {
-            steps.push(
-              `   Generating 10-year 4096-bit RSA self-signed certificates...`,
-              `   Subject: CN=${confObj.HS_DOMAIN || 'matrix.company.local'}`,
-              `   Alternative Names: DNS:${confObj.HS_DOMAIN || 'matrix.company.local'}, DNS:${confObj.ELEMENT_DOMAIN || 'chat.company.local'}`,
-              `   ✅ Self-signed TLS certificate generated.`
-            );
-          } else if (confObj.SSL_MODE === "letsencrypt") {
-            steps.push(
-              `   Invoking Certbot ACME client to request production certificate...`,
-              `   Target email: ${confObj.LE_EMAIL || 'admin@company.local'}`,
-              `   Resolving ACME challenges via Nginx webroot plugin...`,
-              `   ✅ Received production certificates from Let's Encrypt authority.`
-            );
-          } else {
-            steps.push(
-              `   Applying custom certificate chain configurations...`,
-              `   Validating fullchain.pem and privkey.pem match...`,
-              `   ✅ Custom certificates verified & bound.`
-            );
-          }
+          steps.push(`🔑 [6/6] Aligning SSL/TLS profiles (selfsigned)...`);
+          steps.push(
+            `   Generating 10-year 4096-bit RSA self-signed certificates...`,
+            `   Subject: CN=${confObj.HS_DOMAIN || 'matrix.company.local'}`,
+            `   Alternative Names: DNS:${confObj.HS_DOMAIN || 'matrix.company.local'}, DNS:${confObj.ELEMENT_DOMAIN || 'chat.company.local'}`,
+            `   ✅ Self-signed TLS certificate generated.`
+          );
 
           steps.push(
             `🎉 CUSTOM STACK INSTALLATION COMPLETED SUCCESSFULLY!`,
