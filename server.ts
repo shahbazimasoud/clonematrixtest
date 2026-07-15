@@ -1417,6 +1417,14 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
         // Safe skip if flags columns aren't in this specific schema
       }
 
+      const memberships = rooms.map((rm: any) => ({
+        roomId: rm.roomId,
+        roomName: rm.name,
+        powerLevel: rm.powerLevel,
+        isJoined: rm.isJoined,
+        isBanned: rm.isBanned
+      }));
+
       const realUser: any = {
         mxid: r.mxid,
         displayName: r.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
@@ -1443,6 +1451,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
         rateLimits: { perSecond: 2, burstCount: 10 },
         accountData,
         rooms,
+        memberships,
         media
       };
       return res.json(realUser);
@@ -1572,7 +1581,14 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
   res.json({
     ...user,
     media: userMedia,
-    rooms: userRooms
+    rooms: userRooms,
+    memberships: userRooms.map((rm: any) => ({
+      roomId: rm.roomId,
+      roomName: rm.name,
+      powerLevel: rm.powerLevel,
+      isJoined: rm.isJoined,
+      isBanned: rm.isBanned
+    }))
   });
 });
 
@@ -2240,11 +2256,60 @@ app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["
 });
 
 // Room Chat/Messages Viewer API
-app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, (req, res) => {
+app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res) => {
   const { roomId } = req.params;
+
+  // 1. Try querying Postgres for real chat history if available
+  try {
+    const rows = await queryPostgres(`
+      SELECT e.event_id, e.sender, e.origin_server_ts, ej.json, p.displayname
+      FROM events e 
+      JOIN event_json ej ON e.event_id = ej.event_id 
+      LEFT JOIN profiles p ON e.sender = p.user_id
+      WHERE e.room_id = $1 AND e.type = 'm.room.message'
+      ORDER BY e.origin_server_ts DESC 
+      LIMIT 100
+    `, [roomId]);
+    
+    if (rows && rows.length > 0) {
+      // Map rows from Postgres (reverse them so they are in chronological order)
+      const messages = rows.reverse().map((row: any) => {
+        let contentText = "";
+        let msgType = "m.text";
+        try {
+          const parsed = typeof row.json === 'string' ? JSON.parse(row.json) : row.json;
+          contentText = parsed?.content?.body || "";
+          msgType = parsed?.content?.msgtype || "m.text";
+        } catch (e) {
+          contentText = "Message content undecodable";
+        }
+        const username = row.sender.split(":")[0].replace("@", "");
+        return {
+          id: row.event_id,
+          sender: row.sender,
+          senderDisplayName: row.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
+          content: contentText,
+          timestamp: new Date(parseInt(row.origin_server_ts)).toISOString(),
+          type: msgType
+        };
+      });
+      return res.json(messages);
+    }
+  } catch (err: any) {
+    console.warn("Could not fetch messages from Postgres, falling back to local/mock:", err.message);
+  }
+
+  // 2. Fall back to local DB
   const db = readDb();
   const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
-  if (!room) return res.status(404).json({ error: "Room not found" });
+  if (!room) {
+    // If we have an active connection but room is not in local mock DB, return empty list instead of 404
+    const activeConn = getActiveConnection();
+    if (activeConn && activeConn.id !== "local") {
+      return res.json([]);
+    }
+    return res.status(404).json({ error: "Room not found" });
+  }
 
   // If no messages array exists, populate with realistic defaults
   if (!room.messages) {

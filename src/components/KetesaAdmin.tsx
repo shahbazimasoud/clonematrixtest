@@ -20,6 +20,7 @@ import {
   UserPlus, 
   HardDrive, 
   Filter, 
+  Edit,
   ShieldAlert,
   FolderSync,
   X,
@@ -414,6 +415,8 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [isEditingDisplayName, setIsEditingDisplayName] = useState(false);
+  const [tempDisplayName, setTempDisplayName] = useState('');
   const [userRateLimits, setUserRateLimits] = useState({ perSecond: '2', burstCount: '10' });
   const [userAccountDataText, setUserAccountDataText] = useState('{}');
 
@@ -3265,9 +3268,68 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>User type:</span>
                               <span className="text-indigo-500 font-semibold uppercase">{selectedUserDetails.userType || 'ketesa'}</span>
                             </div>
-                            <div className={`flex justify-between border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2`}>
+                            <div className={`flex justify-between items-center border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'} pb-2 min-h-[36px]`}>
                               <span className={isLightMode ? 'text-slate-500' : 'text-gray-500'}>Display name:</span>
-                              <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-300'}`}>{selectedUserDetails.displayName || 'N/A'}</span>
+                              {isEditingDisplayName ? (
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={tempDisplayName}
+                                    onChange={(e) => setTempDisplayName(e.target.value)}
+                                    className={`px-2 py-0.5 text-xs rounded border outline-none font-sans ${
+                                      isLightMode
+                                        ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500'
+                                        : 'bg-black/40 border-white/10 text-gray-200 focus:border-indigo-500'
+                                    }`}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        handleUpdateUserParams({ displayName: tempDisplayName });
+                                        setIsEditingDisplayName(false);
+                                      } else if (e.key === 'Escape') {
+                                        setIsEditingDisplayName(false);
+                                      }
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      handleUpdateUserParams({ displayName: tempDisplayName });
+                                      setIsEditingDisplayName(false);
+                                    }}
+                                    className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded transition-colors"
+                                    title="Save"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setIsEditingDisplayName(false)}
+                                    className="p-1 text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                                    title="Cancel"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 group/edit">
+                                  <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-300'}`}>
+                                    {selectedUserDetails.displayName || 'N/A'}
+                                  </span>
+                                  {hasWriteAccess && (
+                                    <button
+                                      onClick={() => {
+                                        setTempDisplayName(selectedUserDetails.displayName || '');
+                                        setIsEditingDisplayName(true);
+                                      }}
+                                      className={`p-1 rounded opacity-0 group-hover/edit:opacity-100 transition-all duration-200 ${
+                                        isLightMode ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-600' : 'hover:bg-white/5 text-gray-500 hover:text-gray-300'
+                                      }`}
+                                      title="Edit Display Name"
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
