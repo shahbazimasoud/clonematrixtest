@@ -52,6 +52,7 @@ interface ConfigFormsProps {
   showToast?: (type: 'success' | 'error', text: string) => void;
   isExecuting?: boolean;
   onExecuteCommand?: (cmd: string, args?: any) => void;
+  isLightMode?: boolean;
 }
 
 type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security' | 'api';
@@ -69,7 +70,8 @@ export default function ConfigForms({
   authToken,
   showToast,
   isExecuting = false,
-  onExecuteCommand
+  onExecuteCommand,
+  isLightMode = false
 }: ConfigFormsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('homeserver');
   
@@ -2275,32 +2277,52 @@ export default function ConfigForms({
       </div>
 
       {showConfirmInstall && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl shadow-2xl p-6 space-y-4">
-            <div className="flex items-center gap-3 text-rose-400">
+        <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ${
+          isLightMode ? 'bg-slate-900/40 backdrop-blur-md' : 'bg-black/75 backdrop-blur-md'
+        }`}>
+          <div className={`w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4 border transition-all duration-300 ${
+            isLightMode ? 'bg-white border-slate-200/80 text-slate-800' : 'bg-slate-900 border-white/10 text-white'
+          }`}>
+            <div className="flex items-center gap-3 text-rose-500">
               <ShieldAlert className="w-8 h-8 animate-bounce" />
-              <h3 className="text-lg font-bold font-display text-white">Scale Workers Confirmation</h3>
+              <h3 className={`text-lg font-bold font-display ${
+                isLightMode ? 'text-slate-900' : 'text-white'
+              }`}>Scale Workers Confirmation</h3>
             </div>
             
-            <div className="space-y-3 text-sm text-slate-300 font-sans leading-relaxed">
+            <div className={`space-y-3 text-sm font-sans leading-relaxed ${
+              isLightMode ? 'text-slate-600' : 'text-slate-300'
+            }`}>
               <p>
                 Are you sure you want to trigger the automatic installation and configuration sequence of <strong>{workersCount} matrix generic workers</strong> on the remote server?
               </p>
-              <div className="bg-slate-950 p-3 rounded-xl border border-white/5 space-y-1.5 text-xs text-slate-400 font-mono">
-                <div className="flex justify-between">
+              
+              <div className={`p-4 rounded-xl border space-y-2 text-xs font-mono transition-colors duration-300 ${
+                isLightMode 
+                  ? 'bg-slate-50 border-slate-100 text-slate-500' 
+                  : 'bg-slate-950/60 border-white/5 text-slate-400'
+              }`}>
+                <div className="flex justify-between items-center">
                   <span>Generic Workers:</span>
-                  <span className="text-white font-bold">{workersCount}</span>
+                  <span className={`font-bold text-sm ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                    {workersCount}
+                  </span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span>Base Port Binding:</span>
-                  <span className="text-white font-bold">{workersBasePort}</span>
+                  <span className={`font-bold ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
+                    {workersBasePort}
+                  </span>
                 </div>
-                <div className="flex justify-between font-sans">
+                <div className="flex justify-between items-center font-sans">
                   <span>Isolate Fed Sender:</span>
-                  <span className="text-white font-bold">{workersFedSender ? "Yes" : "No"}</span>
+                  <span className={`font-bold ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
+                    {workersFedSender ? "Yes" : "No"}
+                  </span>
                 </div>
               </div>
-              <p className="text-slate-400 text-xs">
+              
+              <p className={`text-xs ${isLightMode ? 'text-slate-400' : 'text-slate-400'}`}>
                 This process will configure and launch Redis queue structures, systemd services, and routing rules on your homeserver.
               </p>
             </div>
@@ -2309,7 +2331,11 @@ export default function ConfigForms({
               <button
                 type="button"
                 onClick={() => setShowConfirmInstall(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition"
+                className={`px-4 py-2 text-xs font-semibold rounded-lg border transition ${
+                  isLightMode
+                    ? 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border-slate-200'
+                    : 'text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/10'
+                }`}
               >
                 Cancel
               </button>
@@ -2319,7 +2345,7 @@ export default function ConfigForms({
                   setShowConfirmInstall(false);
                   onExecuteCommand && onExecuteCommand('install_workers', { count: workersCount, federationSender: workersFedSender });
                 }}
-                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition shadow-md shadow-rose-600/20"
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition shadow-md shadow-rose-600/20 active:scale-[0.98]"
               >
                 Yes, Start Scaling Sequence
               </button>

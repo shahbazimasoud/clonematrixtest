@@ -1108,6 +1108,7 @@ export default function App() {
                 showToast={showToast}
                 isExecuting={isExecuting}
                 onExecuteCommand={handleExecuteCommand}
+                isLightMode={isLightMode}
               />
             )}
 
