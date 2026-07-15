@@ -1197,7 +1197,7 @@ async function getAdminToken(): Promise<string | null> {
   return loginPromise;
 }
 
-async function callSynapseAdminAPI(method: string, apiPath: string, body?: any): Promise<any> {
+async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, isRetry = false): Promise<any> {
   const token = await getAdminToken();
   if (!token) {
     throw new Error("No Synapse admin token could be retrieved or generated.");
@@ -1213,15 +1213,29 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any):
   const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
   const curlCmd = `curl -s -X ${method} ${headers} ${dataArg} "${url}"`;
 
-  console.log(`Executing remote Synapse Admin API call: ${method} ${apiPath}`);
+  console.log(`Executing remote Synapse Admin API call: ${method} ${apiPath} (retry: ${isRetry})`);
   
+  const handleUnauthorized = async () => {
+    if (activeConn) {
+      adminTokenCache.delete(activeConn.id || "local");
+    } else {
+      adminTokenCache.delete("local");
+    }
+    if (!isRetry) {
+      console.log(`Retrying callSynapseAdminAPI due to unauthorized token...`);
+      return callSynapseAdminAPI(method, apiPath, body, true);
+    }
+    return null;
+  };
+
   if (activeConn && activeConn.id !== "local") {
     if (activeConn.authType === "agent") {
       const res = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
       try {
         const result = JSON.parse(res || "{}");
-        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && result.error.includes("Unauthorized")))) {
-          adminTokenCache.delete(activeConn.id);
+        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN"))))) {
+          const retryRes = await handleUnauthorized();
+          if (retryRes) return retryRes;
         }
         return result;
       } catch (e) {
@@ -1232,8 +1246,9 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any):
       const output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
       try {
         const result = JSON.parse(output || "{}");
-        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && result.error.includes("Unauthorized")))) {
-          adminTokenCache.delete(activeConn.id);
+        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN"))))) {
+          const retryRes = await handleUnauthorized();
+          if (retryRes) return retryRes;
         }
         return result;
       } catch (e) {
@@ -1242,12 +1257,13 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any):
     }
   } else {
     return new Promise((resolve, reject) => {
-      exec(curlCmd, (err: any, stdout: string) => {
+      exec(curlCmd, async (err: any, stdout: string) => {
         if (err) return resolve({});
         try {
           const result = JSON.parse(stdout || "{}");
-          if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && result.error.includes("Unauthorized")))) {
-            adminTokenCache.delete("local");
+          if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN"))))) {
+            const retryRes = await handleUnauthorized();
+            if (retryRes) return resolve(retryRes);
           }
           resolve(result);
         } catch (e) {
@@ -4121,7 +4137,7 @@ systemctl enable redis-server
 systemctl start redis-server
 
 echo "🔑 [2/12] Generating replication secret..."
-REPLICATION_SECRET=\$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+REPLICATION_SECRET=\$(openssl rand -hex 16)
 
 echo "🔌 [3/12] Configuring homeserver.yaml with replication and redis..."
 mkdir -p /etc/matrix-synapse/workers
@@ -4484,7 +4500,7 @@ systemctl enable redis-server
 systemctl start redis-server
 
 echo "🔑 [2/12] Generating replication secret..."
-REPLICATION_SECRET=\$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+REPLICATION_SECRET=\$(openssl rand -hex 16)
 
 echo "🔌 [3/12] Configuring homeserver.yaml with replication and redis..."
 mkdir -p /etc/matrix-synapse/workers

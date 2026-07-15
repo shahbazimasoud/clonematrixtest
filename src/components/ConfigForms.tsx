@@ -182,6 +182,7 @@ export default function ConfigForms({
   const [workersCount, setWorkersCount] = useState(2);
   const [workersFedSender, setWorkersFedSender] = useState(false);
   const [workersBasePort, setWorkersBasePort] = useState(8083);
+  const [showConfirmInstall, setShowConfirmInstall] = useState(false);
 
   // 4. Limits & Policies State
   const [limitMb, setLimitMb] = useState('50');
@@ -1328,7 +1329,7 @@ export default function ConfigForms({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onExecuteCommand && onExecuteCommand('install_workers', { count: workersCount, federationSender: workersFedSender })}
+                      onClick={() => setShowConfirmInstall(true)}
                       disabled={isExecuting}
                       className={`px-6 py-2.5 rounded-xl text-white font-bold text-sm shadow-lg transition-all duration-200 ${
                         isExecuting 
@@ -2272,6 +2273,60 @@ export default function ConfigForms({
           </div>
         )}
       </div>
+
+      {showConfirmInstall && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <ShieldAlert className="w-8 h-8 animate-bounce" />
+              <h3 className="text-lg font-bold font-display text-white">Scale Workers Confirmation</h3>
+            </div>
+            
+            <div className="space-y-3 text-sm text-slate-300 font-sans leading-relaxed">
+              <p>
+                Are you sure you want to trigger the automatic installation and configuration sequence of <strong>{workersCount} matrix generic workers</strong> on the remote server?
+              </p>
+              <div className="bg-slate-950 p-3 rounded-xl border border-white/5 space-y-1.5 text-xs text-slate-400 font-mono">
+                <div className="flex justify-between">
+                  <span>Generic Workers:</span>
+                  <span className="text-white font-bold">{workersCount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Base Port Binding:</span>
+                  <span className="text-white font-bold">{workersBasePort}</span>
+                </div>
+                <div className="flex justify-between font-sans">
+                  <span>Isolate Fed Sender:</span>
+                  <span className="text-white font-bold">{workersFedSender ? "Yes" : "No"}</span>
+                </div>
+              </div>
+              <p className="text-slate-400 text-xs">
+                This process will configure and launch Redis queue structures, systemd services, and routing rules on your homeserver.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 font-sans">
+              <button
+                type="button"
+                onClick={() => setShowConfirmInstall(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmInstall(false);
+                  onExecuteCommand && onExecuteCommand('install_workers', { count: workersCount, federationSender: workersFedSender });
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition shadow-md shadow-rose-600/20"
+              >
+                Yes, Start Scaling Sequence
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
