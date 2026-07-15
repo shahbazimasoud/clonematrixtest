@@ -1163,6 +1163,7 @@ export default function App() {
                   fetchConnections();
                 }}
                 showToast={showToast}
+                isLightMode={isLightMode}
               />
             )}
           </main>

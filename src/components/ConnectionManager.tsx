@@ -58,9 +58,10 @@ interface ConnectionManagerProps {
   authToken: string;
   onProfileChanged: () => void;
   showToast: (type: 'success' | 'error', text: string) => void;
+  isLightMode?: boolean;
 }
 
-export default function ConnectionManager({ authToken, onProfileChanged, showToast }: ConnectionManagerProps) {
+export default function ConnectionManager({ authToken, onProfileChanged, showToast, isLightMode = false }: ConnectionManagerProps) {
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -705,60 +706,78 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                 <div
                   key={profile.id}
                   onClick={() => handleSelectProfile(profile.id)}
-                  className={`spatial-glass rounded-3xl border p-6 transition-all relative flex flex-col justify-between cursor-pointer group hover:scale-[1.01] ${
+                  className={`spatial-glass rounded-3xl border p-6 transition-all duration-300 relative flex flex-col justify-between cursor-pointer group hover:scale-[1.01] ${
                     isActive
-                      ? 'border-teal-500 bg-teal-500/5 shadow-[0_0_30px_rgba(20,184,166,0.15)]'
-                      : 'border-white/5 hover:border-white/10 bg-white/5'
+                      ? isLightMode
+                        ? 'border-teal-500 bg-teal-50/60 shadow-[0_10px_30px_rgba(20,184,166,0.18)] ring-2 ring-teal-500/20'
+                        : 'border-teal-400 bg-teal-950/20 shadow-[0_0_35px_rgba(20,184,166,0.25)] ring-2 ring-teal-400/20'
+                      : isLightMode
+                        ? 'border-slate-200/80 hover:border-slate-300 bg-white hover:bg-slate-50/50 shadow-sm'
+                        : 'border-white/5 hover:border-white/10 bg-white/5'
                   }`}
                 >
+                  {/* Left Accent Indicator Bar for Active Profile */}
+                  {isActive && (
+                    <div className="absolute left-0 top-8 bottom-8 w-1.5 bg-gradient-to-b from-teal-400 to-teal-600 rounded-r-lg" />
+                  )}
+
                   {/* Selected / Active Badge */}
                   {isActive && (
-                    <div className="absolute top-4 right-4 bg-teal-500/10 text-teal-400 border border-teal-500/20 rounded-full px-2.5 py-0.5 text-[10px] font-bold flex items-center gap-1.5 animate-pulse">
-                      <Sparkles className="w-3 h-3" />
-                      Active Context
+                    <div className={`absolute top-4 right-4 rounded-full px-2.5 py-0.5 text-[10px] font-bold flex items-center gap-1.5 shadow-sm border animate-pulse ${
+                      isLightMode
+                        ? 'bg-teal-600 text-white border-teal-600/20'
+                        : 'bg-teal-500/25 text-teal-300 border-teal-500/30'
+                    }`}>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Active Server
                     </div>
                   )}
 
                   <div>
                     {/* Header */}
                     <div className="flex items-start gap-4 mb-4">
-                      <div className={`p-3 rounded-2xl border ${
+                      <div className={`p-3 rounded-2xl border transition-colors duration-300 ${
                         isActive 
-                          ? 'bg-teal-500/10 text-teal-400 border-teal-500/20' 
-                          : 'bg-white/5 text-slate-400 border-white/5'
+                          ? 'bg-teal-500/10 text-teal-500 border-teal-500/20' 
+                          : isLightMode
+                            ? 'bg-slate-100 text-slate-500 border-slate-200'
+                            : 'bg-white/5 text-slate-400 border-white/5'
                       }`}>
                         {isLocal ? <Server className="w-6 h-6" /> : <Globe className="w-6 h-6" />}
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-white group-hover:text-teal-400 transition-colors flex items-center gap-2">
+                        <h3 className={`text-lg font-bold transition-colors duration-300 flex items-center gap-2 ${
+                          isActive
+                            ? isLightMode ? 'text-teal-700' : 'text-teal-400'
+                            : isLightMode ? 'text-slate-800 group-hover:text-teal-600' : 'text-white group-hover:text-teal-400'
+                        }`}>
                           {profile.name}
-                          {isActive && <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-500/10 animate-pulse" />}
                         </h3>
-                        <p className="text-xs font-mono text-slate-400 mt-1">
+                        <p className={`text-xs font-mono mt-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                           {isLocal ? 'local-loopback' : `${profile.username}@${profile.host}:${profile.port}`}
                         </p>
                       </div>
                     </div>
 
                     {/* Status Meta */}
-                    <div className="space-y-2.5 border-t border-white/5 pt-4">
-                      <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span>Connection Type:</span>
-                        <span className="font-semibold text-slate-300 uppercase">{isLocal ? 'Internal Sandbox' : 'Remote SSH'}</span>
+                    <div className={`space-y-2.5 border-t pt-4 transition-colors duration-300 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Connection Type:</span>
+                        <span className={`font-semibold uppercase ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isLocal ? 'Internal Sandbox' : 'Remote SSH'}</span>
                       </div>
                       
                       {!isLocal && (
                         <>
-                          <div className="flex items-center justify-between text-xs text-slate-400">
-                            <span>Auth Method:</span>
-                            <span className="text-slate-300 font-mono flex items-center gap-1">
-                              <Lock className="w-3 h-3 text-slate-500" />
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Auth Method:</span>
+                            <span className={`font-mono flex items-center gap-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                              <Lock className="w-3 h-3 text-slate-400" />
                               {profile.authType === 'key' ? 'SSH Private Key' : 'Password Credentials'}
                             </span>
                           </div>
-                          <div className="flex items-center justify-between text-xs text-slate-400">
-                            <span>Synapse Postgres:</span>
-                            <span className="text-slate-300 font-mono">{profile.dbUser}@{profile.dbHost}:{profile.dbPort}</span>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Synapse Postgres:</span>
+                            <span className={`font-mono ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{profile.dbUser}@{profile.dbHost}:{profile.dbPort}</span>
                           </div>
                         </>
                       )}
@@ -766,13 +785,18 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                   </div>
 
                   {/* Footer Actions */}
-                  <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between gap-2">
+                  <div className={`mt-6 pt-4 border-t flex items-center justify-between gap-2 transition-colors duration-300 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                     <div className="flex gap-2">
                       {!isLocal && (
                         <button
+                          type="button"
                           onClick={(e) => handleTestProfile(profile, e)}
                           disabled={isTesting}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 text-xs font-bold text-slate-300 transition-colors"
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                            isLightMode
+                              ? 'bg-slate-100 hover:bg-slate-200/80 border-slate-200 text-slate-700'
+                              : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10 text-slate-300'
+                          }`}
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin text-teal-400' : ''}`} />
                           {isTesting ? 'Testing...' : 'Test Sync'}
@@ -781,8 +805,13 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
 
                        {!isLocal && (
                         <button
+                          type="button"
                           onClick={(e) => handleEditProfile(profile, e)}
-                          className="p-1.5 rounded-lg hover:bg-teal-500/10 text-slate-400 hover:text-teal-400 transition-colors"
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isLightMode
+                              ? 'hover:bg-slate-100 text-slate-500 hover:text-teal-600'
+                              : 'hover:bg-teal-500/10 text-slate-400 hover:text-teal-400'
+                          }`}
                           title="Edit Connection"
                         >
                           <Edit className="w-4 h-4" />
@@ -791,8 +820,13 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
 
                       {!isLocal && (
                         <button
+                          type="button"
                           onClick={(e) => handleDeleteProfile(profile.id, e)}
-                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors"
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            isLightMode
+                              ? 'hover:bg-red-50 text-slate-500 hover:text-red-600 hover:bg-red-500/10'
+                              : 'hover:bg-red-500/10 text-slate-400 hover:text-red-400'
+                          }`}
                           title="Delete Connection"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -805,24 +839,24 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                       <div className="flex flex-col items-end text-[10px]">
                         <div className="flex items-center gap-1 font-bold">
                           {testResult.ssh ? (
-                            <span className="text-emerald-400 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> SSH</span>
+                            <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} flex items-center gap-0.5`}><CheckCircle2 className="w-3 h-3" /> SSH</span>
                           ) : (
-                            <span className="text-red-400 flex items-center gap-0.5"><AlertCircle className="w-3 h-3" /> SSH</span>
+                            <span className={`${isLightMode ? 'text-rose-600' : 'text-rose-400'} flex items-center gap-0.5`}><AlertCircle className="w-3 h-3" /> SSH</span>
                           )}
-                          <span className="text-slate-500">|</span>
+                          <span className={isLightMode ? 'text-slate-300' : 'text-slate-500'}>|</span>
                           {testResult.db ? (
-                            <span className="text-emerald-400 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> Postgres</span>
+                            <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} flex items-center gap-0.5`}><CheckCircle2 className="w-3 h-3" /> Postgres</span>
                           ) : (
-                            <span className="text-red-400 flex items-center gap-0.5"><AlertCircle className="w-3 h-3" /> Postgres</span>
+                            <span className={`${isLightMode ? 'text-rose-600' : 'text-rose-400'} flex items-center gap-0.5`}><AlertCircle className="w-3 h-3" /> Postgres</span>
                           )}
                         </div>
                       </div>
                     )}
 
                     {isActive && (
-                      <span className="text-[11px] font-bold text-teal-400 flex items-center gap-1.5">
+                      <span className={`text-[11px] font-bold flex items-center gap-1.5 ${isLightMode ? 'text-teal-600' : 'text-teal-400'}`}>
                         Connected
-                        <span className="w-2 h-2 rounded-full bg-teal-400 animate-ping" />
+                        <span className={`w-2 h-2 rounded-full animate-ping ${isLightMode ? 'bg-teal-600' : 'bg-teal-400'}`} />
                       </span>
                     )}
                   </div>
