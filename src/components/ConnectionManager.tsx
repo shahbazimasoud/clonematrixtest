@@ -623,6 +623,13 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         onChange={e => setAdminUsername(e.target.value)}
                         className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
+                      <div className="text-[10px] text-slate-300 mt-2 leading-relaxed bg-teal-500/10 p-3 rounded-xl border border-teal-500/20 space-y-1">
+                        <p className="font-semibold text-teal-400">💡 راهنمای فرمت نام کاربری مدیر:</p>
+                        <p>می‌توانید نام کاربری خام (مانند <code className="bg-slate-800 text-teal-300 px-1 py-0.5 rounded font-mono">admin</code>) یا شناسه کامل ماتریکس (مانند <code className="bg-slate-800 text-teal-300 px-1 py-0.5 rounded font-mono">@admin:domain.com</code>) را وارد کنید. این کاربر باید حتماً دسترسی مدیر (Admin) روی سرور ماتریکس شما داشته باشد.</p>
+                        <p className="text-slate-400 border-t border-teal-500/10 pt-1 mt-1 font-sans">
+                          <strong>Format Guide:</strong> Use the raw localpart (e.g., <code className="bg-slate-800 text-teal-300 px-1 py-0.5 rounded font-mono">admin</code>) or the full MXID (e.g., <code className="bg-slate-800 text-teal-300 px-1 py-0.5 rounded font-mono">@admin:domain.com</code>).
+                        </p>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-300 mb-1.5">Admin Password</label>

@@ -1059,113 +1059,142 @@ app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Ow
 // -------------------------------------------------------------
 // Advanced Matrix User Profile & Ketesa Administration
 // -------------------------------------------------------------
+const adminTokenCache = new Map<string, { token: string, timestamp: number }>();
+const activeLogins = new Map<string, Promise<string | null>>();
+
 async function getAdminToken(): Promise<string | null> {
   const activeConn = getActiveConnection();
-  if (activeConn) {
-    if ((activeConn as any).adminAccessToken) {
-      return (activeConn as any).adminAccessToken;
-    }
-    if ((activeConn as any).apiAdminTokenOverride) {
-      return (activeConn as any).apiAdminTokenOverride;
-    }
+  if (!activeConn) return null;
 
-    // Dynamic login using adminUsername and adminPassword if configured
-    if ((activeConn as any).adminUsername && (activeConn as any).adminPassword) {
-      const adminUser = (activeConn as any).adminUsername;
-      const adminPass = (activeConn as any).adminPassword;
-      const port = (activeConn as any).apiPort || 8008;
-      const apiBaseUrl = (activeConn as any).apiBaseUrl || `http://localhost:${port}`;
-      const url = `${apiBaseUrl}/_matrix/client/v3/login`;
-      const loginBody = {
-        type: "m.login.password",
-        identifier: {
-          type: "m.id.user",
-          user: adminUser
-        },
-        password: adminPass
-      };
-      const loginData = JSON.stringify(loginBody).replace(/'/g, "'\\''");
-      const curlCmd = `curl -s -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
-      
-      let output = "";
-      if (activeConn.id !== "local") {
-        if (activeConn.authType === "agent") {
-          try {
-            output = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
-          } catch (e) {
-            console.error("Login agent error:", e);
+  if ((activeConn as any).adminAccessToken) {
+    return (activeConn as any).adminAccessToken;
+  }
+  if ((activeConn as any).apiAdminTokenOverride) {
+    return (activeConn as any).apiAdminTokenOverride;
+  }
+
+  const cacheKey = activeConn.id;
+  const cached = adminTokenCache.get(cacheKey);
+  const CACHE_TTL = 15 * 60 * 1000; // Cache valid for 15 minutes
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+    return cached.token;
+  }
+
+  if (activeLogins.has(cacheKey)) {
+    return activeLogins.get(cacheKey)!;
+  }
+
+  const loginPromise = (async (): Promise<string | null> => {
+    try {
+      // Dynamic login using adminUsername and adminPassword if configured
+      if ((activeConn as any).adminUsername && (activeConn as any).adminPassword) {
+        const adminUser = (activeConn as any).adminUsername;
+        const adminPass = (activeConn as any).adminPassword;
+        const port = (activeConn as any).apiPort || 8008;
+        const apiBaseUrl = (activeConn as any).apiBaseUrl || `http://localhost:${port}`;
+        const url = `${apiBaseUrl}/_matrix/client/v3/login`;
+        const loginBody = {
+          type: "m.login.password",
+          identifier: {
+            type: "m.id.user",
+            user: adminUser
+          },
+          password: adminPass
+        };
+        const loginData = JSON.stringify(loginBody).replace(/'/g, "'\\''");
+        const curlCmd = `curl -s -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
+        
+        let output = "";
+        if (activeConn.id !== "local") {
+          if (activeConn.authType === "agent") {
+            try {
+              output = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+            } catch (e) {
+              console.error("Login agent error:", e);
+            }
+          } else {
+            try {
+              const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+              output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+            } catch (e) {
+              console.error("Login SSH error:", e);
+            }
           }
         } else {
           try {
-            const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-            output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+            output = await new Promise<string>((resolve) => {
+              exec(curlCmd, (err, stdout) => resolve(stdout || ""));
+            });
           } catch (e) {
-            console.error("Login SSH error:", e);
+            console.error("Login local error:", e);
           }
         }
-      } else {
+        
         try {
-          output = await new Promise<string>((resolve) => {
-            exec(curlCmd, (err, stdout) => resolve(stdout || ""));
-          });
+          const resObj = JSON.parse(output);
+          if (resObj && resObj.access_token) {
+            adminTokenCache.set(cacheKey, { token: resObj.access_token, timestamp: Date.now() });
+            return resObj.access_token;
+          }
         } catch (e) {
-          console.error("Login local error:", e);
+          console.error("Failed to parse dynamic login output:", e);
         }
       }
-      
-      try {
-        const resObj = JSON.parse(output);
-        if (resObj && resObj.access_token) {
-          return resObj.access_token;
-        }
-      } catch (e) {
-        console.error("Failed to parse dynamic login output:", e);
+    } catch (err) {
+      console.error("Error doing dynamic login:", err);
+    }
+
+    try {
+      const rows = await queryPostgres(`
+        SELECT t.token, t.user_id 
+        FROM access_tokens t 
+        JOIN users u ON t.user_id = u.name 
+        WHERE u.admin = 1 OR u.admin = TRUE 
+        LIMIT 1
+      `);
+      if (rows && rows.length > 0) {
+        adminTokenCache.set(cacheKey, { token: rows[0].token, timestamp: Date.now() });
+        return rows[0].token;
       }
-    }
-  }
 
-  try {
-    const rows = await queryPostgres(`
-      SELECT t.token, t.user_id 
-      FROM access_tokens t 
-      JOIN users u ON t.user_id = u.name 
-      WHERE u.admin = 1 OR u.admin = TRUE 
-      LIMIT 1
-    `);
-    if (rows && rows.length > 0) {
-      return rows[0].token;
-    }
-
-    const adminRows = await queryPostgres(`
-      SELECT name FROM users WHERE admin = 1 OR admin = TRUE LIMIT 1
-    `);
-    if (adminRows && adminRows.length > 0) {
-      const adminUser = adminRows[0].name;
-      const newToken = "syt_ketesa_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      
-      try {
-        await queryPostgres(`
-          INSERT INTO access_tokens (user_id, token) 
-          VALUES ($1, $2)
-        `, [adminUser, newToken]);
-        return newToken;
-      } catch (insertErr) {
+      const adminRows = await queryPostgres(`
+        SELECT name FROM users WHERE admin = 1 OR admin = TRUE LIMIT 1
+      `);
+      if (adminRows && adminRows.length > 0) {
+        const adminUser = adminRows[0].name;
+        const newToken = "syt_ketesa_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        
         try {
-          const randId = Math.floor(100000 + Math.random() * 900000);
           await queryPostgres(`
-            INSERT INTO access_tokens (id, user_id, token) 
-            VALUES ($1, $2, $3)
-          `, [randId, adminUser, newToken]);
+            INSERT INTO access_tokens (user_id, token) 
+            VALUES ($1, $2)
+          `, [adminUser, newToken]);
+          adminTokenCache.set(cacheKey, { token: newToken, timestamp: Date.now() });
           return newToken;
-        } catch (err2) {
-          console.error("Failed to insert access token:", err2);
+        } catch (insertErr) {
+          try {
+            const randId = Math.floor(100000 + Math.random() * 900000);
+            await queryPostgres(`
+              INSERT INTO access_tokens (id, user_id, token) 
+              VALUES ($1, $2, $3)
+            `, [randId, adminUser, newToken]);
+            adminTokenCache.set(cacheKey, { token: newToken, timestamp: Date.now() });
+            return newToken;
+          } catch (err2) {
+            console.error("Failed to insert access token:", err2);
+          }
         }
       }
+    } catch (err) {
+      console.error("Error obtaining admin token from database fallback:", err);
+    } finally {
+      activeLogins.delete(cacheKey);
     }
-  } catch (err) {
-    console.error("Error obtaining admin token:", err);
-  }
-  return null;
+    return null;
+  })();
+
+  activeLogins.set(cacheKey, loginPromise);
+  return loginPromise;
 }
 
 async function callSynapseAdminAPI(method: string, apiPath: string, body?: any): Promise<any> {
@@ -1189,12 +1218,24 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any):
   if (activeConn && activeConn.id !== "local") {
     if (activeConn.authType === "agent") {
       const res = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
-      return JSON.parse(res || "{}");
+      try {
+        const result = JSON.parse(res || "{}");
+        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && result.error.includes("Unauthorized")))) {
+          adminTokenCache.delete(activeConn.id);
+        }
+        return result;
+      } catch (e) {
+        return { success: true, output: res };
+      }
     } else {
       const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
       const output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
       try {
-        return JSON.parse(output || "{}");
+        const result = JSON.parse(output || "{}");
+        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && result.error.includes("Unauthorized")))) {
+          adminTokenCache.delete(activeConn.id);
+        }
+        return result;
       } catch (e) {
         return { success: true, output };
       }
@@ -1204,7 +1245,11 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any):
       exec(curlCmd, (err: any, stdout: string) => {
         if (err) return resolve({});
         try {
-          resolve(JSON.parse(stdout || "{}"));
+          const result = JSON.parse(stdout || "{}");
+          if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && result.error.includes("Unauthorized")))) {
+            adminTokenCache.delete("local");
+          }
+          resolve(result);
         } catch (e) {
           resolve({ success: true, output: stdout });
         }
