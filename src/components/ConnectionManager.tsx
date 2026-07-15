@@ -45,6 +45,11 @@ export interface ConnectionProfile {
   homeserverYamlPath?: string;
   elementConfigPath?: string;
   homeserverLogPath?: string;
+
+  // Admin credentials
+  adminUsername?: string;
+  adminPassword?: string;
+  adminAccessToken?: string;
   
   isActive: boolean;
 }
@@ -85,7 +90,13 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
   const [homeserverLogPath, setHomeserverLogPath] = useState('/var/log/matrix-synapse/homeserver.log');
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdminSettings, setShowAdminSettings] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Admin Credentials Form State
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminAccessToken, setAdminAccessToken] = useState('');
 
   const fetchProfiles = () => {
     if (!authToken || authToken === 'null' || authToken === 'undefined') return;
@@ -136,7 +147,10 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
       configPath,
       homeserverYamlPath,
       elementConfigPath,
-      homeserverLogPath
+      homeserverLogPath,
+      adminUsername,
+      adminPassword,
+      adminAccessToken
     };
 
     const url = editingId ? `/api/connections/${editingId}` : '/api/connections';
@@ -185,6 +199,9 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
     setHomeserverYamlPath(profile.homeserverYamlPath || '/etc/matrix-synapse/homeserver.yaml');
     setElementConfigPath(profile.elementConfigPath || '/var/www/element/config.json');
     setHomeserverLogPath(profile.homeserverLogPath || '/var/log/matrix-synapse/homeserver.log');
+    setAdminUsername(profile.adminUsername || '');
+    setAdminPassword(profile.adminPassword || '');
+    setAdminAccessToken(profile.adminAccessToken || '');
     setShowForm(true);
   };
 
@@ -305,6 +322,10 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
     setHomeserverYamlPath('/etc/matrix-synapse/homeserver.yaml');
     setElementConfigPath('/var/www/element/config.json');
     setHomeserverLogPath('/var/log/matrix-synapse/homeserver.log');
+    setAdminUsername('');
+    setAdminPassword('');
+    setAdminAccessToken('');
+    setShowAdminSettings(false);
     setEditingId(null);
   };
 
@@ -562,6 +583,64 @@ export default function ConnectionManager({ authToken, onProfileChanged, showToa
                         type="text"
                         value={homeserverLogPath}
                         onChange={e => setHomeserverLogPath(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Collapsible Admin Token Settings */}
+          <div className="border-t border-white/5 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowAdminSettings(!showAdminSettings)}
+              className="flex items-center gap-2 text-xs font-bold text-teal-400 hover:text-teal-300 transition-colors"
+            >
+              <Key className={`w-4 h-4 transform transition-transform ${showAdminSettings ? 'rotate-90' : ''}`} />
+              {showAdminSettings ? 'Hide Admin Token Settings' : 'Show Admin Token Settings'}
+            </button>
+
+            {showAdminSettings && (
+              <div className="space-y-6 mt-4 p-5 rounded-2xl bg-white/[0.03] border border-white/10 shadow-2xl backdrop-blur-md">
+                <div>
+                  <h4 className="text-sm font-bold text-teal-400 flex items-center gap-2 mb-4">
+                    <Key className="w-4 h-4 text-teal-400" />
+                    Admin Token & Matrix Credentials
+                  </h4>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Enter the admin username and password for Matrix Element Chat or provide an Admin Access Token to use for the Synapse Admin APIs.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">Admin Username</label>
+                      <input
+                        type="text"
+                        placeholder="@admin:domain.com"
+                        value={adminUsername}
+                        onChange={e => setAdminUsername(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">Admin Password</label>
+                      <input
+                        type="password"
+                        placeholder="••••••••••••"
+                        value={adminPassword}
+                        onChange={e => setAdminPassword(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">Admin Access Token (Optional)</label>
+                      <input
+                        type="password"
+                        placeholder="syt_..."
+                        value={adminAccessToken}
+                        onChange={e => setAdminAccessToken(e.target.value)}
                         className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-all shadow-inner"
                       />
                     </div>

@@ -42,6 +42,11 @@ export interface ConnectionProfile {
   homeserverYamlPath?: string;
   elementConfigPath?: string;
   homeserverLogPath?: string;
+
+  // Admin credentials
+  adminUsername?: string;
+  adminPassword?: string;
+  adminAccessToken?: string;
   
   isActive: boolean;
 }

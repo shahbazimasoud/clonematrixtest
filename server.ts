@@ -1061,8 +1061,67 @@ app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Ow
 // -------------------------------------------------------------
 async function getAdminToken(): Promise<string | null> {
   const activeConn = getActiveConnection();
-  if (activeConn && (activeConn as any).apiAdminTokenOverride) {
-    return (activeConn as any).apiAdminTokenOverride;
+  if (activeConn) {
+    if ((activeConn as any).adminAccessToken) {
+      return (activeConn as any).adminAccessToken;
+    }
+    if ((activeConn as any).apiAdminTokenOverride) {
+      return (activeConn as any).apiAdminTokenOverride;
+    }
+
+    // Dynamic login using adminUsername and adminPassword if configured
+    if ((activeConn as any).adminUsername && (activeConn as any).adminPassword) {
+      const adminUser = (activeConn as any).adminUsername;
+      const adminPass = (activeConn as any).adminPassword;
+      const port = (activeConn as any).apiPort || 8008;
+      const apiBaseUrl = (activeConn as any).apiBaseUrl || `http://localhost:${port}`;
+      const url = `${apiBaseUrl}/_matrix/client/v3/login`;
+      const loginBody = {
+        type: "m.login.password",
+        identifier: {
+          type: "m.id.user",
+          user: adminUser
+        },
+        password: adminPass
+      };
+      const loginData = JSON.stringify(loginBody).replace(/'/g, "'\\''");
+      const curlCmd = `curl -s -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
+      
+      let output = "";
+      if (activeConn.id !== "local") {
+        if (activeConn.authType === "agent") {
+          try {
+            output = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+          } catch (e) {
+            console.error("Login agent error:", e);
+          }
+        } else {
+          try {
+            const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+            output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+          } catch (e) {
+            console.error("Login SSH error:", e);
+          }
+        }
+      } else {
+        try {
+          output = await new Promise<string>((resolve) => {
+            exec(curlCmd, (err, stdout) => resolve(stdout || ""));
+          });
+        } catch (e) {
+          console.error("Login local error:", e);
+        }
+      }
+      
+      try {
+        const resObj = JSON.parse(output);
+        if (resObj && resObj.access_token) {
+          return resObj.access_token;
+        }
+      } catch (e) {
+        console.error("Failed to parse dynamic login output:", e);
+      }
+    }
   }
 
   try {
