@@ -22,7 +22,14 @@ import {
   Mail,
   Layout,
   ShieldCheck,
-  Video
+  Video,
+  Activity,
+  Terminal,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { MatrixConfig, LDAPConfig, MatrixUser } from '../types';
 
@@ -47,7 +54,7 @@ interface ConfigFormsProps {
   onExecuteCommand?: (cmd: string) => void;
 }
 
-type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security';
+type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security' | 'api';
 
 export default function ConfigForms({ 
   config, 
@@ -169,6 +176,41 @@ export default function ConfigForms({
   const [reactivateMxid, setReactivateMxid] = useState<string | null>(null);
   const [reactivatePass, setReactivatePass] = useState('');
   const [reactivateIsAdmin, setReactivateIsAdmin] = useState(false);
+
+  // 9. API test status
+  const [apiReport, setApiReport] = useState<any>(null);
+  const [loadingApi, setLoadingApi] = useState<boolean>(false);
+  const [selectedEndpoint, setSelectedEndpoint] = useState<any>(null);
+
+  const fetchApiReport = async () => {
+    setLoadingApi(true);
+    try {
+      const res = await fetch('/api/matrix/api-status', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setApiReport(data);
+        if (data.endpoints && data.endpoints.length > 0) {
+          setSelectedEndpoint(data.endpoints[0]);
+        }
+      } else {
+        if (showToast) showToast('error', 'Failed to retrieve API status.');
+      }
+    } catch (err) {
+      if (showToast) showToast('error', 'Error reaching backend API checker.');
+    } finally {
+      setLoadingApi(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'api') {
+      fetchApiReport();
+    }
+  }, [activeTab]);
 
   // Synchronize component state with props
   useEffect(() => {
@@ -546,6 +588,19 @@ export default function ConfigForms({
         >
           <Users className="w-5 h-5 text-emerald-400" />
           <span>Matrix Users</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('api')}
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+            activeTab === 'api' 
+              ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(59,130,246,0.15)]' 
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+          id="tab-api"
+        >
+          <Activity className="w-5 h-5 text-blue-400" />
+          <span>Matrix & Synapse APIs</span>
         </button>
       </div>
 
@@ -1771,6 +1826,133 @@ export default function ConfigForms({
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* VIEW 10: MATRIX & SYNAPSE APIS TESTING */}
+        {activeTab === 'api' && (
+          <div className="space-y-6 h-full flex flex-col">
+            <div className="flex justify-between items-center pb-4 border-b border-white/5 shrink-0">
+              <div className="flex items-center gap-3">
+                <Activity className="w-6 h-6 text-blue-400 animate-pulse" />
+                <div>
+                  <h2 className="text-xl font-display font-bold text-white font-display">Matrix & Synapse API Control Hub</h2>
+                  <p className="text-xs text-slate-400 font-sans">Inspect, debug, and monitor client and admin specification APIs on the connected server.</p>
+                </div>
+              </div>
+              <button
+                onClick={fetchApiReport}
+                disabled={loadingApi}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingApi ? 'animate-spin' : ''}`} />
+                <span>{loadingApi ? 'Checking APIs...' : 'Refresh API Status'}</span>
+              </button>
+            </div>
+
+            {loadingApi && !apiReport ? (
+              <div className="flex-1 flex flex-col items-center justify-center py-12">
+                <RefreshCw className="w-10 h-10 text-blue-400 animate-spin mb-4" />
+                <p className="text-sm text-slate-400 font-sans font-medium">Querying homeserver endpoints on connected server...</p>
+              </div>
+            ) : (
+              <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0 overflow-hidden">
+                {/* Endpoints List */}
+                <div className="lg:col-span-3 flex flex-col gap-3 overflow-y-auto pr-2">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 font-sans">Endpoints Verified</div>
+                  {apiReport?.endpoints?.map((ep: any, index: number) => {
+                    const isSelected = selectedEndpoint?.path === ep.path;
+                    return (
+                      <div
+                        key={index}
+                        onClick={() => setSelectedEndpoint(ep)}
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                          isSelected 
+                            ? 'bg-blue-500/10 border-blue-500/30 shadow-md' 
+                            : 'bg-white/5 border-white/5 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`p-2 rounded-xl shrink-0 ${
+                            ep.status === 'active' 
+                              ? 'bg-emerald-500/10 text-emerald-400' 
+                              : ep.status === 'unauthorized'
+                              ? 'bg-amber-500/10 text-amber-400'
+                              : 'bg-red-500/10 text-red-400'
+                          }`}>
+                            {ep.status === 'active' ? (
+                              <CheckCircle className="w-5 h-5" />
+                            ) : ep.status === 'unauthorized' ? (
+                              <AlertCircle className="w-5 h-5" />
+                            ) : (
+                              <XCircle className="w-5 h-5" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-semibold text-white truncate font-sans">{ep.name}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="font-mono text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
+                                {ep.method}
+                              </span>
+                              <span className="font-mono text-xs text-slate-400 truncate">
+                                {ep.path}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1.5 shrink-0 ml-3">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider font-sans ${
+                            ep.status === 'active' 
+                              ? 'bg-emerald-500/20 text-emerald-300' 
+                              : ep.status === 'unauthorized'
+                              ? 'bg-amber-500/20 text-amber-300'
+                              : 'bg-red-500/20 text-red-300'
+                          }`}>
+                            {ep.status}
+                          </span>
+                          <div className="flex items-center gap-1 text-[11px] text-slate-400 font-mono">
+                            <Clock className="w-3 h-3" />
+                            <span>{ep.latency}ms</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Response / JSON Inspector */}
+                <div className="lg:col-span-2 flex flex-col bg-slate-950/40 rounded-2xl border border-white/5 overflow-hidden h-full">
+                  <div className="p-4 border-b border-white/5 bg-slate-900/50 shrink-0">
+                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 font-sans">Endpoint Specifications</div>
+                    {selectedEndpoint ? (
+                      <div>
+                        <h4 className="text-sm font-bold text-white mb-1 font-sans">{selectedEndpoint.name}</h4>
+                        <p className="text-xs text-slate-400 font-sans leading-relaxed">{selectedEndpoint.description}</p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 font-sans">Select an API endpoint on the left to inspect detailed specifications.</p>
+                    )}
+                  </div>
+
+                  <div className="flex-1 p-4 overflow-y-auto flex flex-col min-h-0">
+                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between shrink-0 font-sans">
+                      <span>Live Response Payload</span>
+                      <span className="font-mono text-slate-500">HTTP {selectedEndpoint?.statusCode || 200}</span>
+                    </div>
+                    {selectedEndpoint ? (
+                      <pre className="flex-1 font-mono text-[11px] text-blue-300 bg-slate-950 p-4 rounded-xl overflow-auto leading-relaxed border border-white/5">
+                        {JSON.stringify(selectedEndpoint.payload, null, 2)}
+                      </pre>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center border border-dashed border-white/5 rounded-xl text-xs text-slate-600 font-sans">
+                        No payload loaded
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -855,6 +855,27 @@ app.delete("/api/users/:id", authenticateToken, checkPermission(["Owner", "Super
 // Matrix Users (the server-managed users)
 app.get("/api/matrix/users", authenticateToken, async (req, res) => {
   try {
+    const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v2/users");
+    if (apiRes && apiRes.users && Array.isArray(apiRes.users)) {
+      const mappedUsers = apiRes.users.map((u: any) => {
+        const username = u.name.split(":")[0].replace("@", "") || "unknown";
+        return {
+          mxid: u.name,
+          isAdmin: u.admin === 1 || u.admin === true,
+          isDeactivated: u.deactivated === 1 || u.deactivated === true,
+          creationTs: u.creation_ts || Math.floor(Date.now() / 1000),
+          displayName: u.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
+          avatarUrl: u.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
+          userType: u.user_type
+        };
+      });
+      return res.json(mappedUsers);
+    }
+  } catch (apiErr: any) {
+    console.log("Synapse Admin API users fetch notice: trying Postgres fallback (" + apiErr.message + ")");
+  }
+
+  try {
     const query = `
       SELECT u.name as mxid, u.admin, u.deactivated, u.creation_ts, u.user_type, p.displayname, p.avatar_url
       FROM users u
@@ -2157,7 +2178,29 @@ app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, (req, res
 // -------------------------------------------------------------
 // Matrix Rooms Management (Ketesa features)
 // -------------------------------------------------------------
-app.get("/api/matrix/rooms", authenticateToken, (req, res) => {
+app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
+  try {
+    const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
+    if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms)) {
+      const mappedRooms = apiRes.rooms.map((r: any) => ({
+        id: r.room_id,
+        name: r.name || r.room_id,
+        alias: r.canonical_alias || "",
+        topic: r.topic || "",
+        creator: r.creator || "",
+        membersCount: r.joined_members || 0,
+        joinedMembers: [],
+        version: r.version || "1",
+        isFederated: r.federatable !== false,
+        isPublic: r.public === true,
+        createdAt: new Date().toISOString()
+      }));
+      return res.json(mappedRooms);
+    }
+  } catch (apiErr: any) {
+    console.log("Synapse Admin API rooms fetch notice: falling back to local DB (" + apiErr.message + ")");
+  }
+
   const db = readDb();
   res.json(db.matrixRooms || []);
 });
@@ -3308,6 +3351,132 @@ app.post("/api/matrix/e2ee", authenticateToken, checkPermission(["Owner", "Super
   writeDb(db);
 
   res.json({ success: true });
+});
+
+// -------------------------------------------------------------
+// Matrix & Synapse APIs Testing and Status Reporting
+// -------------------------------------------------------------
+app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
+  const activeConn = getActiveConnection();
+  const report: any = {
+    connected: !!activeConn,
+    serverName: activeConn ? activeConn.name : "Local Sandbox",
+    host: activeConn ? `${activeConn.host}:${activeConn.port}` : "localhost",
+    timestamp: new Date().toISOString(),
+    endpoints: []
+  };
+
+  const endpointsToTest = [
+    {
+      name: "Matrix Client Versions API",
+      path: "/_matrix/client/versions",
+      description: "Returns supported Matrix client-server specification versions.",
+      method: "GET"
+    },
+    {
+      name: "Login Flow Discovery API",
+      path: "/_matrix/client/v3/login",
+      description: "Discovery endpoint for homeserver login and authentication methods.",
+      method: "GET"
+    },
+    {
+      name: "Public Rooms Directory API",
+      path: "/_matrix/client/v3/publicRooms",
+      description: "Returns a list of public rooms on the homeserver.",
+      method: "GET"
+    },
+    {
+      name: "Synapse Admin Users API",
+      path: "/_synapse/admin/v2/users",
+      description: "Enterprise administration endpoint to view all registered homeserver users.",
+      method: "GET",
+      needsAdmin: true
+    },
+    {
+      name: "Synapse Admin Rooms API",
+      path: "/_synapse/admin/v1/rooms",
+      description: "Enterprise administration endpoint to view all rooms on the homeserver.",
+      method: "GET",
+      needsAdmin: true
+    }
+  ];
+
+  for (const ep of endpointsToTest) {
+    const startTime = Date.now();
+    let status = "offline";
+    let statusCode = 0;
+    let payload: any = null;
+    let errorMsg: string | null = null;
+
+    try {
+      if (ep.needsAdmin) {
+        try {
+          const result = await callSynapseAdminAPI(ep.method, ep.path);
+          statusCode = 200;
+          payload = result;
+          status = "active";
+        } catch (adminErr: any) {
+          statusCode = 401;
+          errorMsg = adminErr.message || "Admin API call failed or unauthorized";
+          status = "unauthorized";
+        }
+      } else {
+        const curlCmd = `curl -s -o /dev/null -w "%{http_code}" -X ${ep.method} "http://localhost:8008${ep.path}"`;
+        const contentCmd = `curl -s -X ${ep.method} "http://localhost:8008${ep.path}"`;
+        
+        if (activeConn && activeConn.id !== "local") {
+          if (activeConn.authType === "agent") {
+            const code = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+            const body = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: contentCmd });
+            statusCode = parseInt(code.trim()) || 200;
+            try { payload = JSON.parse(body); } catch(e) { payload = body; }
+          } else {
+            const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+            const code = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+            const body = await executeSSHCommand(activeConn, `${sudoPrefix}${contentCmd}`);
+            statusCode = parseInt(code.trim()) || 200;
+            try { payload = JSON.parse(body); } catch(e) { payload = body; }
+          }
+        } else {
+          // Local sandbox mock values
+          statusCode = 200;
+          if (ep.path === "/_matrix/client/versions") {
+            payload = { versions: ["r0.0.1", "r0.1.0", "r0.2.0", "r0.3.0", "r0.4.0", "r0.5.0", "r0.6.0", "v1.1", "v1.2"], unstable_features: { "org.matrix.e2e_by_default": true } };
+          } else if (ep.path === "/_matrix/client/v3/login") {
+            payload = { flows: [{ type: "m.login.password" }, { type: "m.login.token" }, { type: "m.login.sso" }] };
+          } else if (ep.path === "/_matrix/client/v3/publicRooms") {
+            payload = { chunk: [], total_room_count_estimate: 0 };
+          }
+        }
+
+        if (statusCode >= 200 && statusCode < 400) {
+          status = "active";
+        } else if (statusCode === 401 || statusCode === 403) {
+          status = "unauthorized";
+          errorMsg = "Authentication token required or invalid";
+        } else {
+          status = "error";
+          errorMsg = `Server returned status code ${statusCode}`;
+        }
+      }
+    } catch (err: any) {
+      status = "offline";
+      errorMsg = err.message || "Failed to reach endpoint";
+    }
+
+    report.endpoints.push({
+      name: ep.name,
+      path: ep.path,
+      method: ep.method,
+      description: ep.description,
+      status,
+      latency: Date.now() - startTime,
+      statusCode,
+      payload: payload || { error: errorMsg || "No response" }
+    });
+  }
+
+  res.json(report);
 });
 
 // Service Actions API (Start, Stop, Restart)

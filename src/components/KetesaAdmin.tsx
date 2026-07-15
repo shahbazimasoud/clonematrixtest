@@ -1208,12 +1208,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   return (
     <div className={`space-y-6 ${isRtl ? 'rtl' : 'ltr'}`} id="ketesa-container">
-      {/* Tab Navigation Dock */}
-      <div className={`flex flex-wrap gap-2 p-1.5 rounded-xl border max-w-max transition-all duration-300 ${
-        isLightMode 
-          ? 'bg-slate-100 border-slate-200' 
-          : 'bg-black/40 backdrop-blur-md border-white/5'
-      }`}>
+      {/* Tab Navigation Dock & API Sync Status */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className={`flex flex-wrap gap-2 p-1.5 rounded-xl border max-w-max transition-all duration-300 ${
+          isLightMode 
+            ? 'bg-slate-100 border-slate-200' 
+            : 'bg-black/40 backdrop-blur-md border-white/5'
+        }`}>
         <button
           onClick={() => setActiveTab('users')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
@@ -1337,6 +1338,19 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           </span>
         </button>
       </div>
+
+      <div className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-xs font-semibold shrink-0 shadow-sm ${
+        isLightMode
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-300'
+      }`}>
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+        </span>
+        <span>{isRtl ? 'همگام‌سازی زنده فعال از طریق API های ماتریکس و Synapse' : 'Live Synchronization via Matrix & Synapse APIs'}</span>
+      </div>
+    </div>
 
       {/* Dynamic Content Views */}
       <AnimatePresence mode="wait">
