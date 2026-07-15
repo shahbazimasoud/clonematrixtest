@@ -2809,6 +2809,7 @@ JSON
       const activeCount = detailsArr.filter((w: string) => w.includes(":active") || w.includes(":running")).length;
 
       const formattedData = {
+        ...statusData,
         enabled: statusData.matrixSynapseWorkerTemplateExists && statusData.redisReplicationConfigured,
         hasWorkersTemplate: statusData.matrixSynapseWorkerTemplateExists,
         configuredWorkersCount: statusData.genericWorkersCount,
@@ -2818,8 +2819,7 @@ JSON
         redisRunning: statusData.redisRunning,
         redisPort: String(statusData.redisPort || "6379"),
         synapseWorkersActiveCount: activeCount,
-        workersDetails: detailsArr,
-        ...statusData
+        workersDetails: detailsArr
       };
       return res.json(formattedData);
     } else {

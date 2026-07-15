@@ -1144,6 +1144,18 @@ export default function ConfigForms({
                 </button>
               </div>
 
+              {workersStatus?.error && (
+                <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex gap-3 text-xs font-sans">
+                  <ShieldAlert className="w-5 h-5 shrink-0" />
+                  <div>
+                    <h5 className="font-bold uppercase tracking-wider mb-1">Server Status Connection Issue</h5>
+                    <p className="opacity-90 leading-relaxed">
+                      {workersStatus.message || "Failed to parse system configurations. Please ensure the target machine is accessible and active connection is configured correctly."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Diagnostic Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 rounded-2xl bg-black/35 border border-white/5 space-y-3">
@@ -1218,7 +1230,7 @@ export default function ConfigForms({
               </div>
 
               {/* Active Workers List */}
-              {workersStatus?.workersDetails && workersStatus.workersDetails.length > 0 && (
+              {Array.isArray(workersStatus?.workersDetails) && workersStatus.workersDetails.length > 0 && (
                 <div className="p-4 rounded-2xl bg-black/20 border border-white/5">
                   <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5 font-sans">Detected Systemd Worker Instances</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
