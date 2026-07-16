@@ -2937,7 +2937,9 @@ function parseLdapFromYaml(yamlText: string): LDAPConfig {
     name_attr: "cn"
   };
 
-  if (yamlText.includes("ldap_auth_provider.LdapAuthProviderModule")) {
+  // The module declaration in homeserver.yaml is the authoritative indicator.
+  // Do not infer an AD connection from UI defaults or an old panel-side file.
+  if (/module:\s*["']?ldap_auth_provider\.LdapAuthProviderModule["']?/.test(yamlText)) {
     ldap.enabled = true;
     const lines = yamlText.split("\n");
     let inLdapSection = false;
@@ -2988,10 +2990,6 @@ function parseLdapFromYaml(yamlText: string): LDAPConfig {
     }
   }
 
-  if (ldap.uid_attr === "sAMAccountName") {
-    ldap.active_directory = true;
-  }
-
   return ldap;
 }
 
@@ -3000,8 +2998,8 @@ function parseHomeserverYaml(yamlText: string): any {
   if (!yamlText) return hsConfig;
 
   const lines = yamlText.split("\n");
-  let inDatabaseSection = false;
-  let inDatabaseArgs = false;
+  let databaseIndent = -1;
+  let databaseArgsIndent = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -3010,25 +3008,25 @@ function parseHomeserverYaml(yamlText: string): any {
 
     const indent = line.length - line.trimStart().length;
 
-    if (trimmed.startsWith("database:")) {
-      inDatabaseSection = true;
-      inDatabaseArgs = false;
+    if (indent === 0 && /^database:\s*(?:#.*)?$/.test(trimmed)) {
+      databaseIndent = indent;
+      databaseArgsIndent = -1;
       continue;
     }
 
-    if (inDatabaseSection) {
-      if (indent === 0 && !trimmed.startsWith("database:")) {
-        inDatabaseSection = false;
-        inDatabaseArgs = false;
-      } else if (trimmed.startsWith("args:")) {
-        inDatabaseArgs = true;
+    if (databaseIndent >= 0) {
+      if (indent <= databaseIndent) {
+        databaseIndent = -1;
+        databaseArgsIndent = -1;
+      } else if (/^args:\s*(?:#.*)?$/.test(trimmed)) {
+        databaseArgsIndent = indent;
         continue;
       }
     }
 
-    if (inDatabaseSection && inDatabaseArgs) {
-      if (indent <= 2 && !trimmed.startsWith("args:")) {
-        inDatabaseArgs = false;
+    if (databaseIndent >= 0 && databaseArgsIndent >= 0) {
+      if (indent <= databaseArgsIndent) {
+        databaseArgsIndent = -1;
       } else {
         const parts = trimmed.split(":");
         if (parts.length >= 2) {
@@ -3139,11 +3137,12 @@ app.get("/api/matrix/config", authenticateToken, async (req, res) => {
       const yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
       ldap = parseLdapFromYaml(yaml);
 
-      // Overwrite/fallback from /etc/matrix-stack-ldap.conf
+      // The legacy panel file is only a fallback for an enabled module.  A
+      // leftover LDAP_URI must never make a disconnected server look configured.
       try {
         const ldapConfRaw = await readConfigContent("/etc/matrix-stack-ldap.conf");
         const uriMatch = ldapConfRaw.match(/^LDAP_URI=(.+)$/m);
-        if (uriMatch) {
+        if (ldap.enabled && !ldap.uri && uriMatch) {
           ldap.uri = uriMatch[1].trim();
         }
       } catch (err) {
