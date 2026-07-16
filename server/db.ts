@@ -588,9 +588,41 @@ export function interpolateQueryParams(queryStr: string, params: any[]): string 
   return interpolated;
 }
 
+export function cleanAndParseJSON(text: string, defaultValue: any = null): any {
+  if (!text) return defaultValue;
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (e) {
+    const startBrace = trimmed.indexOf('{');
+    const startBracket = trimmed.indexOf('[');
+    let startIdx = -1;
+    let endIdx = -1;
+    
+    if (startBrace !== -1 && (startBracket === -1 || startBrace < startBracket)) {
+      startIdx = startBrace;
+      endIdx = trimmed.lastIndexOf('}');
+    } else if (startBracket !== -1) {
+      startIdx = startBracket;
+      endIdx = trimmed.lastIndexOf(']');
+    }
+    
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      const candidate = trimmed.substring(startIdx, endIdx + 1);
+      try {
+        return JSON.parse(candidate);
+      } catch (err) {
+        // ignore
+      }
+    }
+  }
+  return defaultValue;
+}
+
 export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: string, params: any[] = []): Promise<any[]> {
   const interpolatedSql = interpolateQueryParams(sqlQuery, params);
-  const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${interpolatedSql.replace(/"/g, '\\"')}) t;`;
+  const trimmedSql = interpolatedSql.trim();
+  const isWriteQuery = /^\s*(insert|update|delete|create|drop|alter|truncate)\b/i.test(trimmedSql);
   
   const dbUser = config.dbUser || "synapse_user";
   const dbPass = config.dbPass || "";
@@ -598,16 +630,44 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   const dbHost = config.dbHost || "localhost";
   const dbPort = config.dbPort || 5432;
   
-  const cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`;
-  
-  const jsonStr = await executeSSHCommand(config, cmd);
-  return JSON.parse(jsonStr.trim() || "[]");
+  let cmd = "";
+  if (isWriteQuery) {
+    cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`;
+    try {
+      const output = await executeSSHCommand(config, cmd);
+      return [{ success: true, affectedRows: output.trim() }];
+    } catch (err: any) {
+      console.error("Error executing remote postgres write query:", err);
+      throw err;
+    }
+  } else {
+    // Clean trailing semicolons inside the subquery to prevent postgres syntax errors
+    const cleanSql = trimmedSql.replace(/;+$/, "");
+    const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql.replace(/"/g, '\\"')}) t;`;
+    cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`;
+    
+    try {
+      const jsonStr = await executeSSHCommand(config, cmd);
+      return cleanAndParseJSON(jsonStr, []);
+    } catch (err: any) {
+      console.error("Error executing remote postgres read query:", err);
+      throw err;
+    }
+  }
 }
 
 export async function queryRemotePostgresMulti(config: ConnectionProfile, queries: { sql: string, params?: any[] }[]): Promise<any[][]> {
   const wrappedQueries = queries.map(q => {
     const interpolatedSql = interpolateQueryParams(q.sql, q.params || []);
-    return `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${interpolatedSql.replace(/"/g, '\\"')}) t;`;
+    const trimmedSql = interpolatedSql.trim();
+    const isWriteQuery = /^\s*(insert|update|delete|create|drop|alter|truncate)\b/i.test(trimmedSql);
+    
+    if (isWriteQuery) {
+      return trimmedSql;
+    } else {
+      const cleanSql = trimmedSql.replace(/;+$/, "");
+      return `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql.replace(/"/g, '\\"')}) t;`;
+    }
   });
 
   const fullSql = wrappedQueries.join("\n");
@@ -620,15 +680,23 @@ export async function queryRemotePostgresMulti(config: ConnectionProfile, querie
   
   const cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${fullSql.replace(/"/g, '\\"')}"`;
   
-  const stdout = await executeSSHCommand(config, cmd);
-  const lines = stdout.trim().split("\n").filter(l => l.trim().length > 0);
-  
-  return lines.map(line => {
-    try {
-      return JSON.parse(line);
-    } catch (e) {
-      console.error("Failed to parse SQL output line:", line, e);
-      return [];
-    }
-  });
+  try {
+    const stdout = await executeSSHCommand(config, cmd);
+    const lines = stdout.trim().split("\n").filter(l => l.trim().length > 0);
+    
+    return lines.map(line => {
+      try {
+        if (/^\s*(insert|update|delete|create|drop|alter|truncate)\b/i.test(line)) {
+          return [{ success: true, message: line.trim() }];
+        }
+        return cleanAndParseJSON(line, []);
+      } catch (e) {
+        console.error("Failed to parse SQL output line:", line, e);
+        return [];
+      }
+    });
+  } catch (err: any) {
+    console.error("Error executing multi remote postgres queries:", err);
+    throw err;
+  }
 }

@@ -28,7 +28,8 @@ import {
   executeSSHCommand,
   queryRemotePostgres,
   queryRemotePostgresMulti,
-  ConnectionProfile
+  ConnectionProfile,
+  cleanAndParseJSON
 } from "./server/db";
 
 import {
@@ -91,7 +92,8 @@ async function readConfigContent(filePath: string, defaultContent: string = ""):
       }
     } else {
       try {
-        const content = await executeSSHCommand(activeConn, `cat "${targetPath}" 2>/dev/null || echo "__NOT_FOUND__"`);
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        const content = await executeSSHCommand(activeConn, `${sudoPrefix}cat "${targetPath}" 2>/dev/null || echo "__NOT_FOUND__"`);
         if (content.trim() === "__NOT_FOUND__") {
           return defaultContent;
         }
@@ -127,7 +129,8 @@ async function writeConfigContent(filePath: string, content: string): Promise<bo
       }
     } else {
       try {
-        const cmd = `cat << 'EOF' > "${targetPath}"\n${content}\nEOF`;
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        const cmd = `${sudoPrefix}tee "${targetPath}" << 'EOF' >/dev/null\n${content}\nEOF`;
         await executeSSHCommand(activeConn, cmd);
         return true;
       } catch (err) {
@@ -149,7 +152,9 @@ function getSynapseDBConfig() {
     const confRaw = readSandboxFile("/etc/matrix-stack.conf");
     const config: any = {};
     confRaw.split("\n").forEach((line) => {
-      const parts = line.split("=");
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const parts = trimmed.split("=");
       if (parts.length >= 2) {
         config[parts[0].trim()] = parts.slice(1).join("=").trim();
       }
@@ -183,7 +188,7 @@ async function queryPostgres(queryStr: string, params: any[] = []): Promise<any[
           dbUser: activeConn.dbUser || "synapse_user",
           dbName: activeConn.dbName || "synapse"
         });
-        return JSON.parse(res || "[]");
+        return cleanAndParseJSON(res, []);
       } catch (err: any) {
         console.error("Agent Postgres Query Error:", err);
         throw err;
@@ -1132,7 +1137,7 @@ async function getAdminToken(): Promise<string | null> {
         }
         
         try {
-          const resObj = JSON.parse(output);
+          const resObj = cleanAndParseJSON(output);
           if (resObj && resObj.access_token) {
             adminTokenCache.set(cacheKey, { token: resObj.access_token, timestamp: Date.now() });
             return resObj.access_token;
@@ -1233,7 +1238,7 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
     if (activeConn.authType === "agent") {
       const res = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
       try {
-        const result = JSON.parse(res || "{}");
+        const result = cleanAndParseJSON(res, {});
         if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN"))))) {
           const retryRes = await handleUnauthorized();
           if (retryRes) return retryRes;
@@ -1246,7 +1251,7 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
       const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
       const output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
       try {
-        const result = JSON.parse(output || "{}");
+        const result = cleanAndParseJSON(output, {});
         if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN"))))) {
           const retryRes = await handleUnauthorized();
           if (retryRes) return retryRes;
@@ -1261,7 +1266,7 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
       exec(curlCmd, async (err: any, stdout: string) => {
         if (err) return resolve({});
         try {
-          const result = JSON.parse(stdout || "{}");
+          const result = cleanAndParseJSON(stdout, {});
           if (result && (result.errcode === "M_UNKNOWN_TOKEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN"))))) {
             const retryRes = await handleUnauthorized();
             if (retryRes) return resolve(retryRes);
@@ -2982,13 +2987,82 @@ function parseLdapFromYaml(yamlText: string): LDAPConfig {
   return ldap;
 }
 
+function parseHomeserverYaml(yamlText: string): any {
+  const hsConfig: any = {};
+  if (!yamlText) return hsConfig;
+
+  const lines = yamlText.split("\n");
+  let inDatabaseSection = false;
+  let inDatabaseArgs = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const indent = line.length - line.trimStart().length;
+
+    if (trimmed.startsWith("database:")) {
+      inDatabaseSection = true;
+      inDatabaseArgs = false;
+      continue;
+    }
+
+    if (inDatabaseSection) {
+      if (indent === 0 && !trimmed.startsWith("database:")) {
+        inDatabaseSection = false;
+        inDatabaseArgs = false;
+      } else if (trimmed.startsWith("args:")) {
+        inDatabaseArgs = true;
+        continue;
+      }
+    }
+
+    if (inDatabaseSection && inDatabaseArgs) {
+      if (indent <= 2 && !trimmed.startsWith("args:")) {
+        inDatabaseArgs = false;
+      } else {
+        const parts = trimmed.split(":");
+        if (parts.length >= 2) {
+          const key = parts[0].trim();
+          const val = parts.slice(1).join(":").trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+          if (key === "user") hsConfig.PG_USER = val;
+          else if (key === "password") hsConfig.PG_PASS = val;
+          else if (key === "database") hsConfig.PG_DB = val;
+          else if (key === "host") hsConfig.PG_HOST = val;
+          else if (key === "port") hsConfig.PG_PORT = val;
+        }
+      }
+    }
+
+    if (indent === 0) {
+      const parts = trimmed.split(":");
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        const val = parts.slice(1).join(":").trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+        if (key === "server_name") {
+          hsConfig.HS_DOMAIN = val;
+        } else if (key === "enable_registration") {
+          hsConfig.REGISTRATION_ENABLED = (val === "true");
+        } else if (key === "max_upload_size") {
+          hsConfig.LIMIT_MB = val.replace(/[a-zA-Z]/g, '');
+        }
+      }
+    }
+  }
+
+  return hsConfig;
+}
+
 app.get("/api/matrix/config", authenticateToken, async (req, res) => {
   try {
     const activeConn = getActiveConnection();
     const confRaw = await readConfigContent("/etc/matrix-stack.conf");
     const config: any = {};
     confRaw.split("\n").forEach((line) => {
-      const parts = line.split("=");
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const parts = trimmed.split("=");
       if (parts.length >= 2) {
         config[parts[0].trim()] = parts.slice(1).join("=").trim();
       }
@@ -2998,15 +3072,33 @@ app.get("/api/matrix/config", authenticateToken, async (req, res) => {
     
     // Default config values if empty (for new/empty remote servers so they don't look completely blank)
     if (Object.keys(config).length === 0) {
-      config.HS_DOMAIN = activeConn?.id !== "local" ? `matrix.${activeConn.host}` : "matrix.company.local";
-      config.ELEMENT_DOMAIN = activeConn?.id !== "local" ? `chat.${activeConn.host}` : "chat.company.local";
-      config.BASE_DOMAIN = activeConn?.id !== "local" ? activeConn.host : "company.local";
-      config.PUBLIC_IP = activeConn?.id !== "local" ? activeConn.host : "127.0.0.1";
-      config.PG_HOST = activeConn?.dbHost || "localhost";
-      config.PG_PORT = String(activeConn?.dbPort || "5432");
-      config.PG_DB = activeConn?.dbName || "synapse";
-      config.PG_USER = activeConn?.dbUser || "synapse_user";
-      config.PG_PASS = activeConn?.dbPass || "";
+      try {
+        const yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
+        if (yaml) {
+          const parsedHs = parseHomeserverYaml(yaml);
+          Object.assign(config, parsedHs);
+        }
+      } catch (err) {
+        console.warn("Could not parse homeserver.yaml for defaults", err);
+      }
+
+      if (!config.HS_DOMAIN) {
+        config.HS_DOMAIN = activeConn?.id !== "local" ? `matrix.${activeConn.host}` : "matrix.company.local";
+      }
+      if (!config.ELEMENT_DOMAIN) {
+        config.ELEMENT_DOMAIN = activeConn?.id !== "local" ? `chat.${activeConn.host}` : "chat.company.local";
+      }
+      if (!config.BASE_DOMAIN) {
+        config.BASE_DOMAIN = activeConn?.id !== "local" ? activeConn.host : "company.local";
+      }
+      if (!config.PUBLIC_IP) {
+        config.PUBLIC_IP = activeConn?.id !== "local" ? activeConn.host : "127.0.0.1";
+      }
+      if (!config.PG_HOST) config.PG_HOST = activeConn?.dbHost || "localhost";
+      if (!config.PG_PORT) config.PG_PORT = String(activeConn?.dbPort || "5432");
+      if (!config.PG_DB) config.PG_DB = activeConn?.dbName || "synapse";
+      if (!config.PG_USER) config.PG_USER = activeConn?.dbUser || "synapse_user";
+      if (!config.PG_PASS) config.PG_PASS = activeConn?.dbPass || "";
     }
 
     let ldap: LDAPConfig = {
@@ -3349,7 +3441,9 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
       try {
         const confRaw = await readConfigContent("/etc/matrix-stack.conf");
         confRaw.split("\n").forEach((line) => {
-          const parts = line.split("=");
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) return;
+          const parts = trimmed.split("=");
           if (parts.length >= 2) {
             existingConfig[parts[0].trim()] = parts.slice(1).join("=").trim();
           }
