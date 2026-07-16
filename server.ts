@@ -3108,13 +3108,33 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
 
   try {
     if (config) {
+      // 1. Read existing config first to prevent wiping out other keys
+      let existingConfig: any = {};
+      try {
+        const confRaw = await readConfigContent("/etc/matrix-stack.conf");
+        confRaw.split("\n").forEach((line) => {
+          const parts = line.split("=");
+          if (parts.length >= 2) {
+            existingConfig[parts[0].trim()] = parts.slice(1).join("=").trim();
+          }
+        });
+      } catch (err) {
+        console.warn("Could not read existing matrix-stack.conf, starting fresh");
+      }
+
+      // 2. Merge with the new updates
+      const mergedConfig = { ...existingConfig, ...config };
+
+      // 3. Write merged config back to /etc/matrix-stack.conf
       let confContent = "";
-      Object.entries(config).forEach(([key, val]) => {
+      Object.entries(mergedConfig).forEach(([key, val]) => {
         confContent += `${key}=${val}\n`;
       });
       await writeConfigContent("/etc/matrix-stack.conf", confContent);
 
+      // 4. Update matrix-synapse homeserver.yaml configuration dynamically
       let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
+      
       if (config.HS_DOMAIN) {
         yaml = yaml.replace(/^server_name:.*$/m, `server_name: "${config.HS_DOMAIN}"`);
         yaml = yaml.replace(/^public_baseurl:.*$/m, `public_baseurl: "https://${config.HS_DOMAIN}/"`);
@@ -3125,20 +3145,151 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
       if (config.PG_DB) {
         yaml = yaml.replace(/database:.*$/m, `database: "${config.PG_DB}"`);
       }
+
+      // Sync Limits & Policies into homeserver.yaml
+      if (config.LIMIT_MB !== undefined) {
+        if (yaml.match(/^max_upload_size:.*$/m)) {
+          yaml = yaml.replace(/^max_upload_size:.*$/m, `max_upload_size: "${config.LIMIT_MB}M"`);
+        } else {
+          yaml += `\nmax_upload_size: "${config.LIMIT_MB}M"`;
+        }
+      }
+
+      if (config.REGISTRATION_ENABLED !== undefined) {
+        const isReg = String(config.REGISTRATION_ENABLED) === "true";
+        if (yaml.match(/^enable_registration:.*$/m)) {
+          yaml = yaml.replace(/^enable_registration:.*$/m, `enable_registration: ${isReg}`);
+        } else {
+          yaml += `\nenable_registration: ${isReg}`;
+        }
+      }
+
+      if (config.MESSAGE_RETENTION_DAYS !== undefined) {
+        const days = parseInt(config.MESSAGE_RETENTION_DAYS) || 0;
+        if (days > 0) {
+          const retentionBlock = `
+retention:
+  enabled: true
+  default_policy:
+    max_lifetime: ${days}d
+`.trim();
+          if (yaml.includes("retention:")) {
+            yaml = yaml.replace(/retention:\s*[\s\S]*?(?=\n\S|$)/, retentionBlock);
+          } else {
+            yaml += `\n${retentionBlock}`;
+          }
+        }
+      }
+
+      if (config.PRESENCE_ENABLED !== undefined) {
+        const isPresence = String(config.PRESENCE_ENABLED) === "true";
+        const presenceBlock = `
+presence:
+  enabled: ${isPresence}
+`.trim();
+        if (yaml.includes("presence:")) {
+          yaml = yaml.replace(/presence:\s*[\s\S]*?(?=\n\S|$)/, presenceBlock);
+        } else {
+          yaml += `\n${presenceBlock}`;
+        }
+      }
+
+      if (config.DIRECTORY_SEARCH_ENABLED !== undefined) {
+        const searchAll = String(config.DIRECTORY_SEARCH_ENABLED) === "true";
+        const dirBlock = `
+user_directory:
+  enabled: true
+  search_all_users: ${searchAll}
+`.trim();
+        if (yaml.includes("user_directory:")) {
+          yaml = yaml.replace(/user_directory:\s*[\s\S]*?(?=\n\S|$)/, dirBlock);
+        } else {
+          yaml += `\n${dirBlock}`;
+        }
+      }
+
+      if (config.RATE_LIMIT_PER_SEC !== undefined && config.RATE_LIMIT_BURST !== undefined) {
+        const rateLimitBlock = `
+rc_message:
+  per_second: ${config.RATE_LIMIT_PER_SEC}
+  burst: ${config.RATE_LIMIT_BURST}
+`.trim();
+        if (yaml.includes("rc_message:")) {
+          yaml = yaml.replace(/rc_message:\s*[\s\S]*?(?=\n\S|$)/, rateLimitBlock);
+        } else {
+          yaml += `\n${rateLimitBlock}`;
+        }
+      }
+
+      // Sync SMTP/Email Server into homeserver.yaml
+      if (config.SMTP_HOST !== undefined) {
+        const emailBlock = `
+email:
+  smtp_host: "${config.SMTP_HOST || 'localhost'}"
+  smtp_port: ${parseInt(config.SMTP_PORT) || 587}
+  smtp_user: "${config.SMTP_USER || ''}"
+  smtp_pass: "${config.SMTP_PASS || ''}"
+  force_tls: false
+  notif_from: "${config.NOTIF_FROM || 'Matrix <noreply@company.local>'}"
+  app_name: "${config.APP_NAME || 'Matrix'}"
+  enable_notifs: true
+`.trim();
+        if (yaml.includes("email:")) {
+          yaml = yaml.replace(/email:\s*[\s\S]*?(?=\n\S|$)/, emailBlock);
+        } else {
+          yaml += `\n${emailBlock}`;
+        }
+      }
+
       await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", yaml);
 
-      if (config.HS_DOMAIN) {
-        const elConfigRaw = await readConfigContent("/var/www/element/config.json", "{}");
-        try {
-          const elConfig = JSON.parse(elConfigRaw);
-          if (elConfig.default_server_config && elConfig.default_server_config["m.homeserver"]) {
+      // 5. Update Element defaults and media options in config.json
+      const elConfigRaw = await readConfigContent("/var/www/element/config.json", "{}");
+      try {
+        const elConfig = JSON.parse(elConfigRaw);
+        if (elConfig.default_server_config && elConfig.default_server_config["m.homeserver"]) {
+          if (config.HS_DOMAIN) {
             elConfig.default_server_config["m.homeserver"].base_url = `https://${config.HS_DOMAIN}`;
             elConfig.default_server_config["m.homeserver"].server_name = config.HS_DOMAIN;
-            await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2));
           }
-        } catch (e) {
-          console.error("Failed to update remote element config", e);
         }
+        
+        // Sync application branding name
+        if (config.APP_NAME) {
+          elConfig.brand = config.APP_NAME;
+        }
+
+        // Sync Custom Integration URLs
+        if (config.INTEGRATIONS_UI_URL) {
+          elConfig.integrations_ui_url = config.INTEGRATIONS_UI_URL;
+        }
+        if (config.INTEGRATIONS_REST_URL) {
+          elConfig.integrations_rest_url = config.INTEGRATIONS_REST_URL;
+        }
+
+        // Sync Call / Conferencing options
+        if (config.ELEMENT_CALL_URL) {
+          if (!elConfig.element_call) elConfig.element_call = {};
+          elConfig.element_call.url = config.ELEMENT_CALL_URL;
+        }
+
+        if (config.JITSI_DOMAIN) {
+          if (!elConfig.jitsi) elConfig.jitsi = {};
+          elConfig.jitsi.preferred_domain = config.JITSI_DOMAIN;
+        }
+
+        // Sync Client setting defaults
+        if (!elConfig.setting_defaults) elConfig.setting_defaults = {};
+        if (config.TYPING_NOTIFS_ENABLED !== undefined) {
+          elConfig.setting_defaults.sendTypingNotifications = (String(config.TYPING_NOTIFS_ENABLED) === "true");
+        }
+        if (config.READ_RECEIPTS_ENABLED !== undefined) {
+          elConfig.setting_defaults.sendReadReceipts = (String(config.READ_RECEIPTS_ENABLED) === "true");
+        }
+
+        await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2));
+      } catch (e) {
+        console.error("Failed to update Element defaults configuration:", e);
       }
     }
 

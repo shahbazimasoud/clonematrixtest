@@ -471,6 +471,12 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid) return;
 
+    // Optimistically update the UI instantly
+    setSelectedUserDetails((prev: any) => {
+      if (!prev) return prev;
+      return { ...prev, ...updates };
+    });
+
     try {
       const res = await fetch('/api/matrix/users/details/update', {
         method: 'POST',
@@ -486,9 +492,11 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
         fetchAll(true);
       } else {
         showToast('error', t.errorAction);
+        fetchUserDetails(selectedUserMxid, false, true); // rollback
       }
     } catch (e) {
       showToast('error', t.errorAction);
+      fetchUserDetails(selectedUserMxid, false, true); // rollback
     }
   };
 
@@ -523,6 +531,14 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid || !newEmail) return;
 
+    // Optimistically add the email to UI list
+    setSelectedUserDetails((prev: any) => {
+      if (!prev) return prev;
+      const emails = prev.emails || [];
+      if (emails.includes(newEmail)) return prev;
+      return { ...prev, emails: [...emails, newEmail] };
+    });
+
     try {
       const res = await fetch('/api/matrix/users/emails/add', {
         method: 'POST',
@@ -539,15 +555,24 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       } else {
         const err = await res.json();
         showToast('error', err.error || t.errorAction);
+        fetchUserDetails(selectedUserMxid, false, true); // rollback
       }
     } catch (e) {
       showToast('error', t.errorAction);
+      fetchUserDetails(selectedUserMxid, false, true); // rollback
     }
   };
 
   const handleRemoveEmail = async (email: string) => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid) return;
+
+    // Optimistically remove the email from UI list
+    setSelectedUserDetails((prev: any) => {
+      if (!prev) return prev;
+      const emails = (prev.emails || []).filter((e: string) => e !== email);
+      return { ...prev, emails };
+    });
 
     try {
       const res = await fetch('/api/matrix/users/emails/delete', {
@@ -563,9 +588,11 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
         fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
+        fetchUserDetails(selectedUserMxid, false, true); // rollback
       }
     } catch (e) {
       showToast('error', t.errorAction);
+      fetchUserDetails(selectedUserMxid, false, true); // rollback
     }
   };
 
@@ -573,6 +600,14 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     e.preventDefault();
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid || !newPhone) return;
+
+    // Optimistically add the phone to UI list
+    setSelectedUserDetails((prev: any) => {
+      if (!prev) return prev;
+      const phones = prev.phones || [];
+      if (phones.includes(newPhone)) return prev;
+      return { ...prev, phones: [...phones, newPhone] };
+    });
 
     try {
       const res = await fetch('/api/matrix/users/phones/add', {
@@ -590,15 +625,24 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       } else {
         const err = await res.json();
         showToast('error', err.error || t.errorAction);
+        fetchUserDetails(selectedUserMxid, false, true); // rollback
       }
     } catch (e) {
       showToast('error', t.errorAction);
+      fetchUserDetails(selectedUserMxid, false, true); // rollback
     }
   };
 
   const handleRemovePhone = async (phone: string) => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid) return;
+
+    // Optimistically remove phone from UI list
+    setSelectedUserDetails((prev: any) => {
+      if (!prev) return prev;
+      const phones = (prev.phones || []).filter((p: string) => p !== phone);
+      return { ...prev, phones };
+    });
 
     try {
       const res = await fetch('/api/matrix/users/phones/delete', {
@@ -614,15 +658,24 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
         fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
+        fetchUserDetails(selectedUserMxid, false, true); // rollback
       }
     } catch (e) {
       showToast('error', t.errorAction);
+      fetchUserDetails(selectedUserMxid, false, true); // rollback
     }
   };
 
   const handleTerminateDevice = async (deviceId: string) => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid) return;
+
+    // Optimistically remove device from UI list
+    setSelectedUserDetails((prev: any) => {
+      if (!prev) return prev;
+      const devices = (prev.devices || []).filter((d: any) => d.id !== deviceId);
+      return { ...prev, devices };
+    });
 
     try {
       const res = await fetch('/api/matrix/users/devices/delete', {
@@ -638,9 +691,11 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
         fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
+        fetchUserDetails(selectedUserMxid, false, true); // rollback
       }
     } catch (e) {
       showToast('error', t.errorAction);
+      fetchUserDetails(selectedUserMxid, false, true); // rollback
     }
   };
 
@@ -1503,9 +1558,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       </tr>
                     ) : (
                       filteredUsers.map((u, i) => (
-                        <tr key={u.mxid} className={`transition-all duration-200 ${
-                          isLightMode ? 'hover:bg-slate-50/50' : 'hover:bg-white/5'
-                        }`}>
+                        <tr
+                          key={u.mxid}
+                          onClick={() => fetchUserDetails(u.mxid, true)}
+                          className={`transition-all duration-200 cursor-pointer ${
+                            isLightMode ? 'hover:bg-slate-50/50' : 'hover:bg-white/5'
+                          }`}
+                        >
                           <td className={`py-3 px-4 text-center font-mono ${isLightMode ? 'text-slate-400' : 'text-gray-500'}`}>{i + 1}</td>
                           <td className={`py-3 px-4 font-mono ${isLightMode ? 'text-slate-700' : 'text-gray-200'} ${isRtl ? 'text-right' : 'text-left'}`}>{u.mxid}</td>
                           <td className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>
@@ -1544,20 +1603,11 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex justify-center items-center gap-2">
-                              <button
-                                onClick={() => fetchUserDetails(u.mxid, true)}
-                                className={`px-2.5 py-1 text-xs border rounded font-medium transition-all duration-200 ${
-                                  isLightMode
-                                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border-indigo-200'
-                                    : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30'
-                                }`}
-                              >
-                                {isRtl ? 'جزئیات' : 'Details'}
-                              </button>
                               {hasWriteAccess ? (
                                 u.isDeactivated ? (
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setShowReactivateModal(u.mxid);
                                       setReactivateAdmin(u.isAdmin);
                                     }}
@@ -1571,7 +1621,10 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() => handleDeactivateUser(u.mxid)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeactivateUser(u.mxid);
+                                    }}
                                     className={`px-2.5 py-1 text-xs border rounded font-medium transition-all duration-200 ${
                                       isLightMode
                                         ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200'
