@@ -411,7 +411,7 @@ export default function App() {
 
   // REST mutations
   const handleSaveConfig = (data: { config?: Partial<MatrixConfig>; ldap?: Partial<LDAPConfig>; workers?: any }) => {
-    fetch('/api/matrix/config/save', {
+    return fetch('/api/matrix/config/save', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -431,7 +431,10 @@ export default function App() {
       fetchConfig();
       fetchLogs();
     })
-    .catch(err => showToast('error', err.message));
+    .catch(err => {
+      showToast('error', err.message);
+      throw err;
+    });
   };
 
   const handleRegisterMatrixUser = (username: string, pass: string, isAdmin: boolean) => {
@@ -1120,6 +1123,7 @@ export default function App() {
                 currentUser={currentUser}
                 showToast={showToast}
                 isLightMode={isLightMode}
+                activeConnectionId={activeConnection?.id}
               />
             )}
 

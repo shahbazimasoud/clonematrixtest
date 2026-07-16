@@ -603,3 +603,32 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   const jsonStr = await executeSSHCommand(config, cmd);
   return JSON.parse(jsonStr.trim() || "[]");
 }
+
+export async function queryRemotePostgresMulti(config: ConnectionProfile, queries: { sql: string, params?: any[] }[]): Promise<any[][]> {
+  const wrappedQueries = queries.map(q => {
+    const interpolatedSql = interpolateQueryParams(q.sql, q.params || []);
+    return `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${interpolatedSql.replace(/"/g, '\\"')}) t;`;
+  });
+
+  const fullSql = wrappedQueries.join("\n");
+  
+  const dbUser = config.dbUser || "synapse_user";
+  const dbPass = config.dbPass || "";
+  const dbName = config.dbName || "synapse";
+  const dbHost = config.dbHost || "localhost";
+  const dbPort = config.dbPort || 5432;
+  
+  const cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${fullSql.replace(/"/g, '\\"')}"`;
+  
+  const stdout = await executeSSHCommand(config, cmd);
+  const lines = stdout.trim().split("\n").filter(l => l.trim().length > 0);
+  
+  return lines.map(line => {
+    try {
+      return JSON.parse(line);
+    } catch (e) {
+      console.error("Failed to parse SQL output line:", line, e);
+      return [];
+    }
+  });
+}

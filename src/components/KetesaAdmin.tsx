@@ -54,6 +54,7 @@ interface KetesaAdminProps {
   currentUser: { role: UserRole; username: string } | null;
   showToast: (type: 'success' | 'error', text: string) => void;
   isLightMode?: boolean;
+  activeConnectionId?: string;
 }
 
 const faTranslations = {
@@ -266,7 +267,7 @@ const enTranslations = {
   syncSuccess: "Users synced successfully with homeserver."
 };
 
-export default function KetesaAdmin({ lang, authToken, currentUser, showToast, isLightMode = false }: KetesaAdminProps) {
+export default function KetesaAdmin({ lang, authToken, currentUser, showToast, isLightMode = false, activeConnectionId }: KetesaAdminProps) {
   const t = lang === 'fa' ? faTranslations : enTranslations;
   const isRtl = lang === 'fa';
   const hasWriteAccess = currentUser?.role !== 'Viewer';
@@ -868,7 +869,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   // Initial Fetching
   useEffect(() => {
     fetchAll();
-  }, [authToken]);
+  }, [authToken, activeConnectionId]);
 
   const fetchAll = async (silent = false) => {
     if (!silent) setLoading(true);

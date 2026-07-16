@@ -27,6 +27,7 @@ import {
   getActiveConnection,
   executeSSHCommand,
   queryRemotePostgres,
+  queryRemotePostgresMulti,
   ConnectionProfile
 } from "./server/db";
 
@@ -1279,147 +1280,268 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
   if (!mxid) return res.status(400).json({ error: "MXID is required" });
 
   try {
-    const rows = await queryPostgres(
-      "SELECT u.name as mxid, u.admin, u.deactivated, u.creation_ts, u.user_type, p.displayname, p.avatar_url FROM users u LEFT JOIN profiles p ON u.name = p.user_id WHERE u.name = $1",
-      [mxid]
-    );
-    if (rows.length > 0) {
-      const r = rows[0];
-      const username = mxid.toString().split(":")[0].replace("@", "");
-      
-      // Fetch user threepids (emails and phones)
-      let emails: string[] = [];
-      let phones: string[] = [];
-      try {
-        const tpRows = await queryPostgres("SELECT medium, address FROM user_threepids WHERE user_id = $1", [mxid]);
-        emails = tpRows.filter((tp: any) => tp.medium === "email").map((tp: any) => tp.address);
-        phones = tpRows.filter((tp: any) => tp.medium === "msisdn").map((tp: any) => tp.address);
-      } catch (tpErr) {
-        console.warn("Could not query user_threepids table:", tpErr);
+    const db = readDb();
+    const activeConn = getActiveConnection();
+    let rows: any[] = [];
+    let emails: string[] = [];
+    let phones: string[] = [];
+    let devices: any[] = [];
+    let pushers: any[] = [];
+    let rooms: any[] = [];
+    let media: any[] = [];
+    let sso: any[] = [];
+    let accountData: any = {};
+    let isSuspended = false;
+    let isShadowBanned = false;
+    let isLocked = false;
+    let isErased = false;
+    const username = mxid.toString().split(":")[0].replace("@", "");
+
+    if (activeConn && activeConn.id !== "local") {
+      const queries = [
+        {
+          sql: "SELECT u.name as mxid, u.admin, u.deactivated, u.creation_ts, u.user_type, p.displayname, p.avatar_url FROM users u LEFT JOIN profiles p ON u.name = p.user_id WHERE u.name = $1",
+          params: [mxid]
+        },
+        {
+          sql: "SELECT medium, address FROM user_threepids WHERE user_id = $1",
+          params: [mxid]
+        },
+        {
+          sql: "SELECT device_id, display_name, last_seen_ip, last_seen_ts, user_agent FROM devices WHERE user_id = $1",
+          params: [mxid]
+        },
+        {
+          sql: "SELECT app_id, pushkey, kind, data, profile_tag FROM pushers WHERE user_id = $1",
+          params: [mxid]
+        },
+        {
+          sql: "SELECT rm.room_id, rm.membership, COALESCE((SELECT name FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1), rm.room_id) as room_name, (SELECT canonical_alias FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1) as room_alias FROM room_memberships rm WHERE rm.user_id = $1 AND rm.membership IN ('join', 'ban')",
+          params: [mxid]
+        },
+        {
+          sql: "SELECT media_id, media_type, media_length, created_ts, upload_name FROM local_media_repository WHERE user_id = $1 ORDER BY created_ts DESC",
+          params: [mxid]
+        },
+        {
+          sql: "SELECT auth_provider, external_id FROM user_external_ids WHERE user_id = $1",
+          params: [mxid]
+        },
+        {
+          sql: "SELECT type, content FROM account_data WHERE user_id = $1",
+          params: [mxid]
+        }
+      ];
+
+      let results: any[][];
+      if (activeConn.authType === "agent") {
+        results = await Promise.all(queries.map(q => 
+          executeRemoteAgentTask(activeConn.id, "postgres_query", {
+            query: q.sql,
+            dbUser: activeConn.dbUser || "synapse_user",
+            dbName: activeConn.dbName || "synapse"
+          }).then(res => JSON.parse(res || "[]")).catch(() => [])
+        ));
+      } else {
+        results = await queryRemotePostgresMulti(activeConn, queries);
       }
 
-      // Fetch devices
-      let devices: any[] = [];
-      try {
-        const devRows = await queryPostgres("SELECT device_id, display_name, last_seen_ip, last_seen_ts, user_agent FROM devices WHERE user_id = $1", [mxid]);
-        devices = devRows.map((d: any) => ({
-          id: d.device_id,
-          name: d.display_name || "Active Session",
-          lastSeenIp: d.last_seen_ip || "Unknown",
-          lastSeenAt: d.last_seen_ts ? new Date(parseInt(d.last_seen_ts)).toISOString() : new Date().toISOString(),
-          userAgent: d.user_agent || "Unknown"
-        }));
-      } catch (devErr) {
-        console.warn("Could not query devices table:", devErr);
-      }
+      rows = results[0] || [];
+      const tpRows = results[1] || [];
+      emails = tpRows.filter((tp: any) => tp.medium === "email").map((tp: any) => tp.address);
+      phones = tpRows.filter((tp: any) => tp.medium === "msisdn").map((tp: any) => tp.address);
 
-      // Fetch user's pushers
-      let pushers: any[] = [];
-      try {
-        const pusherRows = await queryPostgres("SELECT app_id, pushkey, kind, data, profile_tag FROM pushers WHERE user_id = $1", [mxid]);
-        pushers = pusherRows.map((p: any) => ({
-          appId: p.app_id,
-          pushKey: p.pushkey,
-          kind: p.kind,
-          data: typeof p.data === 'string' ? JSON.parse(p.data) : p.data || {},
-          profileTag: p.profile_tag || ""
-        }));
-      } catch (pErr) {
-        console.warn("Could not query pushers table:", pErr);
-      }
+      const devRows = results[2] || [];
+      devices = devRows.map((d: any) => ({
+        id: d.device_id,
+        name: d.display_name || "Active Session",
+        lastSeenIp: d.last_seen_ip || "Unknown",
+        lastSeenAt: d.last_seen_ts ? new Date(parseInt(d.last_seen_ts)).toISOString() : new Date().toISOString(),
+        userAgent: d.user_agent || "Unknown"
+      }));
 
-      // Fetch rooms
-      let rooms: any[] = [];
-      try {
-        const rmRows = await queryPostgres(`
-          SELECT rm.room_id, rm.membership, 
-                 COALESCE((SELECT name FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1), rm.room_id) as room_name,
-                 (SELECT canonical_alias FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1) as room_alias
-          FROM room_memberships rm 
-          WHERE rm.user_id = $1 AND rm.membership IN ('join', 'ban')
-        `, [mxid]);
-        rooms = rmRows.map((rm: any) => ({
-          roomId: rm.room_id,
-          name: rm.room_name || rm.room_id,
-          alias: rm.room_alias || "",
-          isJoined: rm.membership === 'join',
-          isBanned: rm.membership === 'ban',
-          powerLevel: r.admin ? 100 : 0,
-          role: rm.membership === 'join' ? (r.admin ? "Administrator" : "Member") : "None"
-        }));
-      } catch (rErr) {
-        console.warn("Could not query room_memberships:", rErr);
-      }
+      const pusherRows = results[3] || [];
+      pushers = pusherRows.map((p: any) => ({
+        appId: p.app_id,
+        pushKey: p.pushkey,
+        kind: p.kind,
+        data: typeof p.data === 'string' ? JSON.parse(p.data) : p.data || {},
+        profileTag: p.profile_tag || ""
+      }));
 
-      // Fetch media uploaded by user
-      let media: any[] = [];
-      try {
-        const mediaRows = await queryPostgres(`
-          SELECT media_id, media_type, media_length, created_ts, upload_name 
-          FROM local_media_repository 
-          WHERE user_id = $1 
-          ORDER BY created_ts DESC
-        `, [mxid]);
-        media = mediaRows.map((m: any) => ({
-          id: m.media_id,
-          fileName: m.upload_name || m.media_id,
-          mimeType: m.media_type || "application/octet-stream",
-          fileSize: parseInt(m.media_length || "0"),
-          uploadedAt: m.created_ts ? new Date(parseInt(m.created_ts)).toISOString() : new Date().toISOString(),
-          isQuarantined: false
-        }));
-      } catch (mediaErr) {
-        console.warn("Could not query local_media_repository:", mediaErr);
-      }
+      const rmRows = results[4] || [];
+      const userIsAdmin = rows.length > 0 ? !!rows[0].admin : false;
+      rooms = rmRows.map((rm: any) => ({
+        roomId: rm.room_id,
+        name: rm.room_name || rm.room_id,
+        alias: rm.room_alias || "",
+        isJoined: rm.membership === 'join',
+        isBanned: rm.membership === 'ban',
+        powerLevel: userIsAdmin ? 100 : 0,
+        role: rm.membership === 'join' ? (userIsAdmin ? "Administrator" : "Member") : "None"
+      }));
 
-      // Fetch SSO linked accounts
-      let sso: any[] = [];
-      try {
-        const ssoRows = await queryPostgres("SELECT auth_provider, external_id FROM user_external_ids WHERE user_id = $1", [mxid]);
+      const mediaRows = results[5] || [];
+      media = mediaRows.map((m: any) => ({
+        id: m.media_id,
+        fileName: m.upload_name || m.media_id,
+        mimeType: m.media_type || "application/octet-stream",
+        fileSize: parseInt(m.media_length || "0"),
+        uploadedAt: m.created_ts ? new Date(parseInt(m.created_ts)).toISOString() : new Date().toISOString(),
+        isQuarantined: false
+      }));
+
+      const ssoRows = results[6] || [];
+      if (ssoRows.length > 0) {
         sso = ssoRows.map((s: any) => ({
           provider: s.auth_provider,
           externalId: s.external_id,
           linkedAt: new Date().toISOString()
         }));
-      } catch (ssoErr) {
+      } else {
         sso = [{ provider: "Database Authenticated", externalId: username, linkedAt: new Date().toISOString() }];
       }
 
-      // Fetch account data
-      let accountData: any = {};
-      try {
-        const adRows = await queryPostgres("SELECT type, content FROM account_data WHERE user_id = $1", [mxid]);
-        for (const ad of adRows) {
-          try {
-            accountData[ad.type] = typeof ad.content === 'string' ? JSON.parse(ad.content) : ad.content || {};
-          } catch (e) {}
-        }
-      } catch (adErr) {
+      const adRows = results[7] || [];
+      for (const ad of adRows) {
+        try {
+          accountData[ad.type] = typeof ad.content === 'string' ? JSON.parse(ad.content) : ad.content || {};
+        } catch (e) {}
+      }
+      if (Object.keys(accountData).length === 0) {
         accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
       }
 
-      // Dynamic check for user flags in db if columns exist
-      let isSuspended = !!r.deactivated;
-      let isShadowBanned = false;
-      let isLocked = false;
-      let isErased = false;
-
-      try {
-        const flagsRows = await queryPostgres("SELECT name, suspended, shadow_banned, locked, erased FROM users WHERE name = $1", [mxid]);
-        if (flagsRows && flagsRows.length > 0) {
-          const fr = flagsRows[0];
-          if (fr.suspended !== undefined) isSuspended = !!fr.suspended;
-          if (fr.shadow_banned !== undefined) isShadowBanned = !!fr.shadow_banned;
-          if (fr.locked !== undefined) isLocked = !!fr.locked;
-          if (fr.erased !== undefined) isErased = !!fr.erased;
+      if (rows.length > 0) {
+        const r = rows[0];
+        isSuspended = !!r.deactivated;
+        const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
+        if (localUser) {
+          if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
+          if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
+          if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
+          if (localUser.isErased !== undefined) isErased = localUser.isErased;
         }
-      } catch (flagsErr) {
-        // Safe skip if flags columns aren't in this specific schema
       }
+    } else {
+      rows = await queryPostgres(
+        "SELECT u.name as mxid, u.admin, u.deactivated, u.creation_ts, u.user_type, p.displayname, p.avatar_url FROM users u LEFT JOIN profiles p ON u.name = p.user_id WHERE u.name = $1",
+        [mxid]
+      );
+      if (rows.length > 0) {
+        const r = rows[0];
+        isSuspended = !!r.deactivated;
+        try {
+          const tpRows = await queryPostgres("SELECT medium, address FROM user_threepids WHERE user_id = $1", [mxid]);
+          emails = tpRows.filter((tp: any) => tp.medium === "email").map((tp: any) => tp.address);
+          phones = tpRows.filter((tp: any) => tp.medium === "msisdn").map((tp: any) => tp.address);
+        } catch (tpErr) {
+          console.warn("Could not query user_threepids table:", tpErr);
+        }
 
+        try {
+          const devRows = await queryPostgres("SELECT device_id, display_name, last_seen_ip, last_seen_ts, user_agent FROM devices WHERE user_id = $1", [mxid]);
+          devices = devRows.map((d: any) => ({
+            id: d.device_id,
+            name: d.display_name || "Active Session",
+            lastSeenIp: d.last_seen_ip || "Unknown",
+            lastSeenAt: d.last_seen_ts ? new Date(parseInt(d.last_seen_ts)).toISOString() : new Date().toISOString(),
+            userAgent: d.user_agent || "Unknown"
+          }));
+        } catch (devErr) {
+          console.warn("Could not query devices table:", devErr);
+        }
+
+        try {
+          const pusherRows = await queryPostgres("SELECT app_id, pushkey, kind, data, profile_tag FROM pushers WHERE user_id = $1", [mxid]);
+          pushers = pusherRows.map((p: any) => ({
+            appId: p.app_id,
+            pushKey: p.pushkey,
+            kind: p.kind,
+            data: typeof p.data === 'string' ? JSON.parse(p.data) : p.data || {},
+            profileTag: p.profile_tag || ""
+          }));
+        } catch (pErr) {
+          console.warn("Could not query pushers table:", pErr);
+        }
+
+        try {
+          const rmRows = await queryPostgres(`
+            SELECT rm.room_id, rm.membership, 
+                   COALESCE((SELECT name FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1), rm.room_id) as room_name,
+                   (SELECT canonical_alias FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1) as room_alias
+            FROM room_memberships rm 
+            WHERE rm.user_id = $1 AND rm.membership IN ('join', 'ban')
+          `, [mxid]);
+          rooms = rmRows.map((rm: any) => ({
+            roomId: rm.room_id,
+            name: rm.room_name || rm.room_id,
+            alias: rm.room_alias || "",
+            isJoined: rm.membership === 'join',
+            isBanned: rm.membership === 'ban',
+            powerLevel: r.admin ? 100 : 0,
+            role: rm.membership === 'join' ? (r.admin ? "Administrator" : "Member") : "None"
+          }));
+        } catch (rErr) {
+          console.warn("Could not query room_memberships:", rErr);
+        }
+
+        try {
+          const mediaRows = await queryPostgres(`
+            SELECT media_id, media_type, media_length, created_ts, upload_name 
+            FROM local_media_repository 
+            WHERE user_id = $1 
+            ORDER BY created_ts DESC
+          `, [mxid]);
+          media = mediaRows.map((m: any) => ({
+            id: m.media_id,
+            fileName: m.upload_name || m.media_id,
+            mimeType: m.media_type || "application/octet-stream",
+            fileSize: parseInt(m.media_length || "0"),
+            uploadedAt: m.created_ts ? new Date(parseInt(m.created_ts)).toISOString() : new Date().toISOString(),
+            isQuarantined: false
+          }));
+        } catch (mediaErr) {
+          console.warn("Could not query local_media_repository:", mediaErr);
+        }
+
+        try {
+          const ssoRows = await queryPostgres("SELECT auth_provider, external_id FROM user_external_ids WHERE user_id = $1", [mxid]);
+          sso = ssoRows.map((s: any) => ({
+            provider: s.auth_provider,
+            externalId: s.external_id,
+            linkedAt: new Date().toISOString()
+          }));
+        } catch (ssoErr) {
+          sso = [{ provider: "Database Authenticated", externalId: username, linkedAt: new Date().toISOString() }];
+        }
+
+        try {
+          const adRows = await queryPostgres("SELECT type, content FROM account_data WHERE user_id = $1", [mxid]);
+          for (const ad of adRows) {
+            try {
+              accountData[ad.type] = typeof ad.content === 'string' ? JSON.parse(ad.content) : ad.content || {};
+            } catch (e) {}
+          }
+        } catch (adErr) {
+          accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
+        }
+
+        const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
+        if (localUser) {
+          if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
+          if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
+          if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
+          if (localUser.isErased !== undefined) isErased = localUser.isErased;
+        }
+      }
+    }
+
+    if (rows.length > 0) {
+      const r = rows[0];
       const memberships = rooms.map((rm: any) => ({
         roomId: rm.roomId,
-        roomName: rm.name,
+        roomName: rm.roomName,
         powerLevel: rm.powerLevel,
         isJoined: rm.isJoined,
         isBanned: rm.isBanned

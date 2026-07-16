@@ -43,7 +43,7 @@ interface ConfigFormsProps {
     basePort: number;
   };
   matrixUsers: MatrixUser[];
-  onSaveConfig: (data: { config?: Partial<MatrixConfig>; ldap?: Partial<LDAPConfig>; workers?: any }) => void;
+  onSaveConfig: (data: { config?: Partial<MatrixConfig>; ldap?: Partial<LDAPConfig>; workers?: any }) => any;
   onRegisterUser: (username: string, pass: string, isAdmin: boolean) => void;
   onDeactivateUser: (mxid: string) => void;
   onReactivateUser: (mxid: string, pass: string, isAdmin: boolean) => void;
@@ -74,6 +74,7 @@ export default function ConfigForms({
   isLightMode = false
 }: ConfigFormsProps) {
   const [activeTab, setActiveTab] = useState<TabType>('homeserver');
+  const [isSaving, setIsSaving] = useState(false);
   
   // 1. Homeserver Config State
   const [hsDomain, setHsDomain] = useState('');
@@ -382,11 +383,22 @@ export default function ConfigForms({
   const isReadOnly = userRole === 'Viewer';
   const isModerator = userRole === 'Moderator';
 
+  const runAsyncSave = async (saveFn: () => any) => {
+    setIsSaving(true);
+    try {
+      await saveFn();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Handle saving Homeserver Config
   const handleSaveHomeserver = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
-    onSaveConfig({
+    runAsyncSave(() => onSaveConfig({
       config: {
         HS_DOMAIN: hsDomain,
         ELEMENT_DOMAIN: elDomain,
@@ -400,14 +412,14 @@ export default function ConfigForms({
         PG_PORT: pgPort,
         PG_PASS: pgPass
       }
-    });
+    }));
   };
 
   // Handle saving LDAP configuration
   const handleSaveLdap = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly || isModerator) return;
-    onSaveConfig({
+    runAsyncSave(() => onSaveConfig({
       ldap: {
         enabled: ldapEnabled,
         uri: ldapUri,
@@ -421,28 +433,28 @@ export default function ConfigForms({
         mail_attr: ldapMailAttr,
         name_attr: ldapNameAttr
       }
-    });
+    }));
   };
 
   // Handle saving Workers config
   const handleSaveWorkers = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly || isModerator) return;
-    onSaveConfig({
+    runAsyncSave(() => onSaveConfig({
       workers: {
         enabled: workersEnabled,
         count: Number(workersCount),
         federationSender: workersFedSender,
         basePort: Number(workersBasePort)
       }
-    });
+    }));
   };
 
   // Handle saving Limits & Policies config
   const handleSavePolicies = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
-    onSaveConfig({
+    runAsyncSave(() => onSaveConfig({
       config: {
         LIMIT_MB: limitMb,
         REGISTRATION_ENABLED: regEnabled,
@@ -455,14 +467,14 @@ export default function ConfigForms({
         RATE_LIMIT_PER_SEC: rateLimitPerSec,
         RATE_LIMIT_BURST: rateLimitBurst
       }
-    });
+    }));
   };
 
   // Handle saving SMTP Mail config
   const handleSaveSmtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
-    onSaveConfig({
+    runAsyncSave(() => onSaveConfig({
       config: {
         SMTP_HOST: smtpHost,
         SMTP_PORT: smtpPort,
@@ -471,14 +483,14 @@ export default function ConfigForms({
         NOTIF_FROM: notifFrom,
         APP_NAME: appName
       }
-    });
+    }));
   };
 
   // Handle saving Client Defaults config
   const handleSaveClient = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
-    onSaveConfig({
+    runAsyncSave(() => onSaveConfig({
       config: {
         TYPING_NOTIFS_ENABLED: typingNotifs,
         READ_RECEIPTS_ENABLED: readReceipts,
@@ -488,7 +500,7 @@ export default function ConfigForms({
         INTEGRATIONS_REST_URL: integrationsRestUrl,
         ELEMENT_CALL_URL: elementCallUrl
       }
-    });
+    }));
   };
 
   // LDAP Connection tester
@@ -839,9 +851,17 @@ export default function ConfigForms({
               <div className="flex justify-end pt-4">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-sm shadow-[0_4px_20px_rgba(99,102,241,0.25)] hover:scale-[1.03] active:scale-[0.98] transition-all"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-sm shadow-[0_4px_20px_rgba(99,102,241,0.25)] hover:scale-[1.03] active:scale-[0.98] transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                 >
-                  Save & Apply Config
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Saving & Applying Config...
+                    </>
+                  ) : (
+                    "Save & Apply Config"
+                  )}
                 </button>
               </div>
             )}
@@ -1100,9 +1120,17 @@ export default function ConfigForms({
               <div className="flex justify-end pt-4">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-purple-500 text-white font-bold text-sm shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:scale-105 transition-transform"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 rounded-xl bg-purple-500 text-white font-bold text-sm shadow-[0_0_15px_rgba(168,85,247,0.3)] hover:scale-105 transition-transform disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                 >
-                  Save LDAP Configurations
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Saving LDAP...
+                    </>
+                  ) : (
+                    "Save LDAP Configurations"
+                  )}
                 </button>
               </div>
             )}
@@ -1325,9 +1353,17 @@ export default function ConfigForms({
                   <div className="flex gap-3 justify-end pt-4 font-sans">
                     <button
                       type="submit"
-                      className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm hover:bg-white/10 transition"
+                      disabled={isSaving}
+                      className="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm hover:bg-white/10 transition disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                     >
-                      Save Config Only
+                      {isSaving ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Config Only"
+                      )}
                     </button>
                     <button
                       type="button"
@@ -1536,9 +1572,17 @@ export default function ConfigForms({
               <div className="flex justify-end pt-4">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-sm shadow-[0_0_15px_rgba(14,165,233,0.3)] hover:scale-105 transition-transform"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-sm shadow-[0_0_15px_rgba(14,165,233,0.3)] hover:scale-105 transition-transform disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                 >
-                  Save & Apply Policies
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                      Saving Policies...
+                    </>
+                  ) : (
+                    "Save & Apply Policies"
+                  )}
                 </button>
               </div>
             )}
@@ -1634,9 +1678,17 @@ export default function ConfigForms({
               <div className="flex justify-end pt-4">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:scale-105 transition-transform"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:scale-105 transition-transform disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                 >
-                  Save SMTP Credentials
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                      Saving SMTP...
+                    </>
+                  ) : (
+                    "Save SMTP Credentials"
+                  )}
                 </button>
               </div>
             )}
@@ -1774,9 +1826,17 @@ export default function ConfigForms({
               <div className="flex justify-end pt-4">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-sky-500 text-slate-950 font-bold text-sm shadow-[0_0_15px_rgba(14,165,233,0.3)] hover:scale-105 transition-transform"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 rounded-xl bg-sky-500 text-slate-950 font-bold text-sm shadow-[0_0_15px_rgba(14,165,233,0.3)] hover:scale-105 transition-transform disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                 >
-                  Save Client Options
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                      Saving Client Options...
+                    </>
+                  ) : (
+                    "Save Client Options"
+                  )}
                 </button>
               </div>
             )}
