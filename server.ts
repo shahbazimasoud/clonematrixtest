@@ -27,7 +27,6 @@ import {
   getActiveConnection,
   executeSSHCommand,
   queryRemotePostgres,
-  queryRemotePostgresMulti,
   ConnectionProfile,
   cleanAndParseJSON
 } from "./server/db";
@@ -1451,18 +1450,27 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
           }
         ];
 
-        let results: any[][];
-        if (activeConn.authType === "agent") {
-          results = await Promise.all(queries.map(q => 
-            executeRemoteAgentTask(activeConn.id, "postgres_query", {
-              query: q.sql,
-              dbUser: activeConn.dbUser || "synapse_user",
-              dbName: activeConn.dbName || "synapse"
-            }).then(res => JSON.parse(res || "[]")).catch(() => [])
-          ));
-        } else {
-          results = await queryRemotePostgresMulti(activeConn, queries);
-        }
+        // Query every table independently. Synapse schemas differ between
+        // versions; one optional table (for example account_data or pushers)
+        // must not make the complete user-details response look like "not found".
+        // It also avoids relying on SSH/psql output line ordering for many SQL
+        // statements in one command.
+        const results: any[][] = await Promise.all(queries.map(async (q) => {
+          try {
+            if (activeConn.authType === "agent") {
+              const raw = await executeRemoteAgentTask(activeConn.id, "postgres_query", {
+                query: q.sql,
+                dbUser: activeConn.dbUser || "synapse_user",
+                dbName: activeConn.dbName || "synapse"
+              });
+              return cleanAndParseJSON(raw, []);
+            }
+            return await queryRemotePostgres(activeConn, q.sql, q.params || []);
+          } catch (queryErr: any) {
+            console.warn(`Optional user-details query failed: ${queryErr.message || queryErr}`);
+            return [];
+          }
+        }));
 
         rows = results[0] || [];
         const tpRows = results[1] || [];
@@ -3070,17 +3078,21 @@ app.get("/api/matrix/config", authenticateToken, async (req, res) => {
 
     const db = readDb();
     
-    // Default config values if empty (for new/empty remote servers so they don't look completely blank)
-    if (Object.keys(config).length === 0) {
-      try {
-        const yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
-        if (yaml) {
-          const parsedHs = parseHomeserverYaml(yaml);
-          Object.assign(config, parsedHs);
-        }
-      } catch (err) {
-        console.warn("Could not parse homeserver.yaml for defaults", err);
+    // homeserver.yaml is the source of truth for Synapse and its database.
+    // matrix-stack.conf is panel-specific and may be absent or stale on a selected
+    // remote server, so always merge the values read from the actual server file.
+    try {
+      const yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
+      if (yaml) {
+        const parsedHs = parseHomeserverYaml(yaml);
+        Object.assign(config, parsedHs);
       }
+    } catch (err) {
+      console.warn("Could not parse homeserver.yaml", err);
+    }
+
+    // Default config values for new/empty servers so the form never renders blank.
+    if (Object.keys(config).length === 0) {
 
       if (!config.HS_DOMAIN) {
         config.HS_DOMAIN = activeConn?.id !== "local" ? `matrix.${activeConn.host}` : "matrix.company.local";
@@ -3100,6 +3112,14 @@ app.get("/api/matrix/config", authenticateToken, async (req, res) => {
       if (!config.PG_USER) config.PG_USER = activeConn?.dbUser || "synapse_user";
       if (!config.PG_PASS) config.PG_PASS = activeConn?.dbPass || "";
     }
+
+    // A remote connection's explicit DB coordinates are the best fallback when
+    // Synapse deliberately keeps its password in an included/secret YAML file.
+    if (!config.PG_HOST) config.PG_HOST = activeConn?.dbHost || "localhost";
+    if (!config.PG_PORT) config.PG_PORT = String(activeConn?.dbPort || "5432");
+    if (!config.PG_DB) config.PG_DB = activeConn?.dbName || "synapse";
+    if (!config.PG_USER) config.PG_USER = activeConn?.dbUser || "synapse_user";
+    if (!config.PG_PASS && activeConn?.dbPass) config.PG_PASS = activeConn.dbPass;
 
     let ldap: LDAPConfig = {
       enabled: false,
