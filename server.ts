@@ -1594,101 +1594,108 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
 
 // Save updated user parameters (Suspended, Shadow Banned, Locked, GDPR Erased, Admin, UserType)
 app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
-  const { mxid, isSuspended, isShadowBanned, isLocked, isErased, isAdmin, userType, displayName } = req.body;
-  if (!mxid) return res.status(400).json({ error: "MXID is required" });
+  try {
+    const { mxid, isSuspended, isShadowBanned, isLocked, isErased, isAdmin, userType, displayName } = req.body;
+    if (!mxid) return res.status(400).json({ error: "MXID is required" });
 
-  let updatedOnRemote = false;
+    let updatedOnRemote = false;
 
-  // 1. Remote Synapse Admin API / PostgreSQL Update
-  const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
-    try {
-      // Update display name via Postgres profiles table
-      if (displayName !== undefined) {
-        await queryPostgres("UPDATE profiles SET displayname = $1 WHERE user_id = $2", [displayName, mxid]);
-      }
-
-      // Update admin flag via Postgres users table
-      if (isAdmin !== undefined) {
-        try {
-          await queryPostgres("UPDATE users SET admin = $1 WHERE name = $2", [isAdmin ? 1 : 0, mxid]);
-        } catch (err) {
-          await queryPostgres("UPDATE users SET admin = $1 WHERE name = $2", [isAdmin ? true : false, mxid]);
+    // 1. Remote Synapse Admin API / PostgreSQL Update
+    const activeConn = getActiveConnection();
+    if (activeConn && activeConn.id !== "local") {
+      try {
+        // Update display name via Postgres profiles table
+        if (displayName !== undefined) {
+          await queryPostgres("UPDATE profiles SET displayname = $1 WHERE user_id = $2", [displayName, mxid]);
         }
-      }
 
-      // Update suspended / deactivated status via Admin API or direct Postgres
-      if (isSuspended !== undefined) {
-        try {
-          await callSynapseAdminAPI("PUT", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}`, {
-            suspended: !!isSuspended
-          });
-        } catch (apiErr) {
+        // Update admin flag via Postgres users table
+        if (isAdmin !== undefined) {
           try {
-            await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? 1 : 0, mxid]);
+            await queryPostgres("UPDATE users SET admin = $1 WHERE name = $2", [isAdmin ? 1 : 0, mxid]);
+          } catch (err) {
+            await queryPostgres("UPDATE users SET admin = $1 WHERE name = $2", [isAdmin ? true : false, mxid]);
+          }
+        }
+
+        // Update suspended / deactivated status via Admin API or direct Postgres
+        if (isSuspended !== undefined) {
+          try {
+            await callSynapseAdminAPI("PUT", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}`, {
+              suspended: !!isSuspended
+            });
+          } catch (apiErr) {
+            try {
+              await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? 1 : 0, mxid]);
+            } catch (dbErr) {
+              try {
+                await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? true : false, mxid]);
+              } catch (err) {}
+            }
+          }
+        }
+
+        // Update shadow ban via Admin API or direct Postgres
+        if (isShadowBanned !== undefined) {
+          try {
+            await callSynapseAdminAPI("POST", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}/shadow_ban`, {
+              shadow_banned: !!isShadowBanned
+            });
+          } catch (apiErr) {
+            try {
+              await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? 1 : 0, mxid]);
+            } catch (dbErr) {
+              try {
+                await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? true : false, mxid]);
+              } catch (err) {}
+            }
+          }
+        }
+
+        // Update locked flag in users table if available
+        if (isLocked !== undefined) {
+          try {
+            await queryPostgres("UPDATE users SET locked = $1 WHERE name = $2", [isLocked ? 1 : 0, mxid]);
           } catch (dbErr) {
             try {
-              await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? true : false, mxid]);
+              await queryPostgres("UPDATE users SET locked = $1 WHERE name = $2", [isLocked ? true : false, mxid]);
             } catch (err) {}
           }
         }
-      }
 
-      // Update shadow ban via Admin API or direct Postgres
-      if (isShadowBanned !== undefined) {
-        try {
-          await callSynapseAdminAPI("POST", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}/shadow_ban`, {
-            shadow_banned: !!isShadowBanned
-          });
-        } catch (apiErr) {
+        // Update erased flag (GDPR erase)
+        if (isErased !== undefined) {
           try {
-            await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? 1 : 0, mxid]);
-          } catch (dbErr) {
+            await callSynapseAdminAPI("POST", `/_matrix/client/unstable/admin/v1/deactivate/${encodeURIComponent(mxid)}`, {
+              erase: !!isErased
+            });
+          } catch (apiErr) {
             try {
-              await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? true : false, mxid]);
-            } catch (err) {}
+              await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? 1 : 0, mxid]);
+            } catch (dbErr) {
+              try {
+                await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? true : false, mxid]);
+              } catch (err) {}
+            }
           }
         }
-      }
 
-      // Update locked flag in users table if available
-      if (isLocked !== undefined) {
-        try {
-          await queryPostgres("UPDATE users SET locked = $1 WHERE name = $2", [isLocked ? 1 : 0, mxid]);
-        } catch (dbErr) {
-          try {
-            await queryPostgres("UPDATE users SET locked = $1 WHERE name = $2", [isLocked ? true : false, mxid]);
-          } catch (err) {}
-        }
+        updatedOnRemote = true;
+      } catch (remoteErr: any) {
+        console.error("Remote user update error:", remoteErr.message);
       }
-
-      // Update erased flag (GDPR erase)
-      if (isErased !== undefined) {
-        try {
-          await callSynapseAdminAPI("POST", `/_matrix/client/unstable/admin/v1/deactivate/${encodeURIComponent(mxid)}`, {
-            erase: !!isErased
-          });
-        } catch (apiErr) {
-          try {
-            await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? 1 : 0, mxid]);
-          } catch (dbErr) {
-            try {
-              await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? true : false, mxid]);
-            } catch (err) {}
-          }
-        }
-      }
-
-      updatedOnRemote = true;
-    } catch (remoteErr: any) {
-      console.error("Remote user update error:", remoteErr.message);
     }
-  }
 
-  // Also maintain local/virtual DB in sync
-  const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
-  if (user) {
+    // Also maintain local/virtual DB in sync
+    const db = readDb();
+    if (!db.matrixUsers) db.matrixUsers = [];
+    
+    let user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+    if (!user) {
+      user = { mxid, isAdmin: false, isDeactivated: false };
+      db.matrixUsers.push(user);
+    }
+
     if (isSuspended !== undefined) user.isSuspended = !!isSuspended;
     if (isShadowBanned !== undefined) user.isShadowBanned = !!isShadowBanned;
     if (isLocked !== undefined) user.isLocked = !!isLocked;
@@ -1697,20 +1704,24 @@ app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(
     if (userType !== undefined) user.userType = userType;
     if (displayName !== undefined) user.displayName = displayName;
     writeDb(db);
+
+    if (!db.auditLogs) db.auditLogs = [];
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Update User Parameters",
+      target: mxid,
+      status: "success",
+      details: `Updated administrative flags for ${mxid} on ${activeConn ? activeConn.name : "local"}`
+    });
+    writeDb(db);
+
+    res.json({ success: true, user: user || { mxid } });
+  } catch (err: any) {
+    console.error("Error updating user details:", err);
+    res.status(500).json({ error: "Internal server error: " + err.message });
   }
-
-  db.auditLogs.unshift({
-    id: `log-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    username: req.user.username,
-    action: "Update User Parameters",
-    target: mxid,
-    status: "success",
-    details: `Updated administrative flags for ${mxid} on ${activeConn ? activeConn.name : "local"}`
-  });
-  writeDb(db);
-
-  res.json({ success: true, user: user || { mxid } });
 });
 
 // Password change (will log user out of all sessions/devices)
@@ -3541,53 +3552,208 @@ app.get("/api/logs/audit", authenticateToken, (req, res) => {
   res.json(db.auditLogs);
 });
 
+// Helper functions for advanced backups
+function formatBytes(bytes: number, decimals = 1) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function getBackupDirectory() {
+  const db = readDb();
+  if (!db.backupSettings) {
+    db.backupSettings = {
+      backupPath: "/sandbox/backups",
+      retentionDays: 30,
+      dbSchedule: { enabled: false, cron: "0 2 * * *" },
+      configSchedule: { enabled: false, cron: "0 3 * * *" }
+    };
+    writeDb(db);
+  }
+  const backupPath = db.backupSettings.backupPath || "/sandbox/backups";
+  
+  let targetPath = "";
+  if (backupPath.startsWith("/sandbox")) {
+    targetPath = getRealPath(backupPath.substring(8));
+  } else if (backupPath.startsWith("sandbox/")) {
+    targetPath = getRealPath(backupPath.substring(8));
+  } else if (path.isAbsolute(backupPath)) {
+    targetPath = backupPath;
+  } else {
+    targetPath = path.join(process.cwd(), backupPath);
+  }
+  
+  if (!fs.existsSync(targetPath)) {
+    fs.mkdirSync(targetPath, { recursive: true });
+  }
+  return targetPath;
+}
+
 // Backups API
 app.get("/api/backups", authenticateToken, (req, res) => {
   const db = readDb();
-  res.json(db.backups);
+  res.json(db.backups || []);
+});
+
+app.get("/api/backups/settings", authenticateToken, (req, res) => {
+  const db = readDb();
+  if (!db.backupSettings) {
+    db.backupSettings = {
+      backupPath: "/sandbox/backups",
+      retentionDays: 30,
+      dbSchedule: { enabled: false, cron: "0 2 * * *" },
+      configSchedule: { enabled: false, cron: "0 3 * * *" }
+    };
+    writeDb(db);
+  }
+  res.json(db.backupSettings);
+});
+
+app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { backupPath, retentionDays, dbSchedule, configSchedule } = req.body;
+  const db = readDb();
+  
+  if (!db.backupSettings) db.backupSettings = {};
+  if (backupPath !== undefined) db.backupSettings.backupPath = backupPath;
+  if (retentionDays !== undefined) db.backupSettings.retentionDays = parseInt(retentionDays) || 30;
+  if (dbSchedule !== undefined) db.backupSettings.dbSchedule = dbSchedule;
+  if (configSchedule !== undefined) db.backupSettings.configSchedule = configSchedule;
+  
+  writeDb(db);
+  
+  // Ensure the new path exists
+  try {
+    getBackupDirectory();
+  } catch (err) {}
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Update Backup Settings",
+    target: "Backup System",
+    status: "success",
+    details: `Updated backup path to: ${db.backupSettings.backupPath}, retention to: ${db.backupSettings.retentionDays} days.`
+  });
+  writeDb(db);
+
+  res.json({ success: true, settings: db.backupSettings });
 });
 
 app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
-  const { includeSSL } = req.body;
+  const { includeSSL, type } = req.body; // type can be 'config' or 'database'
+  const backupType = type || "config";
   const db = readDb();
 
   const timestamp = new Date().toISOString();
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, "");
-  const filename = `matrix-backup-${dateStr}-${timeStr}.tar.gz`;
+  const filename = `${backupType}-backup-${dateStr}-${timeStr}.json`;
 
-  const newBackup = {
-    id: `bak-${Date.now()}`,
-    filename,
-    size: `${(Math.random() * 5 + 140).toFixed(1)} MB`,
-    timestamp,
-    hasSSL: !!includeSSL
-  };
+  try {
+    const backupDir = getBackupDirectory();
+    const filePath = path.join(backupDir, filename);
 
-  db.backups.unshift(newBackup);
-  writeDb(db);
+    let payload: any = {
+      backupType,
+      timestamp,
+      hasSSL: !!includeSSL
+    };
 
-  db.auditLogs.unshift({
-    id: `log-${Date.now()}`,
-    timestamp,
-    username: req.user.username,
-    action: "Create Backup",
-    target: filename,
-    status: "success",
-    details: `Initiated manual backup. Included SSL: ${includeSSL ? "Yes" : "No"}`
-  });
-  writeDb(db);
+    if (backupType === "config") {
+      payload.files = {
+        "/etc/matrix-stack.conf": readSandboxFile("/etc/matrix-stack.conf", ""),
+        "/etc/matrix-stack-ldap.conf": readSandboxFile("/etc/matrix-stack-ldap.conf", ""),
+        "/etc/matrix-synapse/homeserver.yaml": readSandboxFile("/etc/matrix-synapse/homeserver.yaml", ""),
+        "/var/www/element/config.json": readSandboxFile("/var/www/element/config.json", ""),
+        "/etc/matrix-pgadmin/servers.json": readSandboxFile("/etc/matrix-pgadmin/servers.json", ""),
+        "/etc/nginx/sites-available/matrix.conf": readSandboxFile("/etc/nginx/sites-available/matrix.conf", "")
+      };
+    } else {
+      // Database Backup
+      payload.dbData = db;
+    }
 
-  res.status(201).json(newBackup);
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+    const fileSize = fs.statSync(filePath).size;
+    const formattedSize = formatBytes(fileSize);
+
+    const newBackup = {
+      id: `bak-${Date.now()}`,
+      filename,
+      size: formattedSize,
+      timestamp,
+      hasSSL: !!includeSSL,
+      type: backupType,
+      path: filePath
+    };
+
+    if (!db.backups) db.backups = [];
+    db.backups.unshift(newBackup);
+
+    // Apply Retention policy
+    const retentionDays = db.backupSettings?.retentionDays || 30;
+    const expirationTime = Date.now() - retentionDays * 24 * 3600 * 1000;
+    
+    db.backups = db.backups.filter((b: any) => {
+      const bTime = new Date(b.timestamp).getTime();
+      if (bTime < expirationTime) {
+        // Delete physical file
+        try {
+          const fileToDelete = b.path || path.join(backupDir, b.filename);
+          if (fs.existsSync(fileToDelete)) {
+            fs.unlinkSync(fileToDelete);
+          }
+        } catch (err) {
+          console.warn("Failed to delete expired backup file:", err);
+        }
+        return false; // remove from list
+      }
+      return true;
+    });
+
+    writeDb(db);
+
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp,
+      username: req.user.username,
+      action: "Create Backup",
+      target: filename,
+      status: "success",
+      details: `Initiated advanced manual ${backupType} backup. Path on server: ${filePath}`
+    });
+    writeDb(db);
+
+    res.status(201).json(newBackup);
+  } catch (err: any) {
+    console.error("Failed to create advanced backup:", err);
+    res.status(500).json({ error: "Failed to create backup: " + err.message });
+  }
 });
 
 app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
   const { id } = req.params;
   const db = readDb();
-  const idx = db.backups.findIndex((b: any) => b.id === id);
+  const idx = (db.backups || []).findIndex((b: any) => b.id === id);
   if (idx === -1) return res.status(404).json({ error: "Backup not found" });
 
   const backup = db.backups[idx];
+  
+  // Delete physical file
+  try {
+    const backupDir = getBackupDirectory();
+    const filePath = backup.path || path.join(backupDir, backup.filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    console.warn("Failed to delete physical backup file:", err);
+  }
+
   db.backups.splice(idx, 1);
   writeDb(db);
 
@@ -3603,6 +3769,188 @@ app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Sup
   writeDb(db);
 
   res.json({ message: "Backup deleted" });
+});
+
+// Download Single Backup
+app.get("/api/backups/download/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const db = readDb();
+  const backup = (db.backups || []).find((b: any) => b.id === id);
+  if (!backup) return res.status(404).json({ error: "Backup not found in catalog" });
+
+  try {
+    const backupDir = getBackupDirectory();
+    const filePath = backup.path || path.join(backupDir, backup.filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Physical backup file not found on server" });
+    }
+
+    res.setHeader("Content-Disposition", `attachment; filename=${backup.filename}`);
+    res.setHeader("Content-Type", "application/json");
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+  } catch (err: any) {
+    res.status(500).json({ error: "Download failed: " + err.message });
+  }
+});
+
+// Download Bulk Backups as a single compound payload
+app.post("/api/backups/download-bulk", authenticateToken, (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: "IDs array is required" });
+
+  const db = readDb();
+  const backupDir = getBackupDirectory();
+  const matchedBackups = (db.backups || []).filter((b: any) => ids.includes(b.id));
+
+  if (matchedBackups.length === 0) return res.status(404).json({ error: "No backups found matching provided IDs" });
+
+  try {
+    const compoundPackage: any = {
+      packageTimestamp: new Date().toISOString(),
+      backups: []
+    };
+
+    for (const b of matchedBackups) {
+      const filePath = b.path || path.join(backupDir, b.filename);
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, "utf8");
+        compoundPackage.backups.push({
+          filename: b.filename,
+          type: b.type,
+          hasSSL: b.hasSSL,
+          timestamp: b.timestamp,
+          content: JSON.parse(content)
+        });
+      }
+    }
+
+    res.setHeader("Content-Disposition", "attachment; filename=matrix-bulk-backups.json");
+    res.setHeader("Content-Type", "application/json");
+    res.send(JSON.stringify(compoundPackage, null, 2));
+  } catch (err: any) {
+    res.status(500).json({ error: "Bulk download failed: " + err.message });
+  }
+});
+
+// Upload Backup File
+app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { filename, content, type } = req.body;
+  if (!filename || !content) return res.status(400).json({ error: "Filename and file content are required" });
+
+  try {
+    const backupDir = getBackupDirectory();
+    const filePath = path.join(backupDir, filename);
+
+    // Write file to server
+    fs.writeFileSync(filePath, content, "utf8");
+    const fileSize = fs.statSync(filePath).size;
+    const formattedSize = formatBytes(fileSize);
+
+    // Try parsing type from content
+    let detectedType = type || "config";
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.backupType) {
+        detectedType = parsed.backupType;
+      }
+    } catch (e) {}
+
+    const db = readDb();
+    const newBackup = {
+      id: `bak-${Date.now()}`,
+      filename,
+      size: formattedSize,
+      timestamp: new Date().toISOString(),
+      hasSSL: filename.includes("ssl") || false,
+      type: detectedType,
+      path: filePath
+    };
+
+    if (!db.backups) db.backups = [];
+    db.backups.unshift(newBackup);
+    writeDb(db);
+
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Upload Backup",
+      target: filename,
+      status: "success",
+      details: `Uploaded custom backup file to: ${filePath}. Detected type: ${detectedType}`
+    });
+    writeDb(db);
+
+    res.json({ success: true, backup: newBackup });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to upload backup file: " + err.message });
+  }
+});
+
+// Restore Selected Backup
+app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+  const { id } = req.params;
+  const db = readDb();
+  const backup = (db.backups || []).find((b: any) => b.id === id);
+  if (!backup) return res.status(404).json({ error: "Backup not found in catalog" });
+
+  try {
+    const backupDir = getBackupDirectory();
+    const filePath = backup.path || path.join(backupDir, backup.filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Physical backup file not found on server" });
+    }
+
+    const fileContent = fs.readFileSync(filePath, "utf8");
+    const payload = JSON.parse(fileContent);
+
+    if (payload.backupType === "config") {
+      // Restore files
+      if (payload.files) {
+        for (const [vPath, fileContentData] of Object.entries(payload.files)) {
+          writeSandboxFile(vPath, fileContentData as string);
+        }
+      }
+      
+      db.auditLogs.unshift({
+        id: `log-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        username: req.user.username,
+        action: "Restore Configuration Backup",
+        target: backup.filename,
+        status: "success",
+        details: `Successfully restored homeserver configuration files from backup archive. Active files updated in sandbox.`
+      });
+      writeDb(db);
+    } else if (payload.backupType === "database") {
+      // Overwrite database data
+      if (payload.dbData) {
+        const newDb = payload.dbData;
+        
+        if (!newDb.auditLogs) newDb.auditLogs = [];
+        newDb.auditLogs.unshift({
+          id: `log-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          username: req.user.username,
+          action: "Restore Database Backup",
+          target: backup.filename,
+          status: "success",
+          details: `Successfully restored database states from backup archive. Panel database rolled back.`
+        });
+        
+        writeDb(newDb);
+      }
+    } else {
+      return res.status(400).json({ error: "Invalid backup file structure: missing backupType" });
+    }
+
+    res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup` });
+  } catch (err: any) {
+    res.status(500).json({ error: "Restore failed: " + err.message });
+  }
 });
 
 // Jitsi / Video Conferencing

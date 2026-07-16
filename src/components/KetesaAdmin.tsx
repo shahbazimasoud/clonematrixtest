@@ -1452,7 +1452,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                   id="sync-users-btn"
                 >
                   <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
-                  <span>{t.syncUsersBtn}</span>
+                  <span>{isSyncing ? (isRtl ? 'در حال همگام‌سازی...' : 'Syncing...') : t.syncUsersBtn}</span>
                 </button>
 
                 {hasWriteAccess && (

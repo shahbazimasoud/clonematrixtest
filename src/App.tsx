@@ -1147,6 +1147,8 @@ export default function App() {
                 onDeleteBackup={handleDeleteBackup}
                 onCreateBackup={handleCreateBackup}
                 userRole={currentUser?.role || 'Viewer'}
+                authToken={authToken}
+                showToast={showToast}
               />
             )}
 

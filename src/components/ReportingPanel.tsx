@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   ShieldCheck, 
@@ -15,7 +15,19 @@ import {
   Users, 
   UserX, 
   ShieldAlert,
-  FolderSync
+  FolderSync,
+  Settings,
+  UploadCloud,
+  Calendar,
+  RotateCcw,
+  FileJson,
+  FolderOpen,
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  Save,
+  RefreshCw,
+  Play
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -42,6 +54,8 @@ interface ReportingPanelProps {
   onDeleteBackup: (id: string) => void;
   onCreateBackup: (includeSSL: boolean) => void;
   userRole: string;
+  authToken: string;
+  showToast: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
 export default function ReportingPanel({
@@ -55,7 +69,9 @@ export default function ReportingPanel({
   onDeletePanelUser,
   onDeleteBackup,
   onCreateBackup,
-  userRole
+  userRole,
+  authToken,
+  showToast
 }: ReportingPanelProps) {
   const [activeSubTab, setActiveTab] = useState<'analytics' | 'rbac' | 'audit' | 'backups'>('analytics');
 
@@ -65,6 +81,209 @@ export default function ReportingPanel({
   const [newPass, setNewPass] = useState('');
   const [newRole, setNewPassRole] = useState('Viewer');
   const [includeSSL, setIncludeSSL] = useState(false);
+
+  // Advanced Backups States
+  const [backupSettings, setBackupSettings] = useState<{
+    backupPath: string;
+    retentionDays: number;
+    dbSchedule: { enabled: boolean, cron: string };
+    configSchedule: { enabled: boolean, cron: string };
+  }>({
+    backupPath: '/sandbox/backups',
+    retentionDays: 30,
+    dbSchedule: { enabled: false, cron: '0 2 * * *' },
+    configSchedule: { enabled: false, cron: '0 3 * * *' }
+  });
+
+  const [selectedBackupIds, setSelectedBackupIds] = useState<string[]>([]);
+  const [isTriggeringBackup, setIsTriggeringBackup] = useState<boolean>(false);
+  const [showRestoreModal, setShowRestoreModal] = useState<BackupItem | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [activeBackupSubTab, setActiveBackupSubTab] = useState<'list' | 'settings'>('list');
+
+  const fetchBackupSettings = async () => {
+    try {
+      const res = await fetch('/api/backups/settings', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBackupSettings(data);
+      }
+    } catch (err) {
+      console.error('Error fetching backup settings', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'backups') {
+      fetchBackupSettings();
+    }
+  }, [activeSubTab]);
+
+  const saveBackupSettings = async () => {
+    try {
+      const res = await fetch('/api/backups/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(backupSettings)
+      });
+      if (res.ok) {
+        showToast('success', 'تنظیمات بکاپ با موفقیت ذخیره شد');
+        fetchBackupSettings();
+      } else {
+        showToast('error', 'خطا در ذخیره تنظیمات بکاپ');
+      }
+    } catch (err) {
+      showToast('error', 'خطا در ارتباط با سرور');
+    }
+  };
+
+  const triggerAdvancedBackup = async (type: 'config' | 'database') => {
+    setIsTriggeringBackup(true);
+    try {
+      const res = await fetch('/api/backups/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type, includeSSL })
+      });
+      if (res.ok) {
+        showToast('success', `بکاپ ${type === 'config' ? 'تنظیمات' : 'دیتابیس'} با موفقیت ایجاد شد`);
+        onCreateBackup(includeSSL); // Trigger refresh in parent
+      } else {
+        showToast('error', 'خطا در ایجاد بکاپ جدید');
+      }
+    } catch (err) {
+      showToast('error', 'خطا در ارتباط با سرور');
+    } finally {
+      setIsTriggeringBackup(false);
+    }
+  };
+
+  const downloadSingleBackup = (backup: BackupItem) => {
+    fetch(`/api/backups/download/${backup.id}`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error();
+      return res.blob();
+    })
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = backup.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast('success', 'فایل بکاپ با موفقیت دانلود شد');
+    })
+    .catch(() => showToast('error', 'خطا در دانلود فایل بکاپ'));
+  };
+
+  const downloadBulkBackups = () => {
+    if (selectedBackupIds.length === 0) return;
+    fetch(`/api/backups/download-bulk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ ids: selectedBackupIds })
+    })
+    .then(res => {
+      if (!res.ok) throw new Error();
+      return res.blob();
+    })
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'matrix-bulk-backups.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast('success', 'دانلود دسته جمعی با موفقیت انجام شد');
+    })
+    .catch(() => showToast('error', 'خطا در دانلود دسته جمعی بکاپ‌ها'));
+  };
+
+  const restoreBackup = async (backup: BackupItem) => {
+    setIsRestoring(true);
+    try {
+      const res = await fetch(`/api/backups/restore/${backup.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (res.ok) {
+        showToast('success', `بکاپ ${backup.filename} با موفقیت ریستور شد. سیستم بازیابی گردید.`);
+        setShowRestoreModal(null);
+      } else {
+        const err = await res.json();
+        showToast('error', `خطا در ریستور بکاپ: ${err.error || 'خطای ناشناخته'}`);
+      }
+    } catch (err) {
+      showToast('error', 'خطا در برقراری ارتباط جهت ریستور');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const handleUploadBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      try {
+        const res = await fetch('/api/backups/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            filename: file.name,
+            content: content,
+            type: file.name.includes('database') || file.name.includes('db-backup') ? 'database' : 'config'
+          })
+        });
+        if (res.ok) {
+          showToast('success', 'فایل بکاپ با موفقیت آپلود و ذخیره شد');
+          onCreateBackup(false); // Reload backups list from parent
+        } else {
+          showToast('error', 'خطا در آپلود فایل بکاپ');
+        }
+      } catch (err) {
+        showToast('error', 'خطا در آپلود فایل بکاپ');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleToggleSelectBackup = (id: string) => {
+    setSelectedBackupIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedBackupIds.length === backups.length) {
+      setSelectedBackupIds([]);
+    } else {
+      setSelectedBackupIds(backups.map(b => b.id));
+    }
+  };
 
   const isOwner = userRole === 'Owner';
   const isSuperAdmin = userRole === 'Super Admin';
@@ -432,107 +651,431 @@ export default function ReportingPanel({
 
         {/* VIEW 4: BACKUPS & SNAPSHOT UNDO */}
         {activeSubTab === 'backups' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-white/5">
+          <div className="space-y-6 flex flex-col h-full" dir="rtl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
               <div className="flex items-center gap-3">
                 <History className="w-6 h-6 text-amber-400" />
-                <div>
-                  <h2 className="text-xl font-display font-bold text-white">Backups & Configurations undo</h2>
-                  <p className="text-xs text-slate-400">Manage fully integrated backups and single-step action rollbacks.</p>
+                <div className="text-right">
+                  <h2 className="text-xl font-display font-bold text-white">سیستم پشتیبان‌گیری پیشرفته و بازیابی</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">مدیریت فایل‌های پشتیبان دیتابیس، تنظیمات هسته، زمان‌بندی هوشمند و بازنشانی وضعیت سرور.</p>
                 </div>
               </div>
 
-              {!isReadOnly && (
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="checkbox" 
-                      id="inc-ssl" 
-                      checked={includeSSL} 
-                      onChange={(e) => setIncludeSSL(e.target.checked)} 
-                      className="rounded bg-black/40 border-white/10 text-amber-500"
-                    />
-                    <label htmlFor="inc-ssl" className="text-xs font-semibold text-slate-400">Backup SSL Certs</label>
-                  </div>
-                  <button
-                    onClick={() => onCreateBackup(includeSSL)}
-                    className="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-md"
-                  >
-                    Trigger Backup
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5 self-end sm:self-auto">
+                <button
+                  onClick={() => setActiveBackupSubTab('list')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeBackupSubTab === 'list' 
+                      ? 'bg-amber-500 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.3)]' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  فایل‌های پشتیبان و بازنشانی
+                </button>
+                <button
+                  onClick={() => setActiveBackupSubTab('settings')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeBackupSubTab === 'settings' 
+                      ? 'bg-amber-500 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.3)]' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  تنظیمات مسیر و زمان‌بندی
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Backups List */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Archived tar.gz Backups</h4>
-                
-                {backups.map((b) => (
-                  <div key={b.id} className="spatial-glass rounded-2xl p-4 border border-white/5 bg-white/5 flex items-center justify-between">
-                    <div>
-                      <h5 className="text-xs font-semibold text-white font-mono">{b.filename}</h5>
-                      <div className="flex items-center gap-3 mt-1.5 font-mono text-[10px] text-slate-400">
-                        <span>Size: <strong className="text-white">{b.size}</strong></span>
-                        <span>{new Date(b.timestamp).toLocaleString()}</span>
+            {activeBackupSubTab === 'list' && (
+              <div className="space-y-6 flex-1 overflow-y-auto pr-1">
+                {/* Upper Action Row: Trigger Manual Backups & Upload */}
+                {!isReadOnly && (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Config Backup Box */}
+                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-right flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-end mb-1">
+                          <span>پشتیبان‌گیری از تنظیمات (Config)</span>
+                          <Settings className="w-4 h-4 text-amber-400" />
+                        </h4>
+                        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                          تهیه فایل پشتیبان شامل فایل‌های پیکربندی سرور سیناپس، وب‌کلاینت المنت، پروکسی معکوس انجین‌اکس و تنظیمات اتصال به دایرکتوری LDAP.
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="checkbox" 
+                            id="inc-ssl-adv" 
+                            checked={includeSSL} 
+                            onChange={(e) => setIncludeSSL(e.target.checked)} 
+                            className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+                          />
+                          <label htmlFor="inc-ssl-adv" className="text-xs font-semibold text-slate-300 cursor-pointer">بکاپ لایسنس SSL/Certs</label>
+                        </div>
+                        <button
+                          disabled={isTriggeringBackup}
+                          onClick={() => triggerAdvancedBackup('config')}
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {isTriggeringBackup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                          <span>ایجاد بکاپ تنظیمات</span>
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {}}
-                        className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10"
-                        title="Download Backup"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                      {!isReadOnly && (
+                    {/* DB Backup Box */}
+                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-right flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-end mb-1">
+                          <span>پشتیبان‌گیری از دیتابیس (Database)</span>
+                          <FileJson className="w-4 h-4 text-cyan-400" />
+                        </h4>
+                        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                          تهیه پشتیبان کامل از دیتابیس یکپارچه سرور ماتریکس شامل لیست تمامی کاربران، سطوح دسترسی RBAC، نقش‌ها، لاگ‌های امنیتی ممیزی و ارتباطات ثبت شده.
+                        </p>
+                      </div>
+                      <div className="flex justify-end pt-3 border-t border-white/5">
                         <button
-                          onClick={() => onDeleteBackup(b.id)}
-                          className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10"
-                          title="Purge Backup"
+                          disabled={isTriggeringBackup}
+                          onClick={() => triggerAdvancedBackup('database')}
+                          className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {isTriggeringBackup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                          <span>ایجاد بکاپ دیتابیس</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* File Upload zone */}
+                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-right flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-end mb-1">
+                          <span>آپلود فایل پشتیبان به سرور</span>
+                          <UploadCloud className="w-4 h-4 text-emerald-400" />
+                        </h4>
+                        <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                          شما می‌توانید فایل بکاپ JSON قبلی را به طور مستقیم در مسیر اختصاصی سرور ماتریکس آپلود کنید تا جهت ریستور آماده شود.
+                        </p>
+                      </div>
+                      <div className="relative border border-dashed border-white/10 hover:border-emerald-500/50 rounded-xl p-3 text-center transition-all bg-black/20">
+                        <input
+                          type="file"
+                          accept=".json"
+                          onChange={handleUploadBackupFile}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="flex flex-col items-center gap-1">
+                          <UploadCloud className="w-6 h-6 text-emerald-400 animate-pulse" />
+                          <span className="text-[10px] text-slate-400">کلیک کنید یا فایل بکاپ را اینجا بکشید</span>
+                          <span className="text-[9px] text-slate-500 font-mono">فرمت مجاز: JSON Backups</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Backups List & Bulk Actions */}
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/30 p-4 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleToggleSelectAll}
+                        className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+                      >
+                        {selectedBackupIds.length === backups.length && backups.length > 0 ? (
+                          <CheckSquare className="w-4 h-4 text-amber-500" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-500" />
+                        )}
+                        <span>انتخاب همه ({backups.length})</span>
+                      </button>
+
+                      {selectedBackupIds.length > 0 && (
+                        <div className="h-4 w-px bg-white/10" />
+                      )}
+
+                      {selectedBackupIds.length > 0 && (
+                        <button
+                          onClick={downloadBulkBackups}
+                          className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>دانلود دسته جمعی ({selectedBackupIds.length})</span>
                         </button>
                       )}
                     </div>
+
+                    <div className="text-right">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">لیست فایل‌های بکاپ موجود در دیسک</h4>
+                    </div>
                   </div>
-                ))}
+
+                  {backups.length === 0 ? (
+                    <div className="text-center py-10 spatial-glass rounded-2xl border border-white/5">
+                      <FolderOpen className="w-12 h-12 text-slate-600 mx-auto mb-2" />
+                      <p className="text-sm text-slate-400">هیچ فایل بکاپی در مسیر تعریف شده یافت نشد.</p>
+                      <p className="text-xs text-slate-500 mt-1">با استفاده از دکمه‌های بالا اولین بکاپ دستی را ایجاد کنید.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {backups.map((b) => (
+                        <div 
+                          key={b.id} 
+                          className={`spatial-glass rounded-2xl p-4 border transition-all flex items-center justify-between ${
+                            selectedBackupIds.includes(b.id) 
+                              ? 'border-amber-500/40 bg-amber-500/[0.03]' 
+                              : 'border-white/5 hover:border-white/10'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <button
+                              onClick={() => handleToggleSelectBackup(b.id)}
+                              className="mt-0.5 text-slate-500 hover:text-white transition-colors cursor-pointer"
+                            >
+                              {selectedBackupIds.includes(b.id) ? (
+                                <CheckSquare className="w-4.5 h-4.5 text-amber-500" />
+                              ) : (
+                                <Square className="w-4.5 h-4.5" />
+                              )}
+                            </button>
+                            <div className="text-right">
+                              <h5 className="text-xs font-bold text-white font-mono break-all select-all">{b.filename}</h5>
+                              <div className="flex items-center gap-3 mt-2 font-mono text-[10px] text-slate-400 flex-wrap">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase ${
+                                  b.type === 'database' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-amber-500/10 text-amber-400'
+                                }`}>
+                                  {b.type === 'database' ? 'دیتابیس' : 'تنظیمات'}
+                                </span>
+                                <span>حجم فایل: <strong className="text-white">{b.size}</strong></span>
+                                <span>{new Date(b.timestamp).toLocaleString('fa-IR')}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mr-2">
+                            <button
+                              onClick={() => downloadSingleBackup(b)}
+                              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition-all cursor-pointer"
+                              title="دانلود تکی"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            {!isReadOnly && (
+                              <>
+                                <button
+                                  onClick={() => setShowRestoreModal(b)}
+                                  className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/10 transition-all cursor-pointer font-semibold text-xs flex items-center gap-1"
+                                  title="ریستور و بازنشانی"
+                                >
+                                  <RotateCcw className="w-4 h-4" />
+                                  <span className="hidden lg:inline text-[10px]">ریستور</span>
+                                </button>
+                                <button
+                                  onClick={() => onDeleteBackup(b.id)}
+                                  className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all cursor-pointer"
+                                  title="حذف دائمی فایل"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+            )}
 
-              {/* Undo Snapshots History */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Single-Action Undo Snapshots</h4>
+            {activeBackupSubTab === 'settings' && (
+              <div className="space-y-6 flex-1 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left Column: Path & Retention */}
+                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-right space-y-5">
+                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">تنظیمات ذخیره‌سازی سرور</h4>
 
-                {undoHistory.map((u) => (
-                  <div key={u.id} className="spatial-glass rounded-2xl p-4 border border-cyan-500/10 bg-cyan-500/5 flex items-center justify-between">
-                    <div>
-                      <h5 className="text-xs font-bold text-cyan-400 flex items-center gap-1.5 uppercase tracking-wider">
-                        <FolderSync className="w-4 h-4" />
-                        {u.description}
-                      </h5>
-                      <span className="text-[10px] font-mono text-slate-400 block mt-1">Snapshot Date: {new Date(u.timestamp).toLocaleString()}</span>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {u.files.map((f, i) => (
-                          <span key={i} className="text-[9px] bg-black/40 font-mono text-slate-300 px-1.5 py-0.5 rounded border border-white/5">{f}</span>
-                        ))}
+                    {/* Storage Path on server */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-300">مسیر دایرکتوری بکاپ روی سرور</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={backupSettings.backupPath}
+                          onChange={(e) => setBackupSettings(prev => ({ ...prev, backupPath: e.target.value }))}
+                          disabled={isReadOnly}
+                          className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left"
+                          placeholder="/sandbox/backups"
+                        />
+                        <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/10 rounded-xl text-[10px] font-bold flex items-center">قابل تعریف</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-relaxed">
+                        مسیر پیش‌فرض ذخیره‌سازی فایل‌های پشتیبان روی لینوکس سرور است. این مسیر حین ایجاد فایل‌ها خودکار ساخته می‌شود.
+                      </p>
+                    </div>
+
+                    {/* Retention policy (ریتنشن تایم) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-300">مدت زمان نگهداشت فایل‌ها (Retention Time - روز)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="365"
+                        value={backupSettings.retentionDays}
+                        onChange={(e) => setBackupSettings(prev => ({ ...prev, retentionDays: parseInt(e.target.value) || 30 }))}
+                        disabled={isReadOnly}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                        placeholder="30"
+                      />
+                      <p className="text-[10px] text-slate-500 leading-relaxed">
+                        تعداد روزهای نگهداشت فایل‌های بکاپ بر روی سرور. بکاپ‌های قدیمی‌تر از این بازه به صورت خودکار جهت آزادسازی فضای هارد دیسک سرور حذف می‌شوند.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Schedulers */}
+                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-right space-y-6">
+                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">برنامه‌ریزی زمان‌بندی خودکار (Cron Scheduler)</h4>
+
+                    {/* Database Cron */}
+                    <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="db-sched-toggle"
+                            checked={backupSettings.dbSchedule?.enabled || false}
+                            onChange={(e) => setBackupSettings(prev => ({
+                              ...prev,
+                              dbSchedule: { ...prev.dbSchedule, enabled: e.target.checked }
+                            }))}
+                            disabled={isReadOnly}
+                            className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+                          />
+                          <label htmlFor="db-sched-toggle" className="text-xs font-bold text-white cursor-pointer">فعال‌سازی زمان‌بندی دیتابیس</label>
+                        </div>
+                        <Calendar className="w-4 h-4 text-cyan-400" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] text-slate-400">عبارت کرون جاب لینوکس (Cron Expression)</label>
+                        <input
+                          type="text"
+                          value={backupSettings.dbSchedule?.cron || '0 2 * * *'}
+                          onChange={(e) => setBackupSettings(prev => ({
+                            ...prev,
+                            dbSchedule: { ...prev.dbSchedule, cron: e.target.value }
+                          }))}
+                          disabled={isReadOnly || !backupSettings.dbSchedule?.enabled}
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
+                        />
+                        <span className="text-[9px] text-slate-500 block">مثال: <code className="text-slate-400">0 2 * * *</code> (هر روز ساعت ۲:۰۰ بامداد)</span>
                       </div>
                     </div>
 
-                    {!isReadOnly && (
-                      <button
-                        onClick={() => {}}
-                        className="px-3 py-1.5 rounded-xl bg-cyan-500 text-slate-950 font-bold text-xs shadow-md"
-                        title="Revert configuration changes back to this exact moment"
-                      >
-                        Undo
-                      </button>
+                    {/* Config Cron */}
+                    <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="cfg-sched-toggle"
+                            checked={backupSettings.configSchedule?.enabled || false}
+                            onChange={(e) => setBackupSettings(prev => ({
+                              ...prev,
+                              configSchedule: { ...prev.configSchedule, enabled: e.target.checked }
+                            }))}
+                            disabled={isReadOnly}
+                            className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+                          />
+                          <label htmlFor="cfg-sched-toggle" className="text-xs font-bold text-white cursor-pointer">فعال‌سازی زمان‌بندی تنظیمات (Config)</label>
+                        </div>
+                        <Calendar className="w-4 h-4 text-amber-400" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] text-slate-400">عبارت کرون جاب لینوکس (Cron Expression)</label>
+                        <input
+                          type="text"
+                          value={backupSettings.configSchedule?.cron || '0 3 * * *'}
+                          onChange={(e) => setBackupSettings(prev => ({
+                            ...prev,
+                            configSchedule: { ...prev.configSchedule, cron: e.target.value }
+                          }))}
+                          disabled={isReadOnly || !backupSettings.configSchedule?.enabled}
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
+                        />
+                        <span className="text-[9px] text-slate-500 block">مثال: <code className="text-slate-400">0 3 * * *</code> (هر روز ساعت ۳:۰۰ بامداد)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {!isReadOnly && (
+                  <div className="flex justify-end pt-4 border-t border-white/5">
+                    <button
+                      onClick={saveBackupSettings}
+                      className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:shadow-amber-500/10"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>ذخیره تغییرات و پیکربندی خط‌مشی</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Restore Confirmation Modal Overlay */}
+            {showRestoreModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir="rtl">
+                <div className="bg-slate-900 border border-red-500/20 max-w-lg w-full rounded-3xl p-6 text-right space-y-5 shadow-[0_0_50px_rgba(239,68,68,0.15)] animate-scale-up">
+                  <div className="flex items-center gap-3 text-red-400 pb-3 border-b border-white/5">
+                    <AlertTriangle className="w-6 h-6 text-red-500" />
+                    <div>
+                      <h3 className="text-lg font-bold text-white">هشدار حساس: تایید بازنشانی و ریستور</h3>
+                      <p className="text-[10px] text-red-400/80">سیستم بازیابی فایل پشتیبان سرور ماتریکس</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    آیا از بازنشانی وضعیت سرور به فایل پشتیبان <strong className="text-amber-400 font-mono select-all break-all">{showRestoreModal.filename}</strong> اطمینان کامل دارید؟
+                  </p>
+
+                  <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 text-[11px] text-slate-300 space-y-2">
+                    <p className="font-bold text-red-400 flex items-center gap-1">
+                      <span>پیامدهای این عملیات غیرقابل بازگشت:</span>
+                    </p>
+                    {showRestoreModal.type === 'database' ? (
+                      <ul className="list-disc list-inside space-y-1 text-slate-400 pr-1">
+                        <li>کل تاریخچه دیتابیس شامل لاگ‌های امنیتی، کاربران فعلی و دسترسی‌ها با فایل پشتیبان بازنویسی خواهد شد.</li>
+                        <li>هرگونه تغییری که از تاریخ ایجاد فایل پشتیبان ({new Date(showRestoreModal.timestamp).toLocaleString('fa-IR')}) تا به الان اعمال شده باشد، به طور دائمی پاک می‌گردد.</li>
+                      </ul>
+                    ) : (
+                      <ul className="list-disc list-inside space-y-1 text-slate-400 pr-1">
+                        <li>فایل‌های اساسی لینوکس، کلاینت المنت و پروکسی انجین‌اکس با کدهای پشتیبان جایگزین خواهند شد.</li>
+                        <li>سرور ماتریکس و سرویس‌های همبسته جهت بارگذاری مجدد فایل‌ها، بازنشانی خواهند شد.</li>
+                      </ul>
                     )}
                   </div>
-                ))}
+
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/5">
+                    <button
+                      disabled={isRestoring}
+                      onClick={() => setShowRestoreModal(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      انصراف
+                    </button>
+                    <button
+                      disabled={isRestoring}
+                      onClick={() => restoreBackup(showRestoreModal)}
+                      className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isRestoring ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      <span>تایید بازنشانی سرور</span>
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

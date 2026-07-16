@@ -110,6 +110,8 @@ export interface BackupItem {
   size: string;
   timestamp: string;
   hasSSL: boolean;
+  type?: 'config' | 'database';
+  path?: string;
 }
 
 export interface UndoItem {
