@@ -1297,130 +1297,244 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
     let isErased = false;
     const username = mxid.toString().split(":")[0].replace("@", "");
 
+    let fetchedViaApi = false;
+
     if (activeConn && activeConn.id !== "local") {
-      const queries = [
-        {
-          sql: "SELECT u.name as mxid, u.admin, u.deactivated, u.creation_ts, u.user_type, p.displayname, p.avatar_url FROM users u LEFT JOIN profiles p ON u.name = p.user_id WHERE u.name = $1",
-          params: [mxid]
-        },
-        {
-          sql: "SELECT medium, address FROM user_threepids WHERE user_id = $1",
-          params: [mxid]
-        },
-        {
-          sql: "SELECT device_id, display_name, last_seen_ip, last_seen_ts, user_agent FROM devices WHERE user_id = $1",
-          params: [mxid]
-        },
-        {
-          sql: "SELECT app_id, pushkey, kind, data, profile_tag FROM pushers WHERE user_id = $1",
-          params: [mxid]
-        },
-        {
-          sql: "SELECT rm.room_id, rm.membership, COALESCE((SELECT name FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1), rm.room_id) as room_name, (SELECT canonical_alias FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1) as room_alias FROM room_memberships rm WHERE rm.user_id = $1 AND rm.membership IN ('join', 'ban')",
-          params: [mxid]
-        },
-        {
-          sql: "SELECT media_id, media_type, media_length, created_ts, upload_name FROM local_media_repository WHERE user_id = $1 ORDER BY created_ts DESC",
-          params: [mxid]
-        },
-        {
-          sql: "SELECT auth_provider, external_id FROM user_external_ids WHERE user_id = $1",
-          params: [mxid]
-        },
-        {
-          sql: "SELECT type, content FROM account_data WHERE user_id = $1",
-          params: [mxid]
-        }
-      ];
-
-      let results: any[][];
-      if (activeConn.authType === "agent") {
-        results = await Promise.all(queries.map(q => 
-          executeRemoteAgentTask(activeConn.id, "postgres_query", {
-            query: q.sql,
-            dbUser: activeConn.dbUser || "synapse_user",
-            dbName: activeConn.dbName || "synapse"
-          }).then(res => JSON.parse(res || "[]")).catch(() => [])
-        ));
-      } else {
-        results = await queryRemotePostgresMulti(activeConn, queries);
-      }
-
-      rows = results[0] || [];
-      const tpRows = results[1] || [];
-      emails = tpRows.filter((tp: any) => tp.medium === "email").map((tp: any) => tp.address);
-      phones = tpRows.filter((tp: any) => tp.medium === "msisdn").map((tp: any) => tp.address);
-
-      const devRows = results[2] || [];
-      devices = devRows.map((d: any) => ({
-        id: d.device_id,
-        name: d.display_name || "Active Session",
-        lastSeenIp: d.last_seen_ip || "Unknown",
-        lastSeenAt: d.last_seen_ts ? new Date(parseInt(d.last_seen_ts)).toISOString() : new Date().toISOString(),
-        userAgent: d.user_agent || "Unknown"
-      }));
-
-      const pusherRows = results[3] || [];
-      pushers = pusherRows.map((p: any) => ({
-        appId: p.app_id,
-        pushKey: p.pushkey,
-        kind: p.kind,
-        data: typeof p.data === 'string' ? JSON.parse(p.data) : p.data || {},
-        profileTag: p.profile_tag || ""
-      }));
-
-      const rmRows = results[4] || [];
-      const userIsAdmin = rows.length > 0 ? !!rows[0].admin : false;
-      rooms = rmRows.map((rm: any) => ({
-        roomId: rm.room_id,
-        name: rm.room_name || rm.room_id,
-        alias: rm.room_alias || "",
-        isJoined: rm.membership === 'join',
-        isBanned: rm.membership === 'ban',
-        powerLevel: userIsAdmin ? 100 : 0,
-        role: rm.membership === 'join' ? (userIsAdmin ? "Administrator" : "Member") : "None"
-      }));
-
-      const mediaRows = results[5] || [];
-      media = mediaRows.map((m: any) => ({
-        id: m.media_id,
-        fileName: m.upload_name || m.media_id,
-        mimeType: m.media_type || "application/octet-stream",
-        fileSize: parseInt(m.media_length || "0"),
-        uploadedAt: m.created_ts ? new Date(parseInt(m.created_ts)).toISOString() : new Date().toISOString(),
-        isQuarantined: false
-      }));
-
-      const ssoRows = results[6] || [];
-      if (ssoRows.length > 0) {
-        sso = ssoRows.map((s: any) => ({
-          provider: s.auth_provider,
-          externalId: s.external_id,
-          linkedAt: new Date().toISOString()
-        }));
-      } else {
-        sso = [{ provider: "Database Authenticated", externalId: username, linkedAt: new Date().toISOString() }];
-      }
-
-      const adRows = results[7] || [];
-      for (const ad of adRows) {
+      try {
+        console.log(`Attempting to fetch user details via Synapse Admin API for ${mxid}`);
+        let apiUser: any = null;
         try {
-          accountData[ad.type] = typeof ad.content === 'string' ? JSON.parse(ad.content) : ad.content || {};
-        } catch (e) {}
-      }
-      if (Object.keys(accountData).length === 0) {
-        accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
+          apiUser = await callSynapseAdminAPI("GET", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid.toString())}`);
+        } catch (apiErr1) {
+          console.log(`/_matrix/client/v1/admin/users failed, trying /_synapse/admin/v2/users...`);
+          try {
+            apiUser = await callSynapseAdminAPI("GET", `/_synapse/admin/v2/users/${encodeURIComponent(mxid.toString())}`);
+          } catch (apiErr2: any) {
+            console.warn("Synapse Admin API profile fetch failed:", apiErr2.message);
+          }
+        }
+
+        if (apiUser && apiUser.name) {
+          fetchedViaApi = true;
+          isSuspended = !!apiUser.suspended;
+          isShadowBanned = !!apiUser.shadow_banned;
+          isLocked = !!apiUser.locked;
+          isErased = !!apiUser.erased;
+
+          const adminVal = apiUser.admin === 1 || apiUser.admin === true;
+          const deactivatedVal = apiUser.deactivated === 1 || apiUser.deactivated === true;
+
+          rows = [{
+            mxid: apiUser.name,
+            admin: adminVal,
+            deactivated: deactivatedVal,
+            creation_ts: apiUser.creation_ts || Math.floor(Date.now() / 1000),
+            user_type: apiUser.user_type,
+            displayname: apiUser.displayname,
+            avatar_url: apiUser.avatar_url
+          }];
+
+          if (apiUser.threepids && Array.isArray(apiUser.threepids)) {
+            emails = apiUser.threepids.filter((tp: any) => tp.medium === "email").map((tp: any) => tp.address);
+            phones = apiUser.threepids.filter((tp: any) => tp.medium === "msisdn").map((tp: any) => tp.address);
+          }
+
+          if (apiUser.external_ids && Array.isArray(apiUser.external_ids)) {
+            sso = apiUser.external_ids.map((s: any) => ({
+              provider: s.auth_provider,
+              externalId: s.external_id,
+              linkedAt: new Date().toISOString()
+            }));
+          } else {
+            sso = [{ provider: "Database Authenticated", externalId: username, linkedAt: new Date().toISOString() }];
+          }
+
+          // Fetch devices
+          try {
+            const devRes = await callSynapseAdminAPI("GET", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid.toString())}/devices`);
+            if (devRes && Array.isArray(devRes.devices)) {
+              devices = devRes.devices.map((d: any) => ({
+                id: d.device_id,
+                name: d.display_name || "Active Session",
+                lastSeenIp: d.last_seen_ip || "Unknown",
+                lastSeenAt: d.last_seen_ts ? new Date(parseInt(d.last_seen_ts)).toISOString() : new Date().toISOString(),
+                userAgent: d.user_agent || "Unknown"
+              }));
+            }
+          } catch (devErr: any) {
+            console.warn(`Could not fetch devices via Admin API:`, devErr.message);
+          }
+
+          // Fetch rooms
+          try {
+            const roomsRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/users/${encodeURIComponent(mxid.toString())}/rooms`);
+            if (roomsRes && Array.isArray(roomsRes.rooms)) {
+              rooms = roomsRes.rooms.map((rm: any) => ({
+                roomId: rm.room_id,
+                name: rm.name || rm.room_id,
+                alias: rm.canonical_alias || "",
+                isJoined: rm.membership === 'join',
+                isBanned: rm.membership === 'ban',
+                powerLevel: adminVal ? 100 : 0,
+                role: rm.membership === 'join' ? (adminVal ? "Administrator" : "Member") : "None"
+              }));
+            } else {
+              const joinedRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/users/${encodeURIComponent(mxid.toString())}/joined_rooms`);
+              if (joinedRes && Array.isArray(joinedRes.joined_rooms)) {
+                rooms = joinedRes.joined_rooms.map((roomId: string) => ({
+                  roomId,
+                  name: roomId,
+                  alias: "",
+                  isJoined: true,
+                  isBanned: false,
+                  powerLevel: adminVal ? 100 : 0,
+                  role: adminVal ? "Administrator" : "Member"
+                }));
+              }
+            }
+          } catch (roomsErr: any) {
+            console.warn(`Could not fetch rooms via Admin API:`, roomsErr.message);
+          }
+
+          accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
+
+          const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
+          if (localUser) {
+            if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
+            if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
+            if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
+            if (localUser.isErased !== undefined) isErased = localUser.isErased;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`Admin API user details fetch fallback error: ${err.message}`);
       }
 
-      if (rows.length > 0) {
-        const r = rows[0];
-        isSuspended = !!r.deactivated;
-        const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
-        if (localUser) {
-          if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
-          if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
-          if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
-          if (localUser.isErased !== undefined) isErased = localUser.isErased;
+      if (!fetchedViaApi) {
+        const queries = [
+          {
+            sql: "SELECT u.name as mxid, u.admin, u.deactivated, u.creation_ts, u.user_type, p.displayname, p.avatar_url FROM users u LEFT JOIN profiles p ON u.name = p.user_id WHERE u.name = $1",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT medium, address FROM user_threepids WHERE user_id = $1",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT device_id, display_name, last_seen_ip, last_seen_ts, user_agent FROM devices WHERE user_id = $1",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT app_id, pushkey, kind, data, profile_tag FROM pushers WHERE user_id = $1",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT rm.room_id, rm.membership, COALESCE((SELECT name FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1), rm.room_id) as room_name, (SELECT canonical_alias FROM room_stats_state rss WHERE rss.room_id = rm.room_id LIMIT 1) as room_alias FROM room_memberships rm WHERE rm.user_id = $1 AND rm.membership IN ('join', 'ban')",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT media_id, media_type, media_length, created_ts, upload_name FROM local_media_repository WHERE user_id = $1 ORDER BY created_ts DESC",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT auth_provider, external_id FROM user_external_ids WHERE user_id = $1",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT type, content FROM account_data WHERE user_id = $1",
+            params: [mxid]
+          }
+        ];
+
+        let results: any[][];
+        if (activeConn.authType === "agent") {
+          results = await Promise.all(queries.map(q => 
+            executeRemoteAgentTask(activeConn.id, "postgres_query", {
+              query: q.sql,
+              dbUser: activeConn.dbUser || "synapse_user",
+              dbName: activeConn.dbName || "synapse"
+            }).then(res => JSON.parse(res || "[]")).catch(() => [])
+          ));
+        } else {
+          results = await queryRemotePostgresMulti(activeConn, queries);
+        }
+
+        rows = results[0] || [];
+        const tpRows = results[1] || [];
+        emails = tpRows.filter((tp: any) => tp.medium === "email").map((tp: any) => tp.address);
+        phones = tpRows.filter((tp: any) => tp.medium === "msisdn").map((tp: any) => tp.address);
+
+        const devRows = results[2] || [];
+        devices = devRows.map((d: any) => ({
+          id: d.device_id,
+          name: d.display_name || "Active Session",
+          lastSeenIp: d.last_seen_ip || "Unknown",
+          lastSeenAt: d.last_seen_ts ? new Date(parseInt(d.last_seen_ts)).toISOString() : new Date().toISOString(),
+          userAgent: d.user_agent || "Unknown"
+        }));
+
+        const pusherRows = results[3] || [];
+        pushers = pusherRows.map((p: any) => ({
+          appId: p.app_id,
+          pushKey: p.pushkey,
+          kind: p.kind,
+          data: typeof p.data === 'string' ? JSON.parse(p.data) : p.data || {},
+          profileTag: p.profile_tag || ""
+        }));
+
+        const rmRows = results[4] || [];
+        const userIsAdmin = rows.length > 0 ? !!rows[0].admin : false;
+        rooms = rmRows.map((rm: any) => ({
+          roomId: rm.room_id,
+          name: rm.room_name || rm.room_id,
+          alias: rm.room_alias || "",
+          isJoined: rm.membership === 'join',
+          isBanned: rm.membership === 'ban',
+          powerLevel: userIsAdmin ? 100 : 0,
+          role: rm.membership === 'join' ? (userIsAdmin ? "Administrator" : "Member") : "None"
+        }));
+
+        const mediaRows = results[5] || [];
+        media = mediaRows.map((m: any) => ({
+          id: m.media_id,
+          fileName: m.upload_name || m.media_id,
+          mimeType: m.media_type || "application/octet-stream",
+          fileSize: parseInt(m.media_length || "0"),
+          uploadedAt: m.created_ts ? new Date(parseInt(m.created_ts)).toISOString() : new Date().toISOString(),
+          isQuarantined: false
+        }));
+
+        const ssoRows = results[6] || [];
+        if (ssoRows.length > 0) {
+          sso = ssoRows.map((s: any) => ({
+            provider: s.auth_provider,
+            externalId: s.external_id,
+            linkedAt: new Date().toISOString()
+          }));
+        } else {
+          sso = [{ provider: "Database Authenticated", externalId: username, linkedAt: new Date().toISOString() }];
+        }
+
+        const adRows = results[7] || [];
+        for (const ad of adRows) {
+          try {
+            accountData[ad.type] = typeof ad.content === 'string' ? JSON.parse(ad.content) : ad.content || {};
+          } catch (e) {}
+        }
+        if (Object.keys(accountData).length === 0) {
+          accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
+        }
+
+        if (rows.length > 0) {
+          const r = rows[0];
+          isSuspended = !!r.deactivated;
+          const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
+          if (localUser) {
+            if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
+            if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
+            if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
+            if (localUser.isErased !== undefined) isErased = localUser.isErased;
+          }
         }
       }
     } else {
