@@ -56,6 +56,7 @@ interface ReportingPanelProps {
   userRole: string;
   authToken: string;
   showToast: (type: 'success' | 'error' | 'info', message: string) => void;
+  isLightMode?: boolean;
 }
 
 export default function ReportingPanel({
@@ -71,7 +72,8 @@ export default function ReportingPanel({
   onCreateBackup,
   userRole,
   authToken,
-  showToast
+  showToast,
+  isLightMode = false
 }: ReportingPanelProps) {
   const [activeSubTab, setActiveTab] = useState<'analytics' | 'rbac' | 'audit' | 'backups'>('analytics');
 
@@ -132,13 +134,13 @@ export default function ReportingPanel({
         body: JSON.stringify(backupSettings)
       });
       if (res.ok) {
-        showToast('success', 'تنظیمات بکاپ با موفقیت ذخیره شد');
+        showToast('success', 'Backup settings saved successfully');
         fetchBackupSettings();
       } else {
-        showToast('error', 'خطا در ذخیره تنظیمات بکاپ');
+        showToast('error', 'Error saving backup settings');
       }
     } catch (err) {
-      showToast('error', 'خطا در ارتباط با سرور');
+      showToast('error', 'Server connection error');
     }
   };
 
@@ -154,13 +156,13 @@ export default function ReportingPanel({
         body: JSON.stringify({ type, includeSSL })
       });
       if (res.ok) {
-        showToast('success', `بکاپ ${type === 'config' ? 'تنظیمات' : 'دیتابیس'} با موفقیت ایجاد شد`);
+        showToast('success', `${type === 'config' ? 'Configuration' : 'Database'} backup created successfully`);
         onCreateBackup(includeSSL); // Trigger refresh in parent
       } else {
-        showToast('error', 'خطا در ایجاد بکاپ جدید');
+        showToast('error', 'Error creating backup');
       }
     } catch (err) {
-      showToast('error', 'خطا در ارتباط با سرور');
+      showToast('error', 'Server connection error');
     } finally {
       setIsTriggeringBackup(false);
     }
@@ -182,9 +184,9 @@ export default function ReportingPanel({
       document.body.appendChild(a);
       a.click();
       a.remove();
-      showToast('success', 'فایل بکاپ با موفقیت دانلود شد');
+      showToast('success', 'Backup file downloaded successfully');
     })
-    .catch(() => showToast('error', 'خطا در دانلود فایل بکاپ'));
+    .catch(() => showToast('error', 'Error downloading backup file'));
   };
 
   const downloadBulkBackups = () => {
@@ -209,9 +211,9 @@ export default function ReportingPanel({
       document.body.appendChild(a);
       a.click();
       a.remove();
-      showToast('success', 'دانلود دسته جمعی با موفقیت انجام شد');
+      showToast('success', 'Bulk backups downloaded successfully');
     })
-    .catch(() => showToast('error', 'خطا در دانلود دسته جمعی بکاپ‌ها'));
+    .catch(() => showToast('error', 'Error downloading bulk backups'));
   };
 
   const restoreBackup = async (backup: BackupItem) => {
@@ -225,14 +227,14 @@ export default function ReportingPanel({
         }
       });
       if (res.ok) {
-        showToast('success', `بکاپ ${backup.filename} با موفقیت ریستور شد. سیستم بازیابی گردید.`);
+        showToast('success', `Backup ${backup.filename} restored successfully. System recovered.`);
         setShowRestoreModal(null);
       } else {
         const err = await res.json();
-        showToast('error', `خطا در ریستور بکاپ: ${err.error || 'خطای ناشناخته'}`);
+        showToast('error', `Error restoring backup: ${err.error || 'Unknown error'}`);
       }
     } catch (err) {
-      showToast('error', 'خطا در برقراری ارتباط جهت ریستور');
+      showToast('error', 'Connection error during backup restoration');
     } finally {
       setIsRestoring(false);
     }
@@ -259,13 +261,13 @@ export default function ReportingPanel({
           })
         });
         if (res.ok) {
-          showToast('success', 'فایل بکاپ با موفقیت آپلود و ذخیره شد');
+          showToast('success', 'Backup file uploaded and saved successfully');
           onCreateBackup(false); // Reload backups list from parent
         } else {
-          showToast('error', 'خطا در آپلود فایل بکاپ');
+          showToast('error', 'Error uploading backup file');
         }
       } catch (err) {
-        showToast('error', 'خطا در آپلود فایل بکاپ');
+        showToast('error', 'Error uploading backup file');
       }
     };
     reader.readAsText(file);
@@ -651,17 +653,17 @@ export default function ReportingPanel({
 
         {/* VIEW 4: BACKUPS & SNAPSHOT UNDO */}
         {activeSubTab === 'backups' && (
-          <div className="space-y-6 flex flex-col h-full" dir="rtl">
+          <div className="space-y-6 flex flex-col h-full" dir="ltr">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
               <div className="flex items-center gap-3">
                 <History className="w-6 h-6 text-amber-400" />
-                <div className="text-right">
-                  <h2 className="text-xl font-display font-bold text-white">سیستم پشتیبان‌گیری پیشرفته و بازیابی</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">مدیریت فایل‌های پشتیبان دیتابیس، تنظیمات هسته، زمان‌بندی هوشمند و بازنشانی وضعیت سرور.</p>
+                <div className="text-left">
+                  <h2 className="text-xl font-display font-bold text-white">Advanced Backup & Restore</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Manage database backups, core configuration, schedules, and server restoration.</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5 self-end sm:self-auto">
+              <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5 self-start sm:self-auto">
                 <button
                   onClick={() => setActiveBackupSubTab('list')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -670,7 +672,7 @@ export default function ReportingPanel({
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  فایل‌های پشتیبان و بازنشانی
+                  Backups & Restoration
                 </button>
                 <button
                   onClick={() => setActiveBackupSubTab('settings')}
@@ -680,7 +682,7 @@ export default function ReportingPanel({
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  تنظیمات مسیر و زمان‌بندی
+                  Settings & Schedules
                 </button>
               </div>
             </div>
@@ -691,14 +693,14 @@ export default function ReportingPanel({
                 {!isReadOnly && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Config Backup Box */}
-                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-right flex flex-col justify-between">
+                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-left flex flex-col justify-between">
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-end mb-1">
-                          <span>پشتیبان‌گیری از تنظیمات (Config)</span>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-start mb-1">
                           <Settings className="w-4 h-4 text-amber-400" />
+                          <span>Configuration Backup (Config)</span>
                         </h4>
                         <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                          تهیه فایل پشتیبان شامل فایل‌های پیکربندی سرور سیناپس، وب‌کلاینت المنت، پروکسی معکوس انجین‌اکس و تنظیمات اتصال به دایرکتوری LDAP.
+                          Creates a compressed backup archive of Synapse configs, Element web client profiles, Nginx proxies, and LDAP connection details.
                         </p>
                       </div>
                       <div className="flex items-center justify-between pt-3 border-t border-white/5">
@@ -710,7 +712,7 @@ export default function ReportingPanel({
                             onChange={(e) => setIncludeSSL(e.target.checked)} 
                             className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
                           />
-                          <label htmlFor="inc-ssl-adv" className="text-xs font-semibold text-slate-300 cursor-pointer">بکاپ لایسنس SSL/Certs</label>
+                          <label htmlFor="inc-ssl-adv" className="text-xs font-semibold text-slate-300 cursor-pointer">Backup SSL Certificates</label>
                         </div>
                         <button
                           disabled={isTriggeringBackup}
@@ -718,20 +720,20 @@ export default function ReportingPanel({
                           className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                           {isTriggeringBackup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                          <span>ایجاد بکاپ تنظیمات</span>
+                          <span>Create Config Backup</span>
                         </button>
                       </div>
                     </div>
 
                     {/* DB Backup Box */}
-                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-right flex flex-col justify-between">
+                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-left flex flex-col justify-between">
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-end mb-1">
-                          <span>پشتیبان‌گیری از دیتابیس (Database)</span>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-start mb-1">
                           <FileJson className="w-4 h-4 text-cyan-400" />
+                          <span>Database Backup (Database)</span>
                         </h4>
                         <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                          تهیه پشتیبان کامل از دیتابیس یکپارچه سرور ماتریکس شامل لیست تمامی کاربران، سطوح دسترسی RBAC، نقش‌ها، لاگ‌های امنیتی ممیزی و ارتباطات ثبت شده.
+                          Exports a complete database snapshot containing registered users, groups, RBAC permissions, audit log history, and configuration details.
                         </p>
                       </div>
                       <div className="flex justify-end pt-3 border-t border-white/5">
@@ -741,20 +743,20 @@ export default function ReportingPanel({
                           className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                           {isTriggeringBackup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                          <span>ایجاد بکاپ دیتابیس</span>
+                          <span>Create Database Backup</span>
                         </button>
                       </div>
                     </div>
 
                     {/* File Upload zone */}
-                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-right flex flex-col justify-between">
+                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-left flex flex-col justify-between">
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-end mb-1">
-                          <span>آپلود فایل پشتیبان به سرور</span>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-start mb-1">
                           <UploadCloud className="w-4 h-4 text-emerald-400" />
+                          <span>Upload Backup File</span>
                         </h4>
                         <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-                          شما می‌توانید فایل بکاپ JSON قبلی را به طور مستقیم در مسیر اختصاصی سرور ماتریکس آپلود کنید تا جهت ریستور آماده شود.
+                          Directly upload a previous JSON backup file into the server's dedicated backups catalog to prepare for restoration.
                         </p>
                       </div>
                       <div className="relative border border-dashed border-white/10 hover:border-emerald-500/50 rounded-xl p-3 text-center transition-all bg-black/20">
@@ -766,8 +768,8 @@ export default function ReportingPanel({
                         />
                         <div className="flex flex-col items-center gap-1">
                           <UploadCloud className="w-6 h-6 text-emerald-400 animate-pulse" />
-                          <span className="text-[10px] text-slate-400">کلیک کنید یا فایل بکاپ را اینجا بکشید</span>
-                          <span className="text-[9px] text-slate-500 font-mono">فرمت مجاز: JSON Backups</span>
+                          <span className="text-[10px] text-slate-400">Click or drag backup file here</span>
+                          <span className="text-[9px] text-slate-500 font-mono">Format allowed: JSON Backups</span>
                         </div>
                       </div>
                     </div>
@@ -780,14 +782,14 @@ export default function ReportingPanel({
                     <div className="flex items-center gap-3">
                       <button
                         onClick={handleToggleSelectAll}
-                        className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+                        className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
                       >
                         {selectedBackupIds.length === backups.length && backups.length > 0 ? (
-                          <CheckSquare className="w-4 h-4 text-amber-500" />
+                          <CheckSquare className="w-4.5 h-4.5 text-amber-500" />
                         ) : (
-                          <Square className="w-4 h-4 text-slate-500" />
+                          <Square className="w-4.5 h-4.5 text-slate-500" />
                         )}
-                        <span>انتخاب همه ({backups.length})</span>
+                        <span>Select All ({backups.length})</span>
                       </button>
 
                       {selectedBackupIds.length > 0 && (
@@ -800,21 +802,21 @@ export default function ReportingPanel({
                           className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
                         >
                           <Download className="w-3 h-3" />
-                          <span>دانلود دسته جمعی ({selectedBackupIds.length})</span>
+                          <span>Bulk Download ({selectedBackupIds.length})</span>
                         </button>
                       )}
                     </div>
 
-                    <div className="text-right">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">لیست فایل‌های بکاپ موجود در دیسک</h4>
+                    <div className="text-left sm:text-right">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Archived Backups Catalog</h4>
                     </div>
                   </div>
 
                   {backups.length === 0 ? (
                     <div className="text-center py-10 spatial-glass rounded-2xl border border-white/5">
                       <FolderOpen className="w-12 h-12 text-slate-600 mx-auto mb-2" />
-                      <p className="text-sm text-slate-400">هیچ فایل بکاپی در مسیر تعریف شده یافت نشد.</p>
-                      <p className="text-xs text-slate-500 mt-1">با استفاده از دکمه‌های بالا اولین بکاپ دستی را ایجاد کنید.</p>
+                      <p className="text-sm text-slate-400">No backup archives found on disk.</p>
+                      <p className="text-xs text-slate-500 mt-1">Trigger your first manual backup using the buttons above.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -838,25 +840,25 @@ export default function ReportingPanel({
                                 <Square className="w-4.5 h-4.5" />
                               )}
                             </button>
-                            <div className="text-right">
+                            <div className="text-left">
                               <h5 className="text-xs font-bold text-white font-mono break-all select-all">{b.filename}</h5>
                               <div className="flex items-center gap-3 mt-2 font-mono text-[10px] text-slate-400 flex-wrap">
                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase ${
                                   b.type === 'database' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-amber-500/10 text-amber-400'
                                 }`}>
-                                  {b.type === 'database' ? 'دیتابیس' : 'تنظیمات'}
+                                  {b.type === 'database' ? 'Database' : 'Config'}
                                 </span>
-                                <span>حجم فایل: <strong className="text-white">{b.size}</strong></span>
-                                <span>{new Date(b.timestamp).toLocaleString('fa-IR')}</span>
+                                <span>Size: <strong className="text-white">{b.size}</strong></span>
+                                <span>{new Date(b.timestamp).toLocaleString()}</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5 mr-2">
+                          <div className="flex items-center gap-1.5 ml-2">
                             <button
                               onClick={() => downloadSingleBackup(b)}
                               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition-all cursor-pointer"
-                              title="دانلود تکی"
+                              title="Download backup"
                             >
                               <Download className="w-4 h-4" />
                             </button>
@@ -865,15 +867,15 @@ export default function ReportingPanel({
                                 <button
                                   onClick={() => setShowRestoreModal(b)}
                                   className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/10 transition-all cursor-pointer font-semibold text-xs flex items-center gap-1"
-                                  title="ریستور و بازنشانی"
+                                  title="Restore and rollback server"
                                 >
                                   <RotateCcw className="w-4 h-4" />
-                                  <span className="hidden lg:inline text-[10px]">ریستور</span>
+                                  <span className="hidden lg:inline text-[10px]">Restore</span>
                                 </button>
                                 <button
                                   onClick={() => onDeleteBackup(b.id)}
                                   className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all cursor-pointer"
-                                  title="حذف دائمی فایل"
+                                  title="Delete backup"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -892,12 +894,12 @@ export default function ReportingPanel({
               <div className="space-y-6 flex-1 overflow-y-auto pr-1">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Left Column: Path & Retention */}
-                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-right space-y-5">
-                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">تنظیمات ذخیره‌سازی سرور</h4>
+                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-left space-y-5">
+                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">Disk Storage Settings</h4>
 
                     {/* Storage Path on server */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold text-slate-300">مسیر دایرکتوری بکاپ روی سرور</label>
+                      <label className="block text-xs font-semibold text-slate-300">Server Backup Directory Path</label>
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -907,16 +909,16 @@ export default function ReportingPanel({
                           className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left"
                           placeholder="/sandbox/backups"
                         />
-                        <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/10 rounded-xl text-[10px] font-bold flex items-center">قابل تعریف</span>
+                        <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/10 rounded-xl text-[10px] font-bold flex items-center">Writable</span>
                       </div>
                       <p className="text-[10px] text-slate-500 leading-relaxed">
-                        مسیر پیش‌فرض ذخیره‌سازی فایل‌های پشتیبان روی لینوکس سرور است. این مسیر حین ایجاد فایل‌ها خودکار ساخته می‌شود.
+                        Absolute path on the host system where backup archives are persisted. The application creates this directory dynamically if it does not exist.
                       </p>
                     </div>
 
-                    {/* Retention policy (ریتنشن تایم) */}
+                    {/* Retention policy */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold text-slate-300">مدت زمان نگهداشت فایل‌ها (Retention Time - روز)</label>
+                      <label className="block text-xs font-semibold text-slate-300">Backup Retention Policy (Days)</label>
                       <input
                         type="number"
                         min="1"
@@ -928,14 +930,14 @@ export default function ReportingPanel({
                         placeholder="30"
                       />
                       <p className="text-[10px] text-slate-500 leading-relaxed">
-                        تعداد روزهای نگهداشت فایل‌های بکاپ بر روی سرور. بکاپ‌های قدیمی‌تر از این بازه به صورت خودکار جهت آزادسازی فضای هارد دیسک سرور حذف می‌شوند.
+                        Retention window for backup archives. Items older than this duration will be automatically pruned by the server background worker.
                       </p>
                     </div>
                   </div>
 
                   {/* Right Column: Schedulers */}
-                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-right space-y-6">
-                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">برنامه‌ریزی زمان‌بندی خودکار (Cron Scheduler)</h4>
+                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-left space-y-6">
+                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">Automated Cron Job Schedules</h4>
 
                     {/* Database Cron */}
                     <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
@@ -952,12 +954,12 @@ export default function ReportingPanel({
                             disabled={isReadOnly}
                             className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
                           />
-                          <label htmlFor="db-sched-toggle" className="text-xs font-bold text-white cursor-pointer">فعال‌سازی زمان‌بندی دیتابیس</label>
+                          <label htmlFor="db-sched-toggle" className="text-xs font-bold text-white cursor-pointer">Enable Scheduled Database Backup</label>
                         </div>
                         <Calendar className="w-4 h-4 text-cyan-400" />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="block text-[10px] text-slate-400">عبارت کرون جاب لینوکس (Cron Expression)</label>
+                        <label className="block text-[10px] text-slate-400">Linux Cron Expression</label>
                         <input
                           type="text"
                           value={backupSettings.dbSchedule?.cron || '0 2 * * *'}
@@ -968,7 +970,7 @@ export default function ReportingPanel({
                           disabled={isReadOnly || !backupSettings.dbSchedule?.enabled}
                           className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
                         />
-                        <span className="text-[9px] text-slate-500 block">مثال: <code className="text-slate-400">0 2 * * *</code> (هر روز ساعت ۲:۰۰ بامداد)</span>
+                        <span className="text-[9px] text-slate-500 block">Example: <code className="text-slate-400">0 2 * * *</code> (Every day at 2:00 AM)</span>
                       </div>
                     </div>
 
@@ -987,12 +989,12 @@ export default function ReportingPanel({
                             disabled={isReadOnly}
                             className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
                           />
-                          <label htmlFor="cfg-sched-toggle" className="text-xs font-bold text-white cursor-pointer">فعال‌سازی زمان‌بندی تنظیمات (Config)</label>
+                          <label htmlFor="cfg-sched-toggle" className="text-xs font-bold text-white cursor-pointer">Enable Scheduled Config Backup</label>
                         </div>
                         <Calendar className="w-4 h-4 text-amber-400" />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="block text-[10px] text-slate-400">عبارت کرون جاب لینوکس (Cron Expression)</label>
+                        <label className="block text-[10px] text-slate-400">Linux Cron Expression</label>
                         <input
                           type="text"
                           value={backupSettings.configSchedule?.cron || '0 3 * * *'}
@@ -1003,7 +1005,7 @@ export default function ReportingPanel({
                           disabled={isReadOnly || !backupSettings.configSchedule?.enabled}
                           className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
                         />
-                        <span className="text-[9px] text-slate-500 block">مثال: <code className="text-slate-400">0 3 * * *</code> (هر روز ساعت ۳:۰۰ بامداد)</span>
+                        <span className="text-[9px] text-slate-500 block">Example: <code className="text-slate-400">0 3 * * *</code> (Every day at 3:00 AM)</span>
                       </div>
                     </div>
                   </div>
@@ -1016,7 +1018,7 @@ export default function ReportingPanel({
                       className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:shadow-amber-500/10"
                     >
                       <Save className="w-4 h-4" />
-                      <span>ذخیره تغییرات و پیکربندی خط‌مشی</span>
+                      <span>Save Policy & Configuration</span>
                     </button>
                   </div>
                 )}
@@ -1025,33 +1027,41 @@ export default function ReportingPanel({
 
             {/* Restore Confirmation Modal Overlay */}
             {showRestoreModal && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir="rtl">
-                <div className="bg-slate-900 border border-red-500/20 max-w-lg w-full rounded-3xl p-6 text-right space-y-5 shadow-[0_0_50px_rgba(239,68,68,0.15)] animate-scale-up">
-                  <div className="flex items-center gap-3 text-red-400 pb-3 border-b border-white/5">
-                    <AlertTriangle className="w-6 h-6 text-red-500" />
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir="ltr">
+                <div className={`max-w-lg w-full rounded-3xl p-6 text-left space-y-5 animate-scale-up transition-colors ${
+                  isLightMode 
+                    ? 'bg-white border border-red-100 text-slate-900 shadow-[0_10px_40px_rgba(0,0,0,0.1)]' 
+                    : 'bg-slate-900 border border-red-500/20 text-white shadow-[0_0_50px_rgba(239,68,68,0.15)]'
+                }`}>
+                  <div className="flex items-center gap-3 text-red-500 pb-3 border-b border-white/5">
+                    <AlertTriangle className="w-6 h-6" />
                     <div>
-                      <h3 className="text-lg font-bold text-white">هشدار حساس: تایید بازنشانی و ریستور</h3>
-                      <p className="text-[10px] text-red-400/80">سیستم بازیابی فایل پشتیبان سرور ماتریکس</p>
+                      <h3 className={`text-lg font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>Critical Warning: Restore System</h3>
+                      <p className={`text-[10px] ${isLightMode ? 'text-red-600/80' : 'text-red-400/80'}`}>Matrix Server Backup Recovery Operations</p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    آیا از بازنشانی وضعیت سرور به فایل پشتیبان <strong className="text-amber-400 font-mono select-all break-all">{showRestoreModal.filename}</strong> اطمینان کامل دارید؟
+                  <p className={`text-xs leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                    Are you absolutely sure you want to restore the server state to backup file <strong className="text-amber-500 font-mono select-all break-all">{showRestoreModal.filename}</strong>?
                   </p>
 
-                  <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 text-[11px] text-slate-300 space-y-2">
-                    <p className="font-bold text-red-400 flex items-center gap-1">
-                      <span>پیامدهای این عملیات غیرقابل بازگشت:</span>
+                  <div className={`rounded-2xl p-4 text-[11px] space-y-2 border ${
+                    isLightMode 
+                      ? 'bg-red-50/50 border-red-100 text-slate-700' 
+                      : 'bg-red-500/5 border-red-500/10 text-slate-300'
+                  }`}>
+                    <p className="font-bold text-red-500 flex items-center gap-1">
+                      <span>Irreversible side-effects of this rollback:</span>
                     </p>
                     {showRestoreModal.type === 'database' ? (
-                      <ul className="list-disc list-inside space-y-1 text-slate-400 pr-1">
-                        <li>کل تاریخچه دیتابیس شامل لاگ‌های امنیتی، کاربران فعلی و دسترسی‌ها با فایل پشتیبان بازنویسی خواهد شد.</li>
-                        <li>هرگونه تغییری که از تاریخ ایجاد فایل پشتیبان ({new Date(showRestoreModal.timestamp).toLocaleString('fa-IR')}) تا به الان اعمال شده باشد، به طور دائمی پاک می‌گردد.</li>
+                      <ul className={`list-disc list-inside space-y-1 pl-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                        <li>The current database state including user rosters, active sessions, and access permissions will be entirely replaced.</li>
+                        <li>Any adjustments committed after the backup creation date ({new Date(showRestoreModal.timestamp).toLocaleString()}) will be permanently erased.</li>
                       </ul>
                     ) : (
-                      <ul className="list-disc list-inside space-y-1 text-slate-400 pr-1">
-                        <li>فایل‌های اساسی لینوکس، کلاینت المنت و پروکسی انجین‌اکس با کدهای پشتیبان جایگزین خواهند شد.</li>
-                        <li>سرور ماتریکس و سرویس‌های همبسته جهت بارگذاری مجدد فایل‌ها، بازنشانی خواهند شد.</li>
+                      <ul className={`list-disc list-inside space-y-1 pl-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                        <li>Critical system configuration files, Element client options, and reverse proxy properties will be rewritten.</li>
+                        <li>Sync processes and server units will restart to reload newly written configurations.</li>
                       </ul>
                     )}
                   </div>
@@ -1060,9 +1070,13 @@ export default function ReportingPanel({
                     <button
                       disabled={isRestoring}
                       onClick={() => setShowRestoreModal(null)}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                      className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors cursor-pointer ${
+                        isLightMode 
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' 
+                          : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
                     >
-                      انصراف
+                      Cancel
                     </button>
                     <button
                       disabled={isRestoring}
@@ -1070,7 +1084,7 @@ export default function ReportingPanel({
                       className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {isRestoring ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                      <span>تایید بازنشانی سرور</span>
+                      <span>Confirm Restoration</span>
                     </button>
                   </div>
                 </div>

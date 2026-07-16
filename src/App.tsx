@@ -1149,6 +1149,7 @@ export default function App() {
                 userRole={currentUser?.role || 'Viewer'}
                 authToken={authToken}
                 showToast={showToast}
+                isLightMode={isLightMode}
               />
             )}
 
