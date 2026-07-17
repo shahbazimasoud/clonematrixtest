@@ -1426,6 +1426,51 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
   }
 }
 
+async function callSynapseClientAPI(userToken: string, method: string, apiPath: string, body?: any): Promise<any> {
+  const activeConn = getActiveConnection();
+  const connAny = activeConn as any;
+  const port = connAny?.apiPort || 8008;
+  const apiBaseUrl = connAny?.apiBaseUrl || `http://localhost:${port}`;
+  
+  const url = `${apiBaseUrl}${apiPath}`;
+  const headers = `-H "Authorization: Bearer ${userToken}" -H "Content-Type: application/json"`;
+  const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
+  const curlCmd = `curl -s -X ${method} ${headers} ${dataArg} "${url}"`;
+
+  if (activeConn && activeConn.id !== "local") {
+    if (activeConn.authType === "agent") {
+      const res = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+      return cleanAndParseJSON(res, {});
+    } else {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      const output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+      return cleanAndParseJSON(output, {});
+    }
+  } else {
+    return new Promise((resolve) => {
+      exec(curlCmd, (err, stdout) => {
+        if (err) return resolve({});
+        resolve(cleanAndParseJSON(stdout, {}));
+      });
+    });
+  }
+}
+
+async function updateUserAccountData(mxid: string, key: string, val: any): Promise<boolean> {
+  try {
+    const loginRes = await callSynapseAdminAPI("POST", `/_synapse/admin/v1/users/${encodeURIComponent(mxid)}/login`, {});
+    if (loginRes && loginRes.access_token) {
+      const userToken = loginRes.access_token;
+      await callSynapseClientAPI(userToken, "PUT", `/_matrix/client/v3/user/${encodeURIComponent(mxid)}/account_data/${encodeURIComponent(key)}`, val);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Error updating account data for user:", err);
+    return false;
+  }
+}
+
 app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
   const { mxid } = req.query;
   if (!mxid) return res.status(400).json({ error: "MXID is required" });
@@ -1549,12 +1594,31 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
 
           accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
 
+          try {
+            const adRows = await queryPostgres("SELECT type, content FROM account_data WHERE user_id = $1", [mxid]);
+            if (adRows && adRows.length > 0) {
+              const fetchedData: any = {};
+              for (const ad of adRows) {
+                try {
+                  fetchedData[ad.type] = typeof ad.content === 'string' ? JSON.parse(ad.content) : ad.content || {};
+                } catch (e) {}
+              }
+              accountData = fetchedData;
+            }
+          } catch (e) {}
+
           const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
           if (localUser) {
             if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
             if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
             if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
             if (localUser.isErased !== undefined) isErased = localUser.isErased;
+            if (localUser.accountData) {
+              accountData = {
+                ...accountData,
+                ...localUser.accountData
+              };
+            }
           }
         }
       } catch (err: any) {
@@ -2649,22 +2713,23 @@ app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["
   if (!mxid || !accountData) return res.status(400).json({ error: "MXID and accountData are required" });
 
   const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
-    try {
-      for (const [key, val] of Object.entries(accountData)) {
-        await callSynapseAdminAPI("PUT", `/_matrix/client/v3/user/${encodeURIComponent(mxid)}/account_data/${encodeURIComponent(key)}`, val);
-      }
-    } catch (err: any) {
-      console.error("Remote account data update error:", err.message);
+  try {
+    for (const [key, val] of Object.entries(accountData)) {
+      await updateUserAccountData(mxid, key, val);
     }
+  } catch (err: any) {
+    console.error("Account data update error:", err.message);
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
-  if (user) {
-    user.accountData = accountData;
-    writeDb(db);
+  if (!db.matrixUsers) db.matrixUsers = [];
+  let user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  if (!user) {
+    user = { mxid, accountData: {} };
+    db.matrixUsers.push(user);
   }
+  user.accountData = accountData;
+  writeDb(db);
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
