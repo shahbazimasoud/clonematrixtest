@@ -1609,10 +1609,12 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
 
           const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
           if (localUser) {
-            if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
-            if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
-            if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
-            if (localUser.isErased !== undefined) isErased = localUser.isErased;
+            if (!fetchedViaApi) {
+              if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
+              if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
+              if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
+              if (localUser.isErased !== undefined) isErased = localUser.isErased;
+            }
             if (localUser.accountData) {
               accountData = {
                 ...accountData,
@@ -1657,6 +1659,10 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
           },
           {
             sql: "SELECT type, content FROM account_data WHERE user_id = $1",
+            params: [mxid]
+          },
+          {
+            sql: "SELECT name, suspended, shadow_banned, locked, erased FROM users WHERE name = $1",
             params: [mxid]
           }
         ];
@@ -1749,15 +1755,23 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
           accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
         }
 
+        const extraFlagsRows = results[8] || [];
+        if (extraFlagsRows.length > 0) {
+          const ef = extraFlagsRows[0];
+          if (ef.suspended !== undefined) isSuspended = !!ef.suspended;
+          if (ef.shadow_banned !== undefined) isShadowBanned = !!ef.shadow_banned;
+          if (ef.locked !== undefined) isLocked = !!ef.locked;
+          if (ef.erased !== undefined) isErased = !!ef.erased;
+        }
+
         if (rows.length > 0) {
           const r = rows[0];
-          isSuspended = !!r.deactivated;
+          if (isSuspended === undefined || extraFlagsRows.length === 0) {
+            isSuspended = !!r.deactivated;
+          }
           const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
           if (localUser) {
-            if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
-            if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
-            if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
-            if (localUser.isErased !== undefined) isErased = localUser.isErased;
+            // Do not overwrite Synapse-native flags since this is a remote connection
             if (localUser.accountData) {
               accountData = {
                 ...accountData,
@@ -2091,55 +2105,55 @@ app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(
     const activeConn = getActiveConnection();
     if (activeConn && activeConn.id !== "local") {
       try {
-        // Update display name via Postgres profiles table
-        if (displayName !== undefined) {
-          await queryPostgres("UPDATE profiles SET displayname = $1 WHERE user_id = $2", [displayName, mxid]);
+        const apiUpdateBody: any = {};
+        if (displayName !== undefined) apiUpdateBody.displayname = displayName;
+        if (isAdmin !== undefined) apiUpdateBody.admin = !!isAdmin;
+        if (isSuspended !== undefined) apiUpdateBody.suspended = !!isSuspended;
+        if (isLocked !== undefined) apiUpdateBody.locked = !!isLocked;
+
+        if (Object.keys(apiUpdateBody).length > 0) {
+          let apiSuccess = false;
+          try {
+            await callSynapseAdminAPI("PUT", `/_synapse/admin/v2/users/${encodeURIComponent(mxid)}`, apiUpdateBody);
+            apiSuccess = true;
+          } catch (err) {
+            console.log("v2 Admin API update failed, trying v1 Admin API...");
+            try {
+              await callSynapseAdminAPI("PUT", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}`, apiUpdateBody);
+              apiSuccess = true;
+            } catch (err2) {
+              console.warn("v1 Admin API update also failed:", err2);
+            }
+          }
         }
 
-        // Update admin flag via Postgres users table
+        // Direct SQL Fallbacks/Complements
+        if (displayName !== undefined) {
+          try {
+            await queryPostgres("UPDATE profiles SET displayname = $1 WHERE user_id = $2", [displayName, mxid]);
+          } catch (e) {}
+        }
+
         if (isAdmin !== undefined) {
           try {
             await queryPostgres("UPDATE users SET admin = $1 WHERE name = $2", [isAdmin ? 1 : 0, mxid]);
           } catch (err) {
-            await queryPostgres("UPDATE users SET admin = $1 WHERE name = $2", [isAdmin ? true : false, mxid]);
+            try {
+              await queryPostgres("UPDATE users SET admin = $1 WHERE name = $2", [isAdmin ? true : false, mxid]);
+            } catch (e) {}
           }
         }
 
-        // Update suspended / deactivated status via Admin API or direct Postgres
         if (isSuspended !== undefined) {
           try {
-            await callSynapseAdminAPI("PUT", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}`, {
-              suspended: !!isSuspended
-            });
-          } catch (apiErr) {
+            await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? 1 : 0, mxid]);
+          } catch (dbErr) {
             try {
-              await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? 1 : 0, mxid]);
-            } catch (dbErr) {
-              try {
-                await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? true : false, mxid]);
-              } catch (err) {}
-            }
+              await queryPostgres("UPDATE users SET suspended = $1 WHERE name = $2", [isSuspended ? true : false, mxid]);
+            } catch (err) {}
           }
         }
 
-        // Update shadow ban via Admin API or direct Postgres
-        if (isShadowBanned !== undefined) {
-          try {
-            await callSynapseAdminAPI("POST", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}/shadow_ban`, {
-              shadow_banned: !!isShadowBanned
-            });
-          } catch (apiErr) {
-            try {
-              await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? 1 : 0, mxid]);
-            } catch (dbErr) {
-              try {
-                await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? true : false, mxid]);
-              } catch (err) {}
-            }
-          }
-        }
-
-        // Update locked flag in users table if available
         if (isLocked !== undefined) {
           try {
             await queryPostgres("UPDATE users SET locked = $1 WHERE name = $2", [isLocked ? 1 : 0, mxid]);
@@ -2150,7 +2164,28 @@ app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(
           }
         }
 
-        // Update erased flag (GDPR erase)
+        if (isShadowBanned !== undefined) {
+          try {
+            await callSynapseAdminAPI("POST", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}/shadow_ban`, {
+              shadow_banned: !!isShadowBanned
+            });
+          } catch (apiErr) {
+            try {
+              await callSynapseAdminAPI("POST", `/_synapse/admin/v1/users/${encodeURIComponent(mxid)}/shadow_ban`, {
+                shadow_banned: !!isShadowBanned
+              });
+            } catch (apiErr2) {
+              try {
+                await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? 1 : 0, mxid]);
+              } catch (dbErr) {
+                try {
+                  await queryPostgres("UPDATE users SET shadow_banned = $1 WHERE name = $2", [isShadowBanned ? true : false, mxid]);
+                } catch (err) {}
+              }
+            }
+          }
+        }
+
         if (isErased !== undefined) {
           try {
             await callSynapseAdminAPI("POST", `/_matrix/client/unstable/admin/v1/deactivate/${encodeURIComponent(mxid)}`, {
@@ -2158,11 +2193,17 @@ app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(
             });
           } catch (apiErr) {
             try {
-              await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? 1 : 0, mxid]);
-            } catch (dbErr) {
+              await callSynapseAdminAPI("POST", `/_synapse/admin/v1/deactivate/${encodeURIComponent(mxid)}`, {
+                erase: !!isErased
+              });
+            } catch (apiErr2) {
               try {
-                await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? true : false, mxid]);
-              } catch (err) {}
+                await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? 1 : 0, mxid]);
+              } catch (dbErr) {
+                try {
+                  await queryPostgres("UPDATE users SET erased = $1 WHERE name = $2", [isErased ? true : false, mxid]);
+                } catch (err) {}
+              }
             }
           }
         }
