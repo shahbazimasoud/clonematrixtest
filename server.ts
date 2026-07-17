@@ -1007,7 +1007,7 @@ app.delete("/api/users/:id", authenticateToken, checkPermission(["Owner", "Super
 // Matrix Users (the server-managed users)
 app.get("/api/matrix/users", authenticateToken, async (req, res) => {
   try {
-    const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v2/users");
+    const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v2/users?deactivated=true");
     if (apiRes && apiRes.users && Array.isArray(apiRes.users)) {
       const mappedUsers = apiRes.users.map((u: any) => {
         const username = u.name.split(":")[0].replace("@", "") || "unknown";
@@ -1609,18 +1609,22 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
 
           const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
           if (localUser) {
-            if (!fetchedViaApi) {
-              if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
-              if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
-              if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
-              if (localUser.isErased !== undefined) isErased = localUser.isErased;
-            }
+            if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
+            if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
+            if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
+            if (localUser.isErased !== undefined) isErased = localUser.isErased;
             if (localUser.accountData) {
               accountData = {
                 ...accountData,
                 ...localUser.accountData
               };
             }
+          }
+          if (apiUser) {
+            if (apiUser.suspended !== undefined) isSuspended = !!apiUser.suspended;
+            if (apiUser.shadow_banned !== undefined) isShadowBanned = !!apiUser.shadow_banned;
+            if (apiUser.locked !== undefined) isLocked = !!apiUser.locked;
+            if (apiUser.erased !== undefined) isErased = !!apiUser.erased;
           }
         }
       } catch (err: any) {
@@ -2101,9 +2105,9 @@ app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(
 
     let updatedOnRemote = false;
 
-    // 1. Remote Synapse Admin API / PostgreSQL Update
+    // 1. Remote/Local Synapse Admin API / PostgreSQL Update
     const activeConn = getActiveConnection();
-    if (activeConn && activeConn.id !== "local") {
+    if (activeConn) {
       try {
         const apiUpdateBody: any = {};
         if (displayName !== undefined) apiUpdateBody.displayname = displayName;
@@ -2263,7 +2267,7 @@ app.post("/api/matrix/users/password", authenticateToken, checkPermission(["Owne
   let updatedOnRemote = false;
   const activeConn = getActiveConnection();
 
-  if (activeConn && activeConn.id !== "local") {
+  if (activeConn) {
     try {
       // 1. Primary: Synapse Admin API
       try {
@@ -2312,7 +2316,7 @@ app.post("/api/matrix/users/emails/add", authenticateToken, checkPermission(["Ow
   if (!mxid || !email) return res.status(400).json({ error: "MXID and email are required" });
 
   const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
+  if (activeConn) {
     try {
       const validatedAt = Math.floor(Date.now() / 1000);
       const addedAt = Math.floor(Date.now() / 1000);
@@ -2352,7 +2356,7 @@ app.post("/api/matrix/users/emails/delete", authenticateToken, checkPermission([
   if (!mxid || !email) return res.status(400).json({ error: "MXID and email are required" });
 
   const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
+  if (activeConn) {
     try {
       await queryPostgres(
         "DELETE FROM user_threepids WHERE user_id = $1 AND medium = 'email' AND address = $2",
@@ -2389,7 +2393,7 @@ app.post("/api/matrix/users/phones/add", authenticateToken, checkPermission(["Ow
   if (!mxid || !phone) return res.status(400).json({ error: "MXID and phone are required" });
 
   const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
+  if (activeConn) {
     try {
       const validatedAt = Math.floor(Date.now() / 1000);
       const addedAt = Math.floor(Date.now() / 1000);
@@ -2429,7 +2433,7 @@ app.post("/api/matrix/users/phones/delete", authenticateToken, checkPermission([
   if (!mxid || !phone) return res.status(400).json({ error: "MXID and phone are required" });
 
   const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
+  if (activeConn) {
     try {
       await queryPostgres(
         "DELETE FROM user_threepids WHERE user_id = $1 AND medium = 'msisdn' AND address = $2",
@@ -2467,7 +2471,7 @@ app.post("/api/matrix/users/devices/delete", authenticateToken, checkPermission(
   if (!mxid || !deviceId) return res.status(400).json({ error: "MXID and device ID are required" });
 
   const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
+  if (activeConn) {
     try {
       // 1. Try Synapse Admin API device delete
       try {
@@ -3251,32 +3255,38 @@ function parseLdapFromYaml(yamlText: string): LDAPConfig {
         }
 
         const cleanLine = line.trim();
-        if (cleanLine.startsWith("enabled:")) {
-          ldap.enabled = cleanLine.split(":")[1].trim() === "true";
-        } else if (cleanLine.startsWith("uri:")) {
-          ldap.uri = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-        } else if (cleanLine.startsWith("base:")) {
-          ldap.base = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-        } else if (cleanLine.startsWith("mode:")) {
-          const val = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-          ldap.mode = (val === "simple" ? "simple" : "search");
-        } else if (cleanLine.startsWith("start_tls:")) {
-          ldap.start_tls = cleanLine.split(":")[1].trim() === "true";
-        } else if (cleanLine.startsWith("bind_dn:")) {
-          ldap.bind_dn = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-        } else if (cleanLine.startsWith("bind_password:")) {
-          ldap.bind_password = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-        } else if (cleanLine.startsWith("active_directory:")) {
-          ldap.active_directory = cleanLine.split(":")[1].trim() === "true";
-        } else if (cleanLine.startsWith("attributes:")) {
-          attributeScan = true;
-        } else if (attributeScan) {
-          if (cleanLine.startsWith("uid:")) {
-            ldap.uid_attr = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-          } else if (cleanLine.startsWith("mail:")) {
-            ldap.mail_attr = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-          } else if (cleanLine.startsWith("name:")) {
-            ldap.name_attr = cleanLine.split(":")[1].trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+        const colonIndex = cleanLine.indexOf(":");
+        if (colonIndex !== -1) {
+          const key = cleanLine.substring(0, colonIndex).trim();
+          const val = cleanLine.substring(colonIndex + 1).trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+
+          if (key === "enabled") {
+            ldap.enabled = val === "true";
+          } else if (key === "uri") {
+            ldap.uri = val;
+          } else if (key === "base") {
+            // Support both direct string base: "ou=users..." and yaml list formats if present
+            ldap.base = val.replace(/^\[|\]$/g, '').replace(/^"|"$/g, '').replace(/^'|'$/g, '').trim();
+          } else if (key === "mode") {
+            ldap.mode = (val === "simple" ? "simple" : "search");
+          } else if (key === "start_tls") {
+            ldap.start_tls = val === "true";
+          } else if (key === "bind_dn") {
+            ldap.bind_dn = val;
+          } else if (key === "bind_password") {
+            ldap.bind_password = val;
+          } else if (key === "active_directory") {
+            ldap.active_directory = val === "true";
+          } else if (key === "attributes") {
+            attributeScan = true;
+          } else if (attributeScan) {
+            if (key === "uid") {
+              ldap.uid_attr = val;
+            } else if (key === "mail") {
+              ldap.mail_attr = val;
+            } else if (key === "name") {
+              ldap.name_attr = val;
+            }
           }
         }
       }

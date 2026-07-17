@@ -682,6 +682,12 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid) return;
 
+    const confirmMsg = isRtl
+      ? `آیا از خروج کاربر از این دستگاه (${deviceId}) اطمینان دارید؟`
+      : `Are you sure you want to log out the user from this device (${deviceId})?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
     // Optimistically remove device from UI list
     setSelectedUserDetails((prev: any) => {
       if (!prev) return prev;
