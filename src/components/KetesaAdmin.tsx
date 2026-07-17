@@ -429,6 +429,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [userRateLimits, setUserRateLimits] = useState({ perSecond: '2', burstCount: '10' });
   const [userAccountDataText, setUserAccountDataText] = useState('{}');
   const [userPreferences, setUserPreferences] = useState<any>({});
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
 
   useEffect(() => {
     if (selectedUserDetails && selectedUserDetails.accountData) {
@@ -802,6 +803,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid) return;
 
+    setIsSavingPreferences(true);
     try {
       const currentAccountData = selectedUserDetails?.accountData || {};
       const updatedAccountData = {
@@ -820,12 +822,14 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid, false, true);
+        await fetchUserDetails(selectedUserMxid, false, true);
       } else {
         showToast('error', t.errorAction);
       }
     } catch (err) {
       showToast('error', t.errorAction);
+    } finally {
+      setIsSavingPreferences(false);
     }
   };
 
@@ -4193,9 +4197,22 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                           </div>
                           <button
                             onClick={() => handleSavePreferences()}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors shadow-lg cursor-pointer"
+                            disabled={isSavingPreferences}
+                            className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors shadow-lg cursor-pointer flex items-center gap-2 ${
+                              isSavingPreferences ? 'opacity-70 cursor-not-allowed' : ''
+                            }`}
                           >
-                            {isRtl ? 'ذخیره تغییرات' : 'Save Preferences'}
+                            {isSavingPreferences && (
+                              <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                            )}
+                            <span>
+                              {isSavingPreferences 
+                                ? (isRtl ? 'در حال اعمال...' : 'Saving...') 
+                                : (isRtl ? 'ذخیره تغییرات' : 'Save Preferences')}
+                            </span>
                           </button>
                         </div>
 

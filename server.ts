@@ -1758,6 +1758,12 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
             if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
             if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
             if (localUser.isErased !== undefined) isErased = localUser.isErased;
+            if (localUser.accountData) {
+              accountData = {
+                ...accountData,
+                ...localUser.accountData
+              };
+            }
           }
         }
       }
@@ -1871,6 +1877,12 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
           if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
           if (localUser.isLocked !== undefined) isLocked = localUser.isLocked;
           if (localUser.isErased !== undefined) isErased = localUser.isErased;
+          if (localUser.accountData) {
+            accountData = {
+              ...accountData,
+              ...localUser.accountData
+            };
+          }
         }
       }
     }
@@ -2716,6 +2728,16 @@ app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["
   try {
     for (const [key, val] of Object.entries(accountData)) {
       await updateUserAccountData(mxid, key, val);
+      try {
+        await queryPostgres(
+          `INSERT INTO account_data (user_id, type, content)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (user_id, type) DO UPDATE SET content = $3`,
+          [mxid, key, JSON.stringify(val)]
+        );
+      } catch (pgErr: any) {
+        console.warn(`Direct PostgreSQL account_data write failed for ${mxid} -> ${key}:`, pgErr.message);
+      }
     }
   } catch (err: any) {
     console.error("Account data update error:", err.message);
