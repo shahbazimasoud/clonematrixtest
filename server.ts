@@ -1471,6 +1471,37 @@ async function updateUserAccountData(mxid: string, key: string, val: any): Promi
   }
 }
 
+async function resolveRoomParticipantNames(roomsList: any[], mxid: string): Promise<any[]> {
+  try {
+    return await Promise.all(roomsList.map(async (rm: any) => {
+      let rName = rm.name || rm.roomId || rm.room_id || "";
+      if (rName.startsWith('!')) {
+        try {
+          const otherMembers = await queryPostgres(`
+            SELECT rm.user_id, p.displayname
+            FROM room_memberships rm
+            LEFT JOIN profiles p ON rm.user_id = p.user_id
+            WHERE rm.room_id = $1 AND rm.membership = 'join' AND rm.user_id != $2
+            LIMIT 5
+          `, [rm.roomId || rm.room_id, mxid]);
+          if (otherMembers && otherMembers.length > 0) {
+            rName = otherMembers.map((m: any) => m.displayname || m.user_id.split(':')[0].replace('@', '')).join(', ');
+          }
+        } catch (e) {
+          console.warn("resolveRoomParticipantNames failed for room:", rm.roomId || rm.room_id, e.message);
+        }
+      }
+      return {
+        ...rm,
+        name: rName
+      };
+    }));
+  } catch (err) {
+    console.warn("resolveRoomParticipantNames global error:", err);
+    return roomsList;
+  }
+}
+
 app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
   const { mxid } = req.query;
   if (!mxid) return res.status(400).json({ error: "MXID is required" });
@@ -1588,6 +1619,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
                 }));
               }
             }
+            rooms = await resolveRoomParticipantNames(rooms, mxid.toString());
           } catch (roomsErr: any) {
             console.warn(`Could not fetch rooms via Admin API:`, roomsErr.message);
           }
@@ -1678,15 +1710,19 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
         // statements in one command.
         const results: any[][] = await Promise.all(queries.map(async (q) => {
           try {
-            if (activeConn.authType === "agent") {
-              const raw = await executeRemoteAgentTask(activeConn.id, "postgres_query", {
-                query: q.sql,
-                dbUser: activeConn.dbUser || "synapse_user",
-                dbName: activeConn.dbName || "synapse"
-              });
-              return cleanAndParseJSON(raw, []);
+            if (activeConn && activeConn.id !== "local") {
+              if (activeConn.authType === "agent") {
+                const raw = await executeRemoteAgentTask(activeConn.id, "postgres_query", {
+                  query: q.sql,
+                  dbUser: activeConn.dbUser || "synapse_user",
+                  dbName: activeConn.dbName || "synapse"
+                });
+                return cleanAndParseJSON(raw, []);
+              }
+              return await queryRemotePostgres(activeConn, q.sql, q.params || []);
+            } else {
+              return await queryPostgres(q.sql, q.params || []);
             }
-            return await queryRemotePostgres(activeConn, q.sql, q.params || []);
           } catch (queryErr: any) {
             console.warn(`Optional user-details query failed: ${queryErr.message || queryErr}`);
             return [];
@@ -1727,6 +1763,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
           powerLevel: userIsAdmin ? 100 : 0,
           role: rm.membership === 'join' ? (userIsAdmin ? "Administrator" : "Member") : "None"
         }));
+        rooms = await resolveRoomParticipantNames(rooms, mxid.toString());
 
         const mediaRows = results[5] || [];
         media = mediaRows.map((m: any) => ({
@@ -1844,6 +1881,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
             powerLevel: r.admin ? 100 : 0,
             role: rm.membership === 'join' ? (r.admin ? "Administrator" : "Member") : "None"
           }));
+          rooms = await resolveRoomParticipantNames(rooms, mxid.toString());
         } catch (rErr) {
           console.warn("Could not query room_memberships:", rErr);
         }
@@ -2473,11 +2511,19 @@ app.post("/api/matrix/users/devices/delete", authenticateToken, checkPermission(
   const activeConn = getActiveConnection();
   if (activeConn) {
     try {
-      // 1. Try Synapse Admin API device delete
+      // 1. Try Synapse Admin API device delete (multiple endpoints for safety)
       try {
-        await callSynapseAdminAPI("DELETE", `/_matrix/client/unstable/admin/v2/users/${encodeURIComponent(mxid)}/devices/${encodeURIComponent(deviceId)}`);
-      } catch (apiErr) {
-        await callSynapseAdminAPI("DELETE", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}/devices/${encodeURIComponent(deviceId)}`);
+        await callSynapseAdminAPI("DELETE", `/_synapse/admin/v2/users/${encodeURIComponent(mxid)}/devices/${encodeURIComponent(deviceId)}`);
+      } catch (err2) {
+        try {
+          await callSynapseAdminAPI("POST", `/_synapse/admin/v2/users/${encodeURIComponent(mxid)}/delete_devices`, { devices: [deviceId] });
+        } catch (err3) {
+          try {
+            await callSynapseAdminAPI("DELETE", `/_matrix/client/unstable/admin/v2/users/${encodeURIComponent(mxid)}/devices/${encodeURIComponent(deviceId)}`);
+          } catch (apiErr) {
+            await callSynapseAdminAPI("DELETE", `/_matrix/client/v1/admin/users/${encodeURIComponent(mxid)}/devices/${encodeURIComponent(deviceId)}`);
+          }
+        }
       }
       // 2. Also execute direct Postgres delete to be absolutely certain
       await queryPostgres("DELETE FROM devices WHERE user_id = $1 AND device_id = $2", [mxid, deviceId]);
@@ -3234,62 +3280,71 @@ function parseLdapFromYaml(yamlText: string): LDAPConfig {
     name_attr: "cn"
   };
 
-  // The module declaration in homeserver.yaml is the authoritative indicator.
-  // Do not infer an AD connection from UI defaults or an old panel-side file.
-  if (/module:\s*["']?ldap_auth_provider\.LdapAuthProviderModule["']?/.test(yamlText)) {
+  const match = yamlText.match(/module:\s*["']?ldap_auth_provider\.LdapAuthProviderModule["']?/);
+  if (match && match.index !== undefined) {
     ldap.enabled = true;
-    const lines = yamlText.split("\n");
-    let inLdapSection = false;
-    let attributeScan = false;
+    
+    const subText = yamlText.substring(match.index);
+    const nextBlockMatch = subText.match(/\n[A-Za-z_][A-Za-z0-9_]*:/);
+    const configSection = nextBlockMatch && nextBlockMatch.index !== undefined 
+      ? subText.substring(0, nextBlockMatch.index) 
+      : subText;
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.includes("ldap_auth_provider.LdapAuthProviderModule")) {
-        inLdapSection = true;
-        continue;
+    const getVal = (key: string): string | null => {
+      const reg = new RegExp(`^\\s*${key}\\s*:\\s*(.*)$`, "m");
+      const m = configSection.match(reg);
+      if (m) {
+        return m[1].split("#")[0].trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "").trim();
       }
+      return null;
+    };
 
-      if (inLdapSection) {
-        if (line.trim().length > 0 && !line.startsWith(" ") && !line.startsWith("-") && !line.startsWith("#")) {
-          break; 
+    const enabledVal = getVal("enabled");
+    if (enabledVal) ldap.enabled = enabledVal === "true";
+
+    const uriVal = getVal("uri");
+    if (uriVal) ldap.uri = uriVal;
+
+    const baseVal = getVal("base");
+    if (baseVal) {
+      ldap.base = baseVal.replace(/^\[|\]$/g, '').replace(/^"|"$/g, '').replace(/^'|'$/g, '').trim();
+    }
+
+    const modeVal = getVal("mode");
+    if (modeVal) ldap.mode = modeVal === "simple" ? "simple" : "search";
+
+    const startTlsVal = getVal("start_tls");
+    if (startTlsVal) ldap.start_tls = startTlsVal === "true";
+
+    const bindDnVal = getVal("bind_dn");
+    if (bindDnVal) ldap.bind_dn = bindDnVal;
+
+    const bindPasswordVal = getVal("bind_password");
+    if (bindPasswordVal) ldap.bind_password = bindPasswordVal;
+
+    const adVal = getVal("active_directory");
+    if (adVal) ldap.active_directory = adVal === "true";
+
+    const attrMatch = configSection.match(/attributes:\s*\n([\s\S]*?)(?=\n\s*[a-zA-Z_]+:|$)/);
+    if (attrMatch) {
+      const attrSection = attrMatch[1];
+      const getAttrVal = (key: string): string | null => {
+        const reg = new RegExp(`^\\s*${key}\\s*:\\s*(.*)$`, "m");
+        const m = attrSection.match(reg);
+        if (m) {
+          return m[1].split("#")[0].trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "").trim();
         }
+        return null;
+      };
 
-        const cleanLine = line.trim();
-        const colonIndex = cleanLine.indexOf(":");
-        if (colonIndex !== -1) {
-          const key = cleanLine.substring(0, colonIndex).trim();
-          const val = cleanLine.substring(colonIndex + 1).trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+      const uidVal = getAttrVal("uid");
+      if (uidVal) ldap.uid_attr = uidVal;
 
-          if (key === "enabled") {
-            ldap.enabled = val === "true";
-          } else if (key === "uri") {
-            ldap.uri = val;
-          } else if (key === "base") {
-            // Support both direct string base: "ou=users..." and yaml list formats if present
-            ldap.base = val.replace(/^\[|\]$/g, '').replace(/^"|"$/g, '').replace(/^'|'$/g, '').trim();
-          } else if (key === "mode") {
-            ldap.mode = (val === "simple" ? "simple" : "search");
-          } else if (key === "start_tls") {
-            ldap.start_tls = val === "true";
-          } else if (key === "bind_dn") {
-            ldap.bind_dn = val;
-          } else if (key === "bind_password") {
-            ldap.bind_password = val;
-          } else if (key === "active_directory") {
-            ldap.active_directory = val === "true";
-          } else if (key === "attributes") {
-            attributeScan = true;
-          } else if (attributeScan) {
-            if (key === "uid") {
-              ldap.uid_attr = val;
-            } else if (key === "mail") {
-              ldap.mail_attr = val;
-            } else if (key === "name") {
-              ldap.name_attr = val;
-            }
-          }
-        }
-      }
+      const mailVal = getAttrVal("mail");
+      if (mailVal) ldap.mail_attr = mailVal;
+
+      const nameVal = getAttrVal("name");
+      if (nameVal) ldap.name_attr = nameVal;
     }
   }
 
