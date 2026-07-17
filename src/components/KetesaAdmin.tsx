@@ -44,7 +44,8 @@ import {
   HardDriveUpload,
   Zap,
   Network,
-  Cpu
+  Cpu,
+  Settings
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -418,7 +419,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [selectedUserMxid, setSelectedUserMxid] = useState<string | null>(null);
   const [selectedUserDetails, setSelectedUserDetails] = useState<any | null>(null);
   const [userDetailsLoading, setUserDetailsLoading] = useState(false);
-  const [activeUserDetailTab, setActiveUserDetailTab] = useState<'user' | 'contact' | 'sso' | 'devices' | 'rooms' | 'media' | 'pushers' | 'limits' | 'account' | 'history'>('user');
+  const [activeUserDetailTab, setActiveUserDetailTab] = useState<'user' | 'contact' | 'sso' | 'devices' | 'rooms' | 'media' | 'pushers' | 'limits' | 'account' | 'history' | 'preferences'>('user');
   
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -427,6 +428,15 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [tempDisplayName, setTempDisplayName] = useState('');
   const [userRateLimits, setUserRateLimits] = useState({ perSecond: '2', burstCount: '10' });
   const [userAccountDataText, setUserAccountDataText] = useState('{}');
+  const [userPreferences, setUserPreferences] = useState<any>({});
+
+  useEffect(() => {
+    if (selectedUserDetails && selectedUserDetails.accountData) {
+      setUserPreferences(selectedUserDetails.accountData["im.vector.web.settings"] || {});
+    } else {
+      setUserPreferences({});
+    }
+  }, [selectedUserDetails]);
 
   // Chat/Messages states
   const [activeRoomChatId, setActiveRoomChatId] = useState<string | null>(null);
@@ -783,6 +793,38 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
         showToast('error', t.errorAction);
       }
     } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleSavePreferences = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!selectedUserMxid) return;
+
+    try {
+      const currentAccountData = selectedUserDetails?.accountData || {};
+      const updatedAccountData = {
+        ...currentAccountData,
+        "im.vector.web.settings": userPreferences
+      };
+
+      const res = await fetch('/api/matrix/users/account-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid: selectedUserMxid, accountData: updatedAccountData })
+      });
+
+      if (res.ok) {
+        showToast('success', t.successAction);
+        fetchUserDetails(selectedUserMxid, false, true);
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (err) {
       showToast('error', t.errorAction);
     }
   };
@@ -3338,6 +3380,20 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       <History className="h-3.5 w-3.5" />
                       <span>{isRtl ? 'لاگ‌های گفتگو' : 'Chat & History'}</span>
                     </button>
+
+                    <button
+                      onClick={() => setActiveUserDetailTab('preferences')}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 shrink-0 ${
+                        activeUserDetailTab === 'preferences' 
+                          ? 'bg-indigo-600 text-white shadow' 
+                          : isLightMode 
+                            ? 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-800' 
+                            : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                      }`}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      <span>{isRtl ? 'ترجیحات کاربر' : 'Preferences'}</span>
+                    </button>
                   </div>
 
                   {/* Right Tab Content area */}
@@ -3512,6 +3568,50 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                                   {isRtl 
                                     ? 'جلوگیری از تغییر رمز عبور کاربر از طریق برنامه‌های ماتریکس (کلاینت ساید).' 
                                     : 'Prevent the user from changing their account password from Matrix clients.'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Disable Client-Side Account Deactivation flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.disableClientAccountDeactivation}
+                                onChange={(e) => handleUpdateUserParams({ disableClientAccountDeactivation: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>
+                                  {isRtl ? 'غیرفعال‌سازی حذف حساب از کلاینت' : 'Disable Client-Side Account Deactivation'}
+                                </span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  {isRtl 
+                                    ? 'جلوگیری از دی‌اکتیو یا غیرفعال‌سازی حساب توسط خود کاربر از داخل کلاینت.' 
+                                    : 'Prevent the user from deactivating their account from Matrix clients.'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Disable Client-Side Avatar Change flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.disableClientAvatarChange}
+                                onChange={(e) => handleUpdateUserParams({ disableClientAvatarChange: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>
+                                  {isRtl ? 'غیرفعال‌سازی تغییر عکس پروفایل' : 'Disable Client-Side Avatar Change'}
+                                </span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  {isRtl 
+                                    ? 'جلوگیری از تغییر عکس پروفایل یا آواتار کاربر از داخل برنامه‌های ماتریکس.' 
+                                    : 'Prevent the user from changing their profile picture/avatar from Matrix clients.'}
                                 </span>
                               </div>
                             </div>
@@ -4072,6 +4172,194 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               </div>
                             ))
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 11: USER PREFERENCES (im.vector.web.settings) */}
+                    {activeUserDetailTab === 'preferences' && (
+                      <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                              <Settings className="h-4 w-4" />
+                              <span>{isRtl ? 'ترجیحات کلاینت المنت (ترجیحات سیستم)' : 'Element Web Preferences (Client Configuration)'}</span>
+                            </h4>
+                            <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                              {isRtl 
+                                ? 'کنترل مستقیم تنظیمات ظاهری، اعلان‌ها و ویرایشگر کاربر در برنامه‌های کلاینت (Element Web / SchildiChat).' 
+                                : 'Directly configure timeline, notification, editor, and visual preferences for the client applications.'}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleSavePreferences()}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors shadow-lg cursor-pointer"
+                          >
+                            {isRtl ? 'ذخیره تغییرات' : 'Save Preferences'}
+                          </button>
+                        </div>
+
+                        <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2">
+                          {[
+                            {
+                              titleEn: "Room List",
+                              titleFa: "لیست اتاق‌ها",
+                              items: [
+                                { key: "showPreviews", labelEn: "Show message preview", labelFa: "نمایش پیش‌نمایش پیام", default: true }
+                              ]
+                            },
+                            {
+                              titleEn: "Spaces",
+                              titleFa: "فضاهای کاری",
+                              items: [
+                                { key: "spacesShowAllRooms", labelEn: "Show all rooms in Home", labelFa: "نمایش همه اتاق‌ها در زبانه خانه (Home)", default: false }
+                              ]
+                            },
+                            {
+                              titleEn: "Images, GIFs and Videos",
+                              titleFa: "تصاویر، فایل‌های متحرک و ویدیوها",
+                              items: [
+                                { key: "autoplayGifs", labelEn: "Autoplay GIFs", labelFa: "پخش خودکار تصاویر متحرک (GIF)", default: true },
+                                { key: "autoplayVideo", labelEn: "Autoplay videos", labelFa: "پخش خودکار ویدیوها", default: true }
+                              ]
+                            },
+                            {
+                              titleEn: "Presence & Activity",
+                              titleFa: "وضعیت حضور و فعالیت",
+                              items: [
+                                { key: "sharePresence", labelEn: "Share your activity and status with others", labelFa: "اشتراک‌گذاری فعالیت و وضعیت حضور با دیگران", default: true },
+                                { key: "sendReadReceipts", labelEn: "Send read receipts", labelFa: "ارسال رسید خوانده شدن پیام‌ها", default: true },
+                                { key: "sendTypingNotifications", labelEn: "Send typing notifications", labelFa: "ارسال اعلان در حال نوشتن (تایپ)", default: true }
+                              ]
+                            },
+                            {
+                              titleEn: "Composer & Input",
+                              titleFa: "بخش نوشتن و ابزارهای ویرایشگر",
+                              items: [
+                                { key: "autoReplaceEmoji", labelEn: "Automatically replace plain text Emoji", labelFa: "جایگزینی خودکار شکلک‌های متنی با اموجی گرافیکی", default: true },
+                                { key: "enableMarkdown", labelEn: "Enable Markdown formatting", labelFa: "فعال‌سازی قالب‌بندی مارک‌داون (Markdown)", default: true },
+                                { key: "enableEmojiSuggestions", labelEn: "Enable Emoji suggestions while typing", labelFa: "نمایش پیشنهادهای اموجی هنگام تایپ", default: true },
+                                { key: "ctrlEnterToSend", labelEn: "Use Ctrl + Enter to send a message", labelFa: "استفاده از کلید ترکیبی Ctrl + Enter برای ارسال پیام", default: false },
+                                { key: "surroundSelectedText", labelEn: "Surround selected text when typing special characters", labelFa: "احاطه کردن متن انتخاب شده هنگام فشردن کاراکترهای خاص", default: true },
+                                { key: "showStickersButton", labelEn: "Show stickers button", labelFa: "نمایش دکمه ارسال استیکر", default: true },
+                                { key: "insertTrailingColon", labelEn: "Insert a trailing colon after user mentions at the start of a message", labelFa: "درج دونقطه بعد از منشن کردن نام کاربری در ابتدای پیام", default: true }
+                              ]
+                            },
+                            {
+                              titleEn: "Code Blocks",
+                              titleFa: "بخش‌های نمایش کد",
+                              items: [
+                                { key: "enableSyntaxHighlighting", labelEn: "Enable automatic language detection for syntax highlighting", labelFa: "تشخیص خودکار و رنگ‌آمیزی ساختار کدهای برنامه‌نویسی", default: true },
+                                { key: "expandCodeBlocks", labelEn: "Expand code blocks by default", labelFa: "بسط دادن کامل کادر‌های کد به صورت پیش‌فرض", default: false },
+                                { key: "showLineNumbers", labelEn: "Show line numbers in code blocks", labelFa: "نمایش شماره خط در بلوک‌های کد", default: true }
+                              ]
+                            },
+                            {
+                              titleEn: "Link Previews",
+                              titleFa: "پیش‌نمایش آدرس‌ها و لینک‌ها",
+                              items: [
+                                { key: "showLinkPreviews", labelEn: "Enable link previews", labelFa: "فعال‌سازی نمایش تصاویر و متون پیش‌نمایش لینک‌ها", default: true },
+                                { key: "showLinkPreviewsInEncryptedRooms", labelEn: "Enable link previews in encrypted rooms", labelFa: "نمایش پیش‌نمایش لینک در اتاق‌های رمزگذاری‌شده", default: false }
+                              ]
+                            },
+                            {
+                              titleEn: "Timeline Events",
+                              titleFa: "رویدادهای زمانی گفتگو (تایم‌لاین)",
+                              items: [
+                                { key: "showTimelineTypingNotifications", labelEn: "Show typing notifications in timeline", labelFa: "نمایش وضعیت تایپ سایر کاربران در تایم‌لاین", default: true },
+                                { key: "showPlaceholderRemoved", labelEn: "Show a placeholder for removed messages", labelFa: "نمایش جای‌نگهدار برای پیام‌های حذف شده دیگران", default: true },
+                                { key: "showReadReceipts", labelEn: "Show read receipts sent by other users", labelFa: "نمایش رسید خوانده شدن سایر کاربران", default: true },
+                                { key: "showJoinLeave", labelEn: "Show join/leave messages", labelFa: "نمایش اعلان ورود و خروج اعضا (بدون تاثیر بر دعوت/حذف)", default: true },
+                                { key: "showDisplayNameChanges", labelEn: "Show display name changes", labelFa: "نمایش تغییر نام نمایشی کاربران", default: true },
+                                { key: "showChatEffects", labelEn: "Show chat effects (animations for confetti etc.)", labelFa: "نمایش جلوه‌های ویژه متحرک چت (مانند نقل‌افشانی یا بادکنک)", default: true },
+                                { key: "showProfilePictureChanges", labelEn: "Show profile picture changes", labelFa: "نمایش تغییر عکس پروفایل کاربران", default: true },
+                                { key: "showAvatarsInMentions", labelEn: "Show avatars in user, room and event mentions", labelFa: "نمایش تصویر مینیاتوری در بخش‌های منشن", default: true },
+                                { key: "enableBigEmoji", labelEn: "Enable big emoji in chat for standalone icons", labelFa: "بزرگ‌نمایی اموجی‌ها در صورت ارسال تکی", default: true },
+                                { key: "jumpToBottomOnSend", labelEn: "Jump to the bottom of the timeline when you send a message", labelFa: "پرش خودکار به پایین گفتگو هنگام ارسال پیام جدید", default: true },
+                                { key: "showCurrentProfileInHistory", labelEn: "Show current profile picture and name for users in message history", labelFa: "نمایش آخرین آواتار و نام فعلی کاربران در کل تاریخچه پیام‌ها", default: true }
+                              ]
+                            },
+                            {
+                              titleEn: "Moderation and Safety",
+                              titleFa: "مدیریت و امنیت محتوا",
+                              items: [
+                                { key: "hideAvatarsOfRoom", labelEn: "Hide avatars of room and inviter", labelFa: "مخفی‌سازی عکس اتاق‌ها و دعوت‌کننده‌ها", default: false }
+                              ]
+                            },
+                            {
+                              titleEn: "Room Directory",
+                              titleFa: "دایرکتوری عمومی اتاق‌ها",
+                              items: [
+                                { key: "showNsfw", labelEn: "Show NSFW content", labelFa: "نمایش محتوای طبقه‌بندی شده بزرگسالان (NSFW)", default: false }
+                              ]
+                            }
+                          ].map((sec, sIdx) => (
+                            <div key={sIdx} className={`p-4 border rounded-xl space-y-3.5 ${
+                              isLightMode ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-white/[0.02] border-white/5'
+                            }`}>
+                              <h5 className={`font-semibold text-xs uppercase tracking-wider font-sans border-b pb-2 ${
+                                isLightMode ? 'text-slate-700 border-slate-200' : 'text-gray-300 border-white/5'
+                              }`}>
+                                {isRtl ? sec.titleFa : sec.titleEn}
+                              </h5>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {sec.items.map((item) => {
+                                  const currentVal = userPreferences[item.key] !== undefined ? userPreferences[item.key] : item.default;
+                                  return (
+                                    <div key={item.key} className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!currentVal}
+                                        onChange={(e) => {
+                                          setUserPreferences((prev: any) => ({
+                                            ...prev,
+                                            [item.key]: e.target.checked
+                                          }));
+                                        }}
+                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                      />
+                                      <span className={`text-xs ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                                        {isRtl ? item.labelFa : item.labelEn}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Media in timeline selection */}
+                          <div className={`p-4 border rounded-xl space-y-3.5 ${
+                            isLightMode ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-white/[0.02] border-white/5'
+                          }`}>
+                            <h5 className={`font-semibold text-xs uppercase tracking-wider font-sans border-b pb-2 ${
+                              isLightMode ? 'text-slate-700 border-slate-200' : 'text-gray-300 border-white/5'
+                            }`}>
+                              {isRtl ? 'بصری‌سازی رسانه‌ها' : 'Media Visualization'}
+                            </h5>
+                            <div className="space-y-1.5 max-w-sm">
+                              <label className={`block text-xs font-sans ${isLightMode ? 'text-slate-600' : 'text-gray-300'}`}>
+                                {isRtl ? 'نمایش رسانه‌ها در محور زمانی (Timeline)' : 'Show media in timeline'}
+                              </label>
+                              <select
+                                value={userPreferences["showMediaInTimeline"] || "always_show"}
+                                onChange={(e) => {
+                                  setUserPreferences((prev: any) => ({
+                                    ...prev,
+                                    "showMediaInTimeline": e.target.value
+                                  }));
+                                }}
+                                className={`w-full border rounded-lg p-2 outline-none text-xs transition-colors ${
+                                  isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-black/40 border-white/5 text-gray-200'
+                                }`}
+                              >
+                                <option value="always_show">{isRtl ? 'همیشه نمایش داده شود' : 'Always show'}</option>
+                                <option value="private_rooms">{isRtl ? 'فقط در اتاق‌های خصوصی' : 'In private rooms'}</option>
+                                <option value="always_hide">{isRtl ? 'همیشه مخفی بماند' : 'Always hide'}</option>
+                              </select>
+                            </div>
+                          </div>
+
                         </div>
                       </div>
                     )}

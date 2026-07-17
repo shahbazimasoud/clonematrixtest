@@ -337,8 +337,8 @@ server {
     ssl_certificate $CERT_DIR/fullchain.pem;
     ssl_certificate_key $CERT_DIR/privkey.pem;
 
-    # Intercept password changes to control panel (port 3000) for security enforcement
-    location ~ ^/_matrix/client/(v3|r0)/account/password$ {
+    # Intercept password, deactivate, and avatar_url changes to control panel (port 3000) for security enforcement
+    location ~ ^/_matrix/client/(v3|r0)/(account/password|account/deactivate|profile/[^/]+/avatar_url)$ {
         proxy_pass http://localhost:3000;
         proxy_set_header X-Forwarded-For \$remote_addr;
         proxy_set_header X-Forwarded-Proto \$scheme;
