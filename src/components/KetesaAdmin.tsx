@@ -3494,6 +3494,28 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               </div>
                             </div>
 
+                            {/* Disable Client-Side Password Change flag */}
+                            <div className={`p-4 border rounded-xl flex items-start gap-3 ${
+                              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/20 border-white/5'
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedUserDetails.disableClientPasswordChange}
+                                onChange={(e) => handleUpdateUserParams({ disableClientPasswordChange: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                              />
+                              <div>
+                                <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>
+                                  {isRtl ? 'غیرفعال‌سازی تغییر رمز از کلاینت' : 'Disable Client-Side Password Change'}
+                                </span>
+                                <span className={`block text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                                  {isRtl 
+                                    ? 'جلوگیری از تغییر رمز عبور کاربر از طریق برنامه‌های ماتریکس (کلاینت ساید).' 
+                                    : 'Prevent the user from changing their account password from Matrix clients.'}
+                                </span>
+                              </div>
+                            </div>
+
                             {/* Server Administrator flag */}
                             <div className={`p-4 border rounded-xl flex items-start gap-3 ${
                               isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/20 border-white/5'

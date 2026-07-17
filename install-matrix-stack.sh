@@ -337,6 +337,15 @@ server {
     ssl_certificate $CERT_DIR/fullchain.pem;
     ssl_certificate_key $CERT_DIR/privkey.pem;
 
+    # Intercept password changes to control panel (port 3000) for security enforcement
+    location ~ ^/_matrix/client/(v3|r0)/account/password$ {
+        proxy_pass http://localhost:3000;
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host \$host;
+        client_max_body_size 50M;
+    }
+
     location / {
         proxy_pass http://localhost:8008;
         proxy_set_header X-Forwarded-For \$remote_addr;

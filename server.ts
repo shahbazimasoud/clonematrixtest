@@ -537,6 +537,91 @@ function checkPermission(requiredRoles: string[]) {
 // -------------------------------------------------------------
 app.use(express.json());
 
+// Interceptor to block client-side password changes if configured
+app.post([
+  "/_matrix/client/v3/account/password",
+  "/_matrix/client/r0/account/password"
+], async (req, res) => {
+  let token = "";
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  } else if (req.query.access_token) {
+    token = req.query.access_token as string;
+  }
+
+  if (!token) {
+    return res.status(401).json({ errcode: "M_UNAUTHORIZED", error: "Missing access token" });
+  }
+
+  try {
+    const activeConn = getActiveConnection();
+    const connAny = activeConn as any;
+    const port = connAny?.apiPort || 8008;
+    const apiBaseUrl = connAny?.apiBaseUrl || `http://localhost:${port}`;
+    const url = `${apiBaseUrl}/_matrix/client/v3/user/whoami`;
+    const curlCmd = `curl -s -X GET -H "Authorization: Bearer ${token}" "${url}"`;
+
+    let whoamiResRaw = "";
+    if (activeConn && activeConn.id !== "local") {
+      if (activeConn.authType === "agent") {
+        whoamiResRaw = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+      } else {
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        whoamiResRaw = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+      }
+    } else {
+      try {
+        whoamiResRaw = execSync(curlCmd).toString();
+      } catch (err) {
+        whoamiResRaw = "{}";
+      }
+    }
+
+    const whoamiData = cleanAndParseJSON(whoamiResRaw, {});
+    const user_id = whoamiData.user_id;
+
+    if (user_id) {
+      const db = readDb();
+      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === user_id);
+      if (localUser && localUser.disableClientPasswordChange) {
+        return res.status(403).json({
+          errcode: "M_FORBIDDEN",
+          error: "تغییر رمز عبور از کلاینت برای حساب کاربری شما توسط مدیر سیستم غیرفعال شده است. / Password change is disabled for your account by your administrator."
+        });
+      }
+    }
+
+    // Forward the POST request to Synapse
+    const forwardUrl = `${apiBaseUrl}${req.path}`;
+    const forwardHeaders = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
+    const forwardData = `-d '${JSON.stringify(req.body).replace(/'/g, "'\\''")}'`;
+    const forwardCurlCmd = `curl -s -X POST ${forwardHeaders} ${forwardData} "${forwardUrl}"`;
+
+    let forwardResRaw = "";
+    if (activeConn && activeConn.id !== "local") {
+      if (activeConn.authType === "agent") {
+        forwardResRaw = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: forwardCurlCmd });
+      } else {
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        forwardResRaw = await executeSSHCommand(activeConn, `${sudoPrefix}${forwardCurlCmd}`);
+      }
+    } else {
+      try {
+        forwardResRaw = execSync(forwardCurlCmd).toString();
+      } catch (err: any) {
+        forwardResRaw = JSON.stringify({ error: "Failed to connect to homeserver", message: err.message });
+      }
+    }
+
+    const forwardResult = cleanAndParseJSON(forwardResRaw, {});
+    res.json(forwardResult);
+  } catch (err: any) {
+    console.error("Password change intercept error:", err);
+    res.status(500).json({ error: "Internal server error in password change interceptor", message: err.message });
+  }
+});
+
 // Auth routes
 app.post("/api/auth/login", (req, res) => {
   const { username, password } = req.body;
@@ -1684,6 +1769,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
         isShadowBanned,
         isLocked,
         isErased,
+        disableClientPasswordChange: (db.matrixUsers || []).find((u: any) => u.mxid === r.mxid)?.disableClientPasswordChange || false,
         createdAt: new Date(r.creation_ts * (r.creation_ts > 9999999999 ? 1 : 1000)).toISOString(),
         userType: r.user_type || (r.admin ? "admin" : "normal"),
         emails: emails.length > 0 ? emails : [`${username}@matrix.kheilisabz.local`],
@@ -1794,6 +1880,10 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
     user.isErased = false;
     updated = true;
   }
+  if (user.disableClientPasswordChange === undefined) {
+    user.disableClientPasswordChange = false;
+    updated = true;
+  }
 
   // Populate dynamic memberships history if missing
   if (!user.memberships) {
@@ -1844,7 +1934,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
 // Save updated user parameters (Suspended, Shadow Banned, Locked, GDPR Erased, Admin, UserType)
 app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
   try {
-    const { mxid, isSuspended, isShadowBanned, isLocked, isErased, isAdmin, userType, displayName } = req.body;
+    const { mxid, isSuspended, isShadowBanned, isLocked, isErased, isAdmin, userType, displayName, disableClientPasswordChange } = req.body;
     if (!mxid) return res.status(400).json({ error: "MXID is required" });
 
     let updatedOnRemote = false;
@@ -1952,6 +2042,7 @@ app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(
     if (isAdmin !== undefined) user.isAdmin = !!isAdmin;
     if (userType !== undefined) user.userType = userType;
     if (displayName !== undefined) user.displayName = displayName;
+    if (disableClientPasswordChange !== undefined) user.disableClientPasswordChange = !!disableClientPasswordChange;
     writeDb(db);
 
     if (!db.auditLogs) db.auditLogs = [];

@@ -54,6 +54,7 @@ export interface MatrixUser {
   isDeactivated: boolean;
   displayName?: string;
   avatarUrl?: string;
+  disableClientPasswordChange?: boolean;
 }
 
 export interface RoomMember {
