@@ -121,7 +121,7 @@ done
 # 2. System Dependency Installation
 # ------------------------------------------------------------------------------
 log_step "Updating local package list..."
-apt-get update -y
+apt-get update -y || log_warning "Some package repositories could not be updated (e.g. offline or forbidden). Continuing with remaining catalogs..."
 
 log_step "Installing general system tools (git, curl, build-essential, python3, pip, venv)..."
 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git curl build-essential python3 python3-pip python3-venv python3-dev

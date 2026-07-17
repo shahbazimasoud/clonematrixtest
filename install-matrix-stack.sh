@@ -59,7 +59,7 @@ INSTALL_NGINX="${INSTALL_NGINX:-true}"
 
 # Ensure system package index is updated
 log_step "Updating local package catalogs..."
-apt-get update -y
+apt-get update -y || log_warning "Some package repositories could not be updated (e.g. offline or forbidden). Continuing with remaining catalogs..."
 
 # ------------------------------------------------------------------------------
 # 1. PostgreSQL Database Server Setup
@@ -95,7 +95,7 @@ if [ "$INSTALL_SYNAPSE" = "true" ]; then
   wget -O /usr/share/keyrings/matrix-org-archive-keyring.gpg https://packages.matrix.org/debian/matrix-org-archive-keyring.gpg || true
   echo "deb [signed-by=/usr/share/keyrings/matrix-org-archive-keyring.gpg] https://packages.matrix.org/debian/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/matrix-org.list
   
-  apt-get update -y
+  apt-get update -y || log_warning "Some package repositories could not be updated (e.g. offline or forbidden). Continuing with remaining catalogs..."
   
   log_info "Installing Matrix Synapse packages..."
   # Preseed Synapse domain answers to skip interactive prompts
