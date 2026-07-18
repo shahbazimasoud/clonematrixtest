@@ -72,6 +72,9 @@ const faTranslations = {
   adminUsers: "مدیران",
   activeUsers: "فعال",
   deactivatedUsers: "غیرفعال",
+  lockedUsers: "قفل شده",
+  suspendedUsers: "معلق",
+  shadowBannedUsers: "مسدود سایه",
   addUserBtn: "ثبت‌نام کاربر جدید",
   username: "نام کاربری",
   mxidLabel: "شناسه ماتریکس (MXID)",
@@ -177,6 +180,9 @@ const enTranslations = {
   adminUsers: "Synapse Admins",
   activeUsers: "Active",
   deactivatedUsers: "Deactivated",
+  lockedUsers: "Locked",
+  suspendedUsers: "Suspended",
+  shadowBannedUsers: "Shadow Banned",
   addUserBtn: "Register New User",
   username: "Username",
   mxidLabel: "Matrix ID (MXID)",
@@ -386,7 +392,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   // Search/Filter states
   const [userSearch, setUserSearch] = useState('');
-  const [userFilter, setUserFilter] = useState<'all' | 'admins' | 'active' | 'deactivated'>('all');
+  const [userFilter, setUserFilter] = useState<'all' | 'admins' | 'active' | 'deactivated' | 'locked' | 'suspended' | 'shadow_banned'>('all');
 
   const [roomSearch, setRoomSearch] = useState('');
   const [roomFilter, setRoomFilter] = useState<'all' | 'public' | 'private' | 'federated' | 'local'>('all');
@@ -1483,6 +1489,9 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (userFilter === 'admins') return u.isAdmin;
     if (userFilter === 'active') return !u.isDeactivated;
     if (userFilter === 'deactivated') return u.isDeactivated;
+    if (userFilter === 'locked') return !!u.isLocked;
+    if (userFilter === 'suspended') return !!u.isSuspended;
+    if (userFilter === 'shadow_banned') return !!u.isShadowBanned;
     return true;
   });
 
@@ -1700,10 +1709,10 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                   />
                 </div>
 
-                <div className={`flex p-0.5 rounded-lg border text-xs font-medium transition-all duration-300 ${
+                <div className={`flex flex-wrap p-0.5 rounded-lg border text-xs font-medium transition-all duration-300 ${
                   isLightMode ? 'bg-slate-100 border-slate-200' : 'bg-black/40 border-white/5'
                 }`}>
-                  {(['all', 'admins', 'active', 'deactivated'] as const).map(f => (
+                  {(['all', 'admins', 'active', 'deactivated', 'locked', 'suspended', 'shadow_banned'] as const).map(f => (
                     <button
                       key={f}
                       onClick={() => setUserFilter(f)}
@@ -1721,6 +1730,9 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       {f === 'admins' && t.adminUsers}
                       {f === 'active' && t.activeUsers}
                       {f === 'deactivated' && t.deactivatedUsers}
+                      {f === 'locked' && (t as any).lockedUsers}
+                      {f === 'suspended' && (t as any).suspendedUsers}
+                      {f === 'shadow_banned' && (t as any).shadowBannedUsers}
                     </button>
                   ))}
                 </div>
@@ -1807,17 +1819,59 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                             </div>
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
-                              u.isDeactivated 
-                                ? isLightMode
-                                  ? 'bg-red-50 text-red-600 border border-red-100'
-                                  : 'bg-red-500/10 text-red-400 border border-red-500/20' 
-                                : isLightMode
-                                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            }`}>
-                              {u.isDeactivated ? t.userStatusDeactivated : t.userStatusActive}
-                            </span>
+                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
+                                u.isDeactivated 
+                                  ? isLightMode
+                                    ? 'bg-red-50 text-red-600 border border-red-100'
+                                    : 'bg-red-500/10 text-red-400 border border-red-500/20' 
+                                  : isLightMode
+                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              }`}>
+                                {u.isDeactivated ? t.userStatusDeactivated : t.userStatusActive}
+                              </span>
+
+                              {u.isLocked && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
+                                  isLightMode
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-amber-500/15 text-amber-300 border border-amber-500/20'
+                                }`}>
+                                  {isRtl ? 'قفل شده' : 'Locked'}
+                                </span>
+                              )}
+
+                              {u.isSuspended && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
+                                  isLightMode
+                                    ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                    : 'bg-orange-500/15 text-orange-300 border border-orange-500/20'
+                                }`}>
+                                  {isRtl ? 'معلق' : 'Suspended'}
+                                </span>
+                              )}
+
+                              {u.isShadowBanned && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
+                                  isLightMode
+                                    ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                    : 'bg-purple-500/15 text-purple-300 border border-purple-500/20'
+                                }`}>
+                                  {isRtl ? 'مسدود سایه' : 'Shadow'}
+                                </span>
+                              )}
+
+                              {u.isErased && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
+                                  isLightMode
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-rose-500/15 text-rose-300 border border-rose-500/20'
+                                }`}>
+                                  {isRtl ? 'حذف شده' : 'Erased'}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-center">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium ${

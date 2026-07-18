@@ -57,6 +57,10 @@ export interface MatrixUser {
   disableClientPasswordChange?: boolean;
   disableClientAccountDeactivation?: boolean;
   disableClientAvatarChange?: boolean;
+  isLocked?: boolean;
+  isSuspended?: boolean;
+  isShadowBanned?: boolean;
+  isErased?: boolean;
 }
 
 export interface RoomMember {
