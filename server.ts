@@ -1331,8 +1331,10 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
   try {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v2/users?deactivated=true");
     if (apiRes && apiRes.users && Array.isArray(apiRes.users)) {
+      const db = readDb();
       const mappedUsers = apiRes.users.map((u: any) => {
         const username = u.name.split(":")[0].replace("@", "") || "unknown";
+        const localUser = (db.matrixUsers || []).find((lu: any) => lu.mxid === u.name);
         return {
           mxid: u.name,
           isAdmin: u.admin === 1 || u.admin === true,
@@ -1340,7 +1342,11 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
           creationTs: u.creation_ts || Math.floor(Date.now() / 1000),
           displayName: u.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
           avatarUrl: u.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
-          userType: u.user_type
+          userType: u.user_type,
+          isLocked: localUser ? !!localUser.isLocked : !!u.locked,
+          isSuspended: localUser ? !!localUser.isSuspended : !!u.suspended,
+          isShadowBanned: localUser ? !!localUser.isShadowBanned : !!u.shadow_banned,
+          isErased: localUser ? !!localUser.isErased : !!u.erased
         };
       });
       return res.json(mappedUsers);
@@ -1359,8 +1365,10 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
     const rows = await queryPostgres(query);
     
     // Translate and sanitize results
+    const db = readDb();
     const matrixUsers = rows.map((r: any) => {
       const username = r.mxid.split(":")[0].replace("@", "") || "unknown";
+      const localUser = (db.matrixUsers || []).find((lu: any) => lu.mxid === r.mxid);
       return {
         mxid: r.mxid,
         isAdmin: !!r.admin,
@@ -1368,7 +1376,11 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
         creationTs: r.creation_ts,
         displayName: r.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
         avatarUrl: r.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
-        userType: r.user_type
+        userType: r.user_type,
+        isLocked: localUser ? !!localUser.isLocked : false,
+        isSuspended: localUser ? !!localUser.isSuspended : false,
+        isShadowBanned: localUser ? !!localUser.isShadowBanned : false,
+        isErased: localUser ? !!localUser.isErased : false
       };
     });
     

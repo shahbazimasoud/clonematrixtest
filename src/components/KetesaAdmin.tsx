@@ -46,7 +46,8 @@ import {
   Network,
   Cpu,
   Settings,
-  Download
+  Download,
+  Save
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -3731,7 +3732,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.isSuspended}
-                                onChange={(e) => handleUpdateUserParams({ isSuspended: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isSuspended: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3749,7 +3750,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.isShadowBanned}
-                                onChange={(e) => handleUpdateUserParams({ isShadowBanned: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isShadowBanned: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3767,7 +3768,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.isLocked}
-                                onChange={(e) => handleUpdateUserParams({ isLocked: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isLocked: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3785,7 +3786,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.disableClientPasswordChange}
-                                onChange={(e) => handleUpdateUserParams({ disableClientPasswordChange: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, disableClientPasswordChange: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3807,7 +3808,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.disableClientAccountDeactivation}
-                                onChange={(e) => handleUpdateUserParams({ disableClientAccountDeactivation: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, disableClientAccountDeactivation: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3829,7 +3830,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.disableClientAvatarChange}
-                                onChange={(e) => handleUpdateUserParams({ disableClientAvatarChange: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, disableClientAvatarChange: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3851,7 +3852,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.isAdmin}
-                                onChange={(e) => handleUpdateUserParams({ isAdmin: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isAdmin: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3872,7 +3873,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               <input
                                 type="checkbox"
                                 checked={!!selectedUserDetails.isErased}
-                                onChange={(e) => handleUpdateUserParams({ isErased: e.target.checked })}
+                                onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isErased: e.target.checked }))}
                                 className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
                               />
                               <div>
@@ -3882,6 +3883,32 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                                 </span>
                               </div>
                             </div>
+                          </div>
+
+                          {/* Save Button for status flags */}
+                          <div className="flex justify-end pt-3">
+                            <button
+                              onClick={() => {
+                                handleUpdateUserParams({
+                                  isSuspended: !!selectedUserDetails.isSuspended,
+                                  isShadowBanned: !!selectedUserDetails.isShadowBanned,
+                                  isLocked: !!selectedUserDetails.isLocked,
+                                  disableClientPasswordChange: !!selectedUserDetails.disableClientPasswordChange,
+                                  disableClientAccountDeactivation: !!selectedUserDetails.disableClientAccountDeactivation,
+                                  disableClientAvatarChange: !!selectedUserDetails.disableClientAvatarChange,
+                                  isAdmin: !!selectedUserDetails.isAdmin,
+                                  isErased: !!selectedUserDetails.isErased,
+                                });
+                              }}
+                              className={`flex items-center gap-1.5 px-5 py-2.5 text-xs font-semibold rounded-lg shadow-sm transition-all duration-300 cursor-pointer ${
+                                isLightMode
+                                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow'
+                                  : 'bg-indigo-500 hover:bg-indigo-600 text-white hover:shadow-lg'
+                              }`}
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                              <span>{isRtl ? 'ذخیره تغییرات وضعیت حساب' : 'Save Account Status Flags'}</span>
+                            </button>
                           </div>
                         </div>
 
