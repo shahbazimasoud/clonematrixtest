@@ -73,7 +73,17 @@ const translations = {
     runningTask: "در حال اجرای دستور روی سرور...",
     backupCreated: "پشتیبان‌گیری جدید با موفقیت ایجاد شد.",
     undoSuccess: "آخرین تغییر پیکربندی با موفقیت بازگردانی شد.",
-    themeToggle: "تغییر تم (روشن/تاریک)"
+    themeToggle: "تغییر تم (روشن/تاریک)",
+    connectedPrefix: "متصل به: ",
+    localSandboxMode: "حالت سنباکس محلی",
+    remoteOnboardingTitle: "اتصال به سرور ماتریکس/المنت راه دور",
+    remoteOnboardingDesc: "این پنل مدیریت در حال حاضر در حالت آفلاین سنباکس اجرا می‌شود. یک پروفایل اتصال امن SSH و دیتابیس ایجاد کنید تا بتوانید سرویس‌های ماتریکس فعال، فایل‌های پیکربندی، ثبت‌نام کاربران، اتاق‌ها و تلمتری زنده را روی سرور مجازی (VPS) خود مدیریت کنید.",
+    connectRemoteBtn: "اتصال به سرور راه دور",
+    connectedProfileLabel: "پروفایل سرور متصل شده",
+    connectedProfileDesc: "سرور ماتریکس (Synapse)، کلاینت المنت و دیتابیس پستگرس به طور فعال از طریق تونل امن SSH مدیریت می‌شوند.",
+    refreshStatsBtn: "بروزرسانی آمار",
+    switchProfileBtn: "تغییر پروفایل",
+    refreshing: "در حال بروزرسانی..."
   },
   en: {
     title: "Matrix Stack Manager",
@@ -103,7 +113,17 @@ const translations = {
     runningTask: "Executing server-side scripts...",
     backupCreated: "New full-archive backup created successfully.",
     undoSuccess: "Last configuration change reverted successfully.",
-    themeToggle: "Toggle Theme (Light/Dark)"
+    themeToggle: "Toggle Theme (Light/Dark)",
+    connectedPrefix: "Connected: ",
+    localSandboxMode: "Local Sandbox Mode",
+    remoteOnboardingTitle: "Connect Your Remote Matrix/Element Server",
+    remoteOnboardingDesc: "This control panel is currently running in fallback Sandbox mode. Establish a secure SSH and Database connection profile to start managing your active Matrix homeserver services, config files, user registration, rooms, and live telemetry on your production VPS.",
+    connectRemoteBtn: "Connect Remote Server",
+    connectedProfileLabel: "Connected Server Profile",
+    connectedProfileDesc: "Matrix homeserver, Element client, and Postgres Database are actively being managed over SSH tunnel.",
+    refreshStatsBtn: "Refresh Stats",
+    switchProfileBtn: "Switch Profile",
+    refreshing: "Refreshing..."
   },
   es: {
     title: "Gestor de Pila Matrix",
@@ -133,7 +153,17 @@ const translations = {
     runningTask: "Ejecutando scripts en el servidor...",
     backupCreated: "Nueva copia de seguridad completa creada con éxito.",
     undoSuccess: "Último cambio de configuración revertido con éxito.",
-    themeToggle: "Alternar Tema (Claro/Oscuro)"
+    themeToggle: "Alternar Tema (Claro/Oscuro)",
+    connectedPrefix: "Conectado a: ",
+    localSandboxMode: "Modo Sandbox Local",
+    remoteOnboardingTitle: "Conecte su Servidor Matrix/Element Remoto",
+    remoteOnboardingDesc: "Este panel de control se está ejecutando actualmente en modo Sandbox de respaldo. Establezca un perfil de conexión SSH y Base de Datos seguro para comenzar a administrar sus servicios activos de servidor Matrix, archivos de configuración, registro de usuarios, salas y telemetría en vivo en su VPS de producción.",
+    connectRemoteBtn: "Conectar Servidor Remoto",
+    connectedProfileLabel: "Perfil de Servidor Conectado",
+    connectedProfileDesc: "El servidor Matrix, el cliente Element y la base de datos Postgres se administran activamente a través de un túnel SSH.",
+    refreshStatsBtn: "Refrescar Estadísticas",
+    switchProfileBtn: "Cambiar Perfil",
+    refreshing: "Refrescando..."
   },
   ar: {
     title: "مدير حزمة ماتريكس",
@@ -163,7 +193,17 @@ const translations = {
     runningTask: "تشغيل النصوص البرمجية على الخادم...",
     backupCreated: "تم إنشاء نسخة احتياطية أرشيفية كاملة بنجاح.",
     undoSuccess: "تم التراجع عن آخر تغيير في التكوين بنجاح.",
-    themeToggle: "تبديل المظهر (فاتح/داكن)"
+    themeToggle: "تبديل المظهر (فاتح/داكن)",
+    connectedPrefix: "متصل بـ: ",
+    localSandboxMode: "وضع الحماية المحلي (Sandbox)",
+    remoteOnboardingTitle: "قم بتوصيل خادم ماتريكس/المنت البعيد الخاص بك",
+    remoteOnboardingDesc: "تعمل لوحة التحكم هذه حاليًا في وضع الحماية الاحتياطي. قم بإنشاء ملف تعريف اتصال SSH وقاعدة بيانات آمن لبدء إدارة خدمات خادم ماتريكس النشطة وملفات التكوين وتسجيل المستخدمين والغرف والقياس المباشر عن بُعد على خادمك الافتراضي (VPS).",
+    connectRemoteBtn: "توصيل خادم بعيد",
+    connectedProfileLabel: "ملف تعريف الخادم المتصل",
+    connectedProfileDesc: "يتم إدارة خادم ماتريكس وعميل المنت وقاعدة بيانات بوستجرس بنشاط عبر نفق SSH آمن.",
+    refreshStatsBtn: "تحديث الإحصائيات",
+    switchProfileBtn: "تبديل ملف التعريف",
+    refreshing: "جاري التحديث..."
   },
   de: {
     title: "Matrix-Stack-Manager",
@@ -193,7 +233,17 @@ const translations = {
     runningTask: "Server-Skripte werden ausgeführt...",
     backupCreated: "Neues Vollarchiv-Backup erfolgreich erstellt.",
     undoSuccess: "Letzte Konfigurationsänderung erfolgreich rückgängig gemacht.",
-    themeToggle: "Design umschalten (Hell/Dunkel)"
+    themeToggle: "Design umschalten (Hell/Dunkel)",
+    connectedPrefix: "Verbunden mit: ",
+    localSandboxMode: "Lokaler Sandbox-Modus",
+    remoteOnboardingTitle: "Verbinden Sie Ihren Remote-Matrix/Element-Server",
+    remoteOnboardingDesc: "Dieses Bedienfeld wird derzeit im Fallback-Sandbox-Modus ausgeführt. Richten Sie ein sicheres SSH- und Datenbank-Verbindungsprofil ein, um Ihre aktiven Matrix-Homeserver-Dienste, Konfigurationsdateien, Benutzerregistrierungen, Räume und Live-Telemetriedaten auf Ihrem Produktions-VPS zu verwalten.",
+    connectRemoteBtn: "Remote-Server verbinden",
+    connectedProfileLabel: "Verbundenes Serverprofil",
+    connectedProfileDesc: "Matrix-Homeserver, Element-Client und Postgres-Datenbank werden aktiv über einen SSH-Tunnel verwaltet.",
+    refreshStatsBtn: "Statistiken aktualisieren",
+    switchProfileBtn: "Profil wechseln",
+    refreshing: "Aktualisierung..."
   },
   ru: {
     title: "Управление стеком Matrix",
@@ -223,7 +273,17 @@ const translations = {
     runningTask: "Выполнение скриптов на сервере...",
     backupCreated: "Новая резервная копия успешно создана.",
     undoSuccess: "Последнее изменение конфигурации успешно отменено.",
-    themeToggle: "Переключить тему (Светлая/Темная)"
+    themeToggle: "Переключить тему (Светлая/Темная)",
+    connectedPrefix: "Подключено к: ",
+    localSandboxMode: "Локальный режим песочницы",
+    remoteOnboardingTitle: "Подключите ваш удаленный сервер Matrix/Element",
+    remoteOnboardingDesc: "Эта панель управления в данный момент работает в резервном режиме песочницы. Создайте безопасное SSH- и профиль подключения к базе данных, чтобы начать управлять активными службами Matrix, файлами конфигурации, регистрацией пользователей, комнатами и живой телеметрией на вашем рабочем VPS.",
+    connectRemoteBtn: "Подключить удаленный сервер",
+    connectedProfileLabel: "Профиль подключенного сервера",
+    connectedProfileDesc: "Сервер Matrix, веб-клиент Element и база данных Postgres активно управляются через безопасный SSH-туннель.",
+    refreshStatsBtn: "Обновить статистику",
+    switchProfileBtn: "Сменить профиль",
+    refreshing: "Обновление..."
   }
 };
 
@@ -975,7 +1035,7 @@ export default function App() {
                   <span className={`inline-block w-2 h-2 rounded-full ${activeConnection?.id !== 'local' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-indigo-500 shadow-[0_0_8px_#6366f1]'} animate-ping`} />
                 </h1>
                 <p className="text-[10px] text-slate-400 uppercase tracking-wider">
-                  {activeConnection?.id !== 'local' ? `Connected: ${activeConnection?.name}` : t.liveStatus}
+                  {activeConnection?.id !== 'local' ? `${t.connectedPrefix || 'Connected: '}${activeConnection?.name}` : t.liveStatus}
                 </p>
               </div>
             </div>
@@ -1212,13 +1272,13 @@ export default function App() {
                     <div className="space-y-2">
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-xs font-semibold text-indigo-300">
                         <Globe className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
-                        <span>Local Sandbox Mode</span>
+                        <span>{t.localSandboxMode}</span>
                       </div>
                       <h2 className="text-xl md:text-2xl font-display font-extrabold text-white tracking-tight">
-                        Connect Your Remote Matrix/Element Server
+                        {t.remoteOnboardingTitle}
                       </h2>
                       <p className="text-sm text-slate-400 max-w-2xl leading-relaxed">
-                        This control panel is currently running in fallback Sandbox mode. Establish a secure SSH and Database connection profile to start managing your active Matrix homeserver services, config files, user registration, rooms, and live telemetry on your production VPS.
+                        {t.remoteOnboardingDesc}
                       </p>
                     </div>
                     
@@ -1226,7 +1286,7 @@ export default function App() {
                       onClick={() => setActiveView('connections')}
                       className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-sm font-bold shadow-[0_4px_20px_rgba(99,102,241,0.25)] hover:scale-[1.02] active:scale-[0.98] transition-all shrink-0 cursor-pointer flex items-center justify-center gap-2"
                     >
-                      <span>Connect Remote Server</span>
+                      <span>{t.connectRemoteBtn}</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -1240,14 +1300,14 @@ export default function App() {
                       </div>
                       <div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                          <span>Connected Server Profile</span>
+                          <span>{t.connectedProfileLabel}</span>
                           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                         </h3>
                         <p className="text-md font-bold text-emerald-400 font-mono mt-0.5">
                           {activeConnection?.name} ({activeConnection?.host}:{activeConnection?.port})
                         </p>
                         <p className="text-xs text-slate-400 mt-1">
-                          Matrix homeserver, Element client, and Postgres Database are actively being managed over SSH tunnel.
+                          {t.connectedProfileDesc}
                         </p>
                       </div>
                     </div>
@@ -1259,14 +1319,14 @@ export default function App() {
                         className="px-4 py-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 hover:bg-teal-500/20 text-xs font-semibold text-teal-300 hover:text-white transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingStats ? 'animate-spin' : ''}`} />
-                        <span>{isRefreshingStats ? 'Refreshing...' : 'Refresh Stats'}</span>
+                        <span>{isRefreshingStats ? (t.refreshing || 'Refreshing...') : (t.refreshStatsBtn || 'Refresh Stats')}</span>
                       </button>
                       
                       <button
                         onClick={() => setActiveView('connections')}
                         className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-center gap-1.5"
                       >
-                        <span>Switch Profile</span>
+                        <span>{t.switchProfileBtn}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -1475,6 +1535,7 @@ export default function App() {
                 isExecuting={isExecuting}
                 onExecuteCommand={handleExecuteCommand}
                 isLightMode={isLightMode}
+                lang={lang}
               />
             )}
 
@@ -1541,6 +1602,7 @@ export default function App() {
                 }}
                 showToast={showToast}
                 isLightMode={isLightMode}
+                lang={lang}
               />
             )}
           </main>

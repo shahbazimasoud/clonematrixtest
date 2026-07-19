@@ -53,7 +53,179 @@ interface ConfigFormsProps {
   isExecuting?: boolean;
   onExecuteCommand?: (cmd: string, args?: any) => void;
   isLightMode?: boolean;
+  lang?: 'fa' | 'en' | 'es' | 'ar' | 'de' | 'ru';
 }
+
+const configFormTranslations = {
+  fa: {
+    controlHub: "هاب کنترل",
+    serverParams: "پارامترهای سرور",
+    activeDirectory: "اکتیو دایرکتوری",
+    workersScaling: "ورکرها و مقیاس‌پذیری",
+    limitsPolicies: "محدودیت‌ها و خط‌مشی‌ها",
+    smtpServer: "سرور ایمیل (SMTP)",
+    clientDefaults: "پیش‌فرض‌های کلاینت",
+    mediaCalling: "رسانه و تماس",
+    securityAuth: "امنیت و احراز هویت",
+    matrixUsers: "کاربران ماتریکس",
+    matrixApis: "ای‌پی‌آی‌های ماتریکس و ساینپس",
+    hsTitle: "پیکربندی سرور خانگی (Homeserver)",
+    hsSubtitle: "مدیریت آدرس‌های اصلی، دامنه‌ها، دیتابیس پستگرس و گواهی‌های امنیتی.",
+    hsDomainLabel: "دامنه سرور ماتریکس",
+    elDomainLabel: "دامنه کلاینت المنت",
+    baseDomainLabel: "دامنه پایه فدراسیون",
+    publicIpLabel: "آدرس IP عمومی نود",
+    leEmailLabel: "ایمیل لِتس‌انکریپت (Let's Encrypt)",
+    dbTitle: "تنظیمات دیتابیس پست‌گرس (PostgreSQL)",
+    dbHost: "میزبان دیتابیس",
+    dbPort: "پورت",
+    dbName: "نام دیتابیس",
+    dbUser: "نام کاربری",
+    dbPass: "رمز عبور",
+    saveConfigBtn: "ذخیره و اعمال پیکربندی",
+    savingConfigBtn: "در حال ذخیره و اعمال..."
+  },
+  en: {
+    controlHub: "Control Hub",
+    serverParams: "Server Parameters",
+    activeDirectory: "Active Directory",
+    workersScaling: "Workers & Scaling",
+    limitsPolicies: "Limits & Policies",
+    smtpServer: "Email Server (SMTP)",
+    clientDefaults: "Client Defaults",
+    mediaCalling: "Media & Calling",
+    securityAuth: "Security & Auth",
+    matrixUsers: "Matrix Users",
+    matrixApis: "Matrix & Synapse APIs",
+    hsTitle: "Homeserver Configuration",
+    hsSubtitle: "Manage base URLs, domains, Postgres coordinates, and security certs.",
+    hsDomainLabel: "Matrix server domain",
+    elDomainLabel: "Element client domain",
+    baseDomainLabel: "Base Federation Domain",
+    publicIpLabel: "Node Public IP",
+    leEmailLabel: "Let's Encrypt Email",
+    dbTitle: "PostgreSQL Relational DB Settings",
+    dbHost: "Database Host",
+    dbPort: "Port",
+    dbName: "DB Name",
+    dbUser: "Username",
+    dbPass: "Password",
+    saveConfigBtn: "Save & Apply Config",
+    savingConfigBtn: "Saving & Applying Config..."
+  },
+  es: {
+    controlHub: "Centro de Control",
+    serverParams: "Parámetros del Servidor",
+    activeDirectory: "Directorio Activo",
+    workersScaling: "Trabajadores y Escalado",
+    limitsPolicies: "Límites y Políticas",
+    smtpServer: "Servidor de Correo (SMTP)",
+    clientDefaults: "Valores por Defecto del Cliente",
+    mediaCalling: "Medios y Llamadas",
+    securityAuth: "Seguridad y Autenticación",
+    matrixUsers: "Usuarios de Matrix",
+    matrixApis: "APIs de Matrix y Synapse",
+    hsTitle: "Configuración del Homeserver",
+    hsSubtitle: "Administre URLs base, dominios, coordenadas de Postgres y certificados de seguridad.",
+    hsDomainLabel: "Dominio del servidor Matrix",
+    elDomainLabel: "Dominio del cliente Element",
+    baseDomainLabel: "Dominio Base de Federación",
+    publicIpLabel: "IP Pública del Nodo",
+    leEmailLabel: "Correo de Let's Encrypt",
+    dbTitle: "Configuración de Base de Datos Relacional PostgreSQL",
+    dbHost: "Host de la Base de Datos",
+    dbPort: "Puerto",
+    dbName: "Nombre de la BD",
+    dbUser: "Nombre de usuario",
+    dbPass: "Contraseña",
+    saveConfigBtn: "Guardar y Aplicar Configuración",
+    savingConfigBtn: "Guardando y Aplicando Configuración..."
+  },
+  ar: {
+    controlHub: "مركز التحكم",
+    serverParams: "معلمات الخادم",
+    activeDirectory: "الدليل النشط",
+    workersScaling: "العمال والمقاييس",
+    limitsPolicies: "الحدود والسياسات",
+    smtpServer: "خادم البريد (SMTP)",
+    clientDefaults: "افتراضيات العميل",
+    mediaCalling: "الوسائط والمكالمات",
+    securityAuth: "الأمان والمصادقة",
+    matrixUsers: "مستخدمو ماتريكس",
+    matrixApis: "واجهات برمجة تطبيقات ماتريكس وساينابس",
+    hsTitle: "تكوين خادم هوم سيرفر (Homeserver)",
+    hsSubtitle: "إدارة عناوين URL الأساسية والنطاقات وإحداثيات بوستجرس وشهادات الأمان.",
+    hsDomainLabel: "نطاق خادم ماتريكس",
+    elDomainLabel: "نطاق عميل المنت",
+    baseDomainLabel: "نطاق الاتحاد الأساسي",
+    publicIpLabel: "عنوان IP العام للعقدة",
+    leEmailLabel: "البريد الإلكتروني لـ Let's Encrypt",
+    dbTitle: "إعدادات قاعدة بيانات بوستجرس (PostgreSQL)",
+    dbHost: "مضيف قاعدة البيانات",
+    dbPort: "المنفذ",
+    dbName: "اسم قاعدة البيانات",
+    dbUser: "اسم المستخدم",
+    dbPass: "كلمة المرور",
+    saveConfigBtn: "حفظ وتطبيق التكوين",
+    savingConfigBtn: "جاري حفظ وتطبيق التكوين..."
+  },
+  de: {
+    controlHub: "Kontrollzentrum",
+    serverParams: "Server-Parameter",
+    activeDirectory: "Active Directory",
+    workersScaling: "Worker & Skalierung",
+    limitsPolicies: "Limits & Richtlinien",
+    smtpServer: "E-Mail-Server (SMTP)",
+    clientDefaults: "Client-Standardwerte",
+    mediaCalling: "Medien & Anrufe",
+    securityAuth: "Sicherheit & Authentifizierung",
+    matrixUsers: "Matrix-Benutzer",
+    matrixApis: "Matrix- & Synapse-APIs",
+    hsTitle: "Homeserver-Konfiguration",
+    hsSubtitle: "Basis-URLs, Domains, Postgres-Koordinaten und Sicherheitszertifikate verwalten.",
+    hsDomainLabel: "Matrix-Server-Domain",
+    elDomainLabel: "Element-Client-Domain",
+    baseDomainLabel: "Basis-Föderationsdomain",
+    publicIpLabel: "Öffentliche Node-IP",
+    leEmailLabel: "Let's Encrypt E-Mail",
+    dbTitle: "PostgreSQL-Datenbankeinstellungen",
+    dbHost: "Datenbank-Host",
+    dbPort: "Port",
+    dbName: "Datenbankname",
+    dbUser: "Benutzername",
+    dbPass: "Passwort",
+    saveConfigBtn: "Konfiguration speichern & anwenden",
+    savingConfigBtn: "Konfiguration wird gespeichert & angewendet..."
+  },
+  ru: {
+    controlHub: "Центр управления",
+    serverParams: "Параметры сервера",
+    activeDirectory: "Active Directory",
+    workersScaling: "Воркеры и масштабирование",
+    limitsPolicies: "Лимиты и политики",
+    smtpServer: "Почтовый сервер (SMTP)",
+    clientDefaults: "Настройки клиента",
+    mediaCalling: "Медиа и звонки",
+    securityAuth: "Безопасность и авторизация",
+    matrixUsers: "Пользователи Matrix",
+    matrixApis: "API Matrix и Synapse",
+    hsTitle: "Конфигурация Homeserver",
+    hsSubtitle: "Управление базовыми URL, доменами, базой данных Postgres и сертификатами безопасности.",
+    hsDomainLabel: "Домен сервера Matrix",
+    elDomainLabel: "Домен клиента Element",
+    baseDomainLabel: "Базовый домен федерации",
+    publicIpLabel: "Публичный IP узла",
+    leEmailLabel: "Электронная почта Let's Encrypt",
+    dbTitle: "Настройки базы данных PostgreSQL",
+    dbHost: "Хост базы данных",
+    dbPort: "Порт",
+    dbName: "Имя БД",
+    dbUser: "Имя пользователя",
+    dbPass: "Пароль",
+    saveConfigBtn: "Сохранить и применить",
+    savingConfigBtn: "Сохранение и применение..."
+  }
+};
 
 type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security' | 'api';
 
@@ -71,8 +243,10 @@ export default function ConfigForms({
   showToast,
   isExecuting = false,
   onExecuteCommand,
-  isLightMode = false
+  isLightMode = false,
+  lang = 'en'
 }: ConfigFormsProps) {
+  const t = configFormTranslations[lang] || configFormTranslations.en;
   const [activeTab, setActiveTab] = useState<TabType>('homeserver');
   const [isSaving, setIsSaving] = useState(false);
   
@@ -576,7 +750,7 @@ export default function ConfigForms({
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-180px)] overflow-hidden">
       {/* Left Column: Sub Tabs */}
       <div className="spatial-glass rounded-3xl p-5 border border-white/5 flex flex-col gap-2 h-full overflow-y-auto">
-        <h3 className="text-sm font-display font-semibold text-slate-400 mb-3 px-3 uppercase tracking-wider">Control Hub</h3>
+        <h3 className="text-sm font-display font-semibold text-slate-400 mb-3 px-3 uppercase tracking-wider">{t.controlHub}</h3>
         
         <button
           onClick={() => setActiveTab('homeserver')}
@@ -588,7 +762,7 @@ export default function ConfigForms({
           id="tab-homeserver"
         >
           <Settings className="w-5 h-5 text-indigo-400" />
-          <span>Server Parameters</span>
+          <span>{t.serverParams}</span>
         </button>
 
         <button
@@ -601,7 +775,7 @@ export default function ConfigForms({
           id="tab-ldap"
         >
           <Network className="w-5 h-5 text-purple-400" />
-          <span>Active Directory</span>
+          <span>{t.activeDirectory}</span>
         </button>
 
         <button
@@ -614,7 +788,7 @@ export default function ConfigForms({
           id="tab-workers"
         >
           <Cpu className="w-5 h-5 text-rose-400" />
-          <span>Workers & Scaling</span>
+          <span>{t.workersScaling}</span>
         </button>
 
         <button
@@ -627,7 +801,7 @@ export default function ConfigForms({
           id="tab-policies"
         >
           <Sliders className="w-5 h-5 text-cyan-400" />
-          <span>Limits & Policies</span>
+          <span>{t.limitsPolicies}</span>
         </button>
 
         <button
@@ -640,7 +814,7 @@ export default function ConfigForms({
           id="tab-smtp"
         >
           <Mail className="w-5 h-5 text-amber-400" />
-          <span>Email Server (SMTP)</span>
+          <span>{t.smtpServer}</span>
         </button>
 
         <button
@@ -653,7 +827,7 @@ export default function ConfigForms({
           id="tab-client"
         >
           <Layout className="w-5 h-5 text-sky-400" />
-          <span>Client Defaults</span>
+          <span>{t.clientDefaults}</span>
         </button>
 
         <button
@@ -666,7 +840,7 @@ export default function ConfigForms({
           id="tab-video"
         >
           <Video className="w-5 h-5 text-amber-400" />
-          <span>Media & Calling</span>
+          <span>{t.mediaCalling}</span>
         </button>
 
         <button
@@ -679,7 +853,7 @@ export default function ConfigForms({
           id="tab-security"
         >
           <ShieldCheck className="w-5 h-5 text-emerald-400" />
-          <span>Security & Auth</span>
+          <span>{t.securityAuth}</span>
         </button>
 
         <button
@@ -692,7 +866,7 @@ export default function ConfigForms({
           id="tab-users"
         >
           <Users className="w-5 h-5 text-emerald-400" />
-          <span>Matrix Users</span>
+          <span>{t.matrixUsers}</span>
         </button>
 
         <button
@@ -705,7 +879,7 @@ export default function ConfigForms({
           id="tab-api"
         >
           <Activity className="w-5 h-5 text-blue-400" />
-          <span>Matrix & Synapse APIs</span>
+          <span>{t.matrixApis}</span>
         </button>
       </div>
 
@@ -718,14 +892,14 @@ export default function ConfigForms({
             <div className="flex items-center gap-3 pb-4 border-b border-white/5">
               <Globe className="w-6 h-6 text-indigo-400" />
               <div>
-                <h2 className="text-xl font-display font-bold text-white">Homeserver Configuration</h2>
-                <p className="text-xs text-slate-400">Manage base URLs, domains, Postgres coordinates, and security certs.</p>
+                <h2 className="text-xl font-display font-bold text-white">{t.hsTitle}</h2>
+                <p className="text-xs text-slate-400">{t.hsSubtitle}</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Matrix server domain</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{t.hsDomainLabel}</label>
                 <input
                   type="text"
                   value={hsDomain}
@@ -737,7 +911,7 @@ export default function ConfigForms({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Element client domain</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{t.elDomainLabel}</label>
                 <input
                   type="text"
                   value={elDomain}
@@ -749,7 +923,7 @@ export default function ConfigForms({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Base Federation Domain</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{t.baseDomainLabel}</label>
                 <input
                   type="text"
                   value={baseDomain}
@@ -761,7 +935,7 @@ export default function ConfigForms({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Node Public IP</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{t.publicIpLabel}</label>
                 <input
                   type="text"
                   value={publicIp}
@@ -773,7 +947,7 @@ export default function ConfigForms({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Let's Encrypt Email</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{t.leEmailLabel}</label>
                 <input
                   type="email"
                   value={leEmail}
@@ -789,12 +963,12 @@ export default function ConfigForms({
             <div className="pt-4 border-t border-white/5 space-y-4">
               <h3 className="text-md font-display font-semibold text-white flex items-center gap-2">
                 <Database className="w-5 h-5 text-purple-400" />
-                PostgreSQL Relational DB Settings
+                {t.dbTitle}
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Database Host</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">{t.dbHost}</label>
                   <input
                     type="text"
                     value={pgHost}
@@ -804,7 +978,7 @@ export default function ConfigForms({
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Port</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">{t.dbPort}</label>
                   <input
                     type="text"
                     value={pgPort}
@@ -814,7 +988,7 @@ export default function ConfigForms({
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">DB Name</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">{t.dbName}</label>
                   <input
                     type="text"
                     value={pgDb}
@@ -824,7 +998,7 @@ export default function ConfigForms({
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Username</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">{t.dbUser}</label>
                   <input
                     type="text"
                     value={pgUser}
@@ -834,7 +1008,7 @@ export default function ConfigForms({
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-400 block mb-1">Password</label>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">{t.dbPass}</label>
                   <input
                     type="password"
                     value={pgPass}
@@ -857,10 +1031,10 @@ export default function ConfigForms({
                   {isSaving ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      Saving & Applying Config...
+                      {t.savingConfigBtn}
                     </>
                   ) : (
-                    "Save & Apply Config"
+                    t.saveConfigBtn
                   )}
                 </button>
               </div>
