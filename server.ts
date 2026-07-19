@@ -143,6 +143,35 @@ async function writeConfigContent(filePath: string, content: string): Promise<bo
   }
 }
 
+async function getRateLimitDefaults(): Promise<{ perSecond: number; burstCount: number }> {
+  let perSecond = 2;
+  let burstCount = 10;
+  try {
+    const confRaw = await readConfigContent("/etc/matrix-stack.conf");
+    if (confRaw) {
+      confRaw.split("\n").forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) return;
+        const parts = trimmed.split("=");
+        if (parts.length >= 2) {
+          const key = parts[0].trim();
+          const val = parts.slice(1).join("=").trim();
+          if (key === "RATE_LIMIT_PER_SEC") {
+            const parsed = parseFloat(val);
+            if (!isNaN(parsed)) perSecond = parsed;
+          } else if (key === "RATE_LIMIT_BURST") {
+            const parsed = parseInt(val, 10);
+            if (!isNaN(parsed)) burstCount = parsed;
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("Could not read defaults from matrix-stack.conf, using fallbacks:", err);
+  }
+  return { perSecond, burstCount };
+}
+
 // -------------------------------------------------------------
 // Real PostgreSQL Connection & Query Helper
 // -------------------------------------------------------------
@@ -2315,7 +2344,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
         ],
         pushers,
         experimental: [],
-        rateLimits: { perSecond: 2, burstCount: 10 },
+        rateLimits: await getRateLimitDefaults(),
         accountData,
         rooms,
         memberships,
@@ -2387,7 +2416,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
     updated = true;
   }
   if (!user.rateLimits) {
-    user.rateLimits = { perSecond: 2, burstCount: 10 };
+    user.rateLimits = await getRateLimitDefaults();
     updated = true;
   }
   if (!user.accountData) {
@@ -4209,18 +4238,51 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
 
       if (config.MESSAGE_RETENTION_DAYS !== undefined) {
         const days = parseInt(config.MESSAGE_RETENTION_DAYS) || 0;
-        if (days > 0) {
-          const retentionBlock = `
+        const retentionBlock = `
 retention:
-  enabled: true
+  enabled: ${days > 0}
   default_policy:
-    max_lifetime: ${days}d
+    max_lifetime: ${days > 0 ? days : 30}d
 `.trim();
-          if (yaml.includes("retention:")) {
-            yaml = yaml.replace(/retention:\s*[\s\S]*?(?=\n\S|$)/, retentionBlock);
+        if (yaml.includes("retention:")) {
+          yaml = yaml.replace(/retention:\s*[\s\S]*?(?=\n\S|$)/, retentionBlock);
+        } else {
+          yaml += `\n${retentionBlock}`;
+        }
+      }
+
+      if (config.MEDIA_RETENTION_LOCAL_DAYS !== undefined) {
+        const localDays = parseInt(config.MEDIA_RETENTION_LOCAL_DAYS) || 0;
+        if (localDays > 0) {
+          if (yaml.match(/^local_media_retention_period:.*$/m)) {
+            yaml = yaml.replace(/^local_media_retention_period:.*$/m, `local_media_retention_period: ${localDays}d`);
           } else {
-            yaml += `\n${retentionBlock}`;
+            yaml += `\nlocal_media_retention_period: ${localDays}d`;
           }
+        } else {
+          yaml = yaml.replace(/^local_media_retention_period:.*$/m, "");
+        }
+      }
+
+      if (config.MEDIA_RETENTION_REMOTE_DAYS !== undefined) {
+        const remoteDays = parseInt(config.MEDIA_RETENTION_REMOTE_DAYS) || 0;
+        if (remoteDays > 0) {
+          if (yaml.match(/^remote_media_repository_retention_period:.*$/m)) {
+            yaml = yaml.replace(/^remote_media_repository_retention_period:.*$/m, `remote_media_repository_retention_period: ${remoteDays}d`);
+          } else {
+            yaml += `\nremote_media_repository_retention_period: ${remoteDays}d`;
+          }
+        } else {
+          yaml = yaml.replace(/^remote_media_repository_retention_period:.*$/m, "");
+        }
+      }
+
+      if (config.ROOM_CREATION_ALLOW !== undefined) {
+        const isRoomCreation = String(config.ROOM_CREATION_ALLOW) === "true";
+        if (yaml.match(/^enable_room_creation:.*$/m)) {
+          yaml = yaml.replace(/^enable_room_creation:.*$/m, `enable_room_creation: ${isRoomCreation}`);
+        } else {
+          yaml += `\nenable_room_creation: ${isRoomCreation}`;
         }
       }
 
@@ -4431,6 +4493,19 @@ fi
 
     // Service restart
     const restartSuccess = await restartSynapseService(activeConn);
+
+    // Propagate rate limits and other defaults to all users in the DB
+    if (config) {
+      const perSec = config.RATE_LIMIT_PER_SEC !== undefined ? parseFloat(config.RATE_LIMIT_PER_SEC) : undefined;
+      const burst = config.RATE_LIMIT_BURST !== undefined ? parseInt(config.RATE_LIMIT_BURST, 10) : undefined;
+      
+      if (!db.matrixUsers) db.matrixUsers = [];
+      db.matrixUsers.forEach((u: any) => {
+        if (!u.rateLimits) u.rateLimits = {};
+        if (perSec !== undefined && !isNaN(perSec)) u.rateLimits.perSecond = perSec;
+        if (burst !== undefined && !isNaN(burst)) u.rateLimits.burstCount = burst;
+      });
+    }
 
     db.auditLogs.unshift({
       id: `log-${Date.now()}`,
