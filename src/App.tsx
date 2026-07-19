@@ -183,6 +183,7 @@ export default function App() {
   // System Update state
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
   const [commitsBehind, setCommitsBehind] = useState<number>(0);
+  const [latestCommitDesc, setLatestCommitDesc] = useState<string>('');
   const [userDropdownOpen, setUserDropdownOpen] = useState<boolean>(false);
   const [terminalInitialTab, setTerminalInitialTab] = useState<'console' | 'install' | 'updates'>('console');
 
@@ -372,6 +373,7 @@ export default function App() {
       if (data.success) {
         setUpdateAvailable(data.updateAvailable);
         setCommitsBehind(data.commitsBehind);
+        setLatestCommitDesc(data.latestRemoteCommit || '');
       }
     })
     .catch(err => console.error("Error checking updates in App header:", err));
@@ -908,6 +910,18 @@ export default function App() {
                                 ? `نسخه شما ${commitsBehind} کامیت عقب‌تر است.` 
                                 : `Your version is ${commitsBehind} commits behind.`}
                             </p>
+                            {latestCommitDesc && (
+                              <div className={`p-2 rounded-lg text-[9px] font-mono text-left whitespace-pre-wrap border ${
+                                isLightMode 
+                                  ? 'bg-indigo-100/40 border-indigo-100 text-indigo-700' 
+                                  : 'bg-indigo-950/40 border-indigo-500/10 text-indigo-300'
+                              }`}>
+                                <span className="font-sans font-bold block mb-0.5 text-[9px]">
+                                  {lang === 'fa' ? 'توضیحات آخرین تغییر:' : 'Latest Change Description:'}
+                                </span>
+                                {latestCommitDesc}
+                              </div>
+                            )}
                             <button
                               type="button"
                               onClick={() => {

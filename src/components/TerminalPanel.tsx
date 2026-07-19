@@ -531,21 +531,32 @@ export default function TerminalPanel({
 
               {/* Status Banner */}
               {updateAvailable ? (
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-start gap-2.5">
-                  <span className="relative flex h-2 w-2 mt-1 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                  </span>
-                  <div>
-                    <span className="font-bold text-xs block">
-                      {isRtl ? 'بروزرسانی جدید در دسترس است!' : 'New Update Available!'}
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex flex-col gap-2">
+                  <div className="flex items-start gap-2.5">
+                    <span className="relative flex h-2 w-2 mt-1 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                     </span>
-                    <p className="text-[11px] leading-relaxed mt-0.5 text-slate-400">
-                      {isRtl 
-                        ? `نسخه شما به تعداد ${commitsBehind} کامیت از مخزن اصلی عقب‌تر است. لطفاً جهت دریافت جدیدترین امکانات دکمه بروزرسانی را بزنید.`
-                        : `You are currently ${commitsBehind} commits behind the main branch. Please update to get the latest features.`}
-                    </p>
+                    <div>
+                      <span className="font-bold text-xs block text-amber-400">
+                        {isRtl ? 'بروزرسانی جدید در دسترس است!' : 'New Update Available!'}
+                      </span>
+                      <p className="text-[11px] leading-relaxed mt-0.5 text-slate-300">
+                        {isRtl 
+                          ? `نسخه شما به تعداد ${commitsBehind} کامیت از مخزن اصلی عقب‌تر است. لطفاً جهت دریافت جدیدترین امکانات دکمه بروزرسانی را بزنید.`
+                          : `You are currently ${commitsBehind} commits behind the main branch. Please update to get the latest features.`}
+                      </p>
+                    </div>
                   </div>
+
+                  {latestCommits && latestCommits.length > 0 && (
+                    <div className="mt-1 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/10 font-mono text-[10px] text-amber-300/90 whitespace-pre-wrap leading-normal text-left ltr">
+                      <span className="font-sans font-bold block text-amber-400 mb-1">
+                        {isRtl ? 'توضیحات آخرین تغییرات در این بروزرسانی:' : 'Latest available update description:'}
+                      </span>
+                      {latestCommits[0]}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-start gap-2.5">

@@ -1775,9 +1775,12 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   });
 
   const filteredRooms = rooms.filter(r => {
-    const matchesSearch = r.name.toLowerCase().includes(roomSearch.toLowerCase()) || 
-                          r.id.toLowerCase().includes(roomSearch.toLowerCase()) ||
-                          (r.alias && r.alias.toLowerCase().includes(roomSearch.toLowerCase()));
+    const rName = r.name || r.id || "";
+    const rId = r.id || "";
+    const rAlias = r.alias || "";
+    const matchesSearch = rName.toLowerCase().includes(roomSearch.toLowerCase()) || 
+                          rId.toLowerCase().includes(roomSearch.toLowerCase()) ||
+                          rAlias.toLowerCase().includes(roomSearch.toLowerCase());
     if (!matchesSearch) return false;
     if (roomFilter === 'public') return r.isPublic;
     if (roomFilter === 'private') return !r.isPublic;
@@ -2243,7 +2246,11 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
             className="space-y-4"
           >
             {/* Search, Filter & Actions rail */}
-            <div className="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center bg-black/25 p-4 rounded-xl border border-white/5">
+            <div className={`flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center p-4 rounded-xl border ${
+              isLightMode 
+                ? 'bg-slate-50 border-slate-200' 
+                : 'bg-black/25 border-white/5'
+            }`}>
               <div className="flex flex-1 flex-wrap items-center gap-3">
                 <div className="relative flex-1 min-w-[240px]">
                   <Search className={`absolute top-3 ${isRtl ? 'left-3' : 'right-3'} h-4 w-4 text-gray-500`} />
@@ -2252,19 +2259,27 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                     value={roomSearch}
                     onChange={(e) => setRoomSearch(e.target.value)}
                     placeholder={t.searchRooms}
-                    className="w-full bg-black/40 border border-white/5 hover:border-purple-500/30 focus:border-purple-500/80 rounded-lg py-2 px-4 text-sm font-mono text-gray-200 outline-none transition-all duration-300"
+                    className={`w-full border rounded-lg py-2 px-4 text-sm font-mono outline-none transition-all duration-300 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-200 text-slate-800 focus:border-purple-500' 
+                        : 'bg-black/40 border-white/5 text-gray-200 hover:border-purple-500/30 focus:border-purple-500/80'
+                    }`}
                   />
                 </div>
 
-                <div className="flex p-0.5 bg-black/40 rounded-lg border border-white/5 text-xs font-medium flex-wrap gap-1">
+                <div className={`flex p-0.5 rounded-lg border text-xs font-medium flex-wrap gap-1 ${
+                  isLightMode 
+                    ? 'bg-slate-100 border-slate-200' 
+                    : 'bg-black/40 border-white/5'
+                }`}>
                   {(['all', 'public', 'private', 'federated', 'local'] as const).map(f => (
                     <button
                       key={f}
                       onClick={() => setRoomFilter(f)}
-                      className={`px-2.5 py-1.5 rounded transition-all duration-300 ${
+                      className={`px-2.5 py-1.5 rounded transition-all duration-300 cursor-pointer ${
                         roomFilter === f 
-                          ? 'bg-purple-500/10 text-purple-300 border border-purple-500/20' 
-                          : 'text-gray-400 hover:text-gray-200'
+                          ? (isLightMode ? 'bg-purple-600 text-white shadow-sm' : 'bg-purple-500/10 text-purple-300 border border-purple-500/20') 
+                          : (isLightMode ? 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/50' : 'text-gray-400 hover:text-gray-200')
                       }`}
                     >
                       {f === 'all' && t.allRooms}
@@ -2319,7 +2334,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                               ? 'text-slate-800 group-hover:text-purple-600' 
                               : 'text-gray-200 group-hover:text-purple-300'
                           }`}>
-                            {r.name}
+                            {r.name || r.id}
                           </h4>
                         </div>
                         
@@ -2391,7 +2406,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setActiveRoomDropdown(null);
-                                      handleOpenRoomChat(r.id, r.name);
+                                      handleOpenRoomChat(r.id, r.name || r.id);
                                     }}
                                     className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all cursor-pointer ${
                                       isLightMode ? 'hover:bg-slate-50 text-slate-800' : 'hover:bg-white/5 text-white'

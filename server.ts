@@ -4379,12 +4379,27 @@ app.get("/api/system/update/check", authenticateToken, checkPermission(["Owner",
       });
     });
 
+    // 5. Get absolute latest remote commit message (for update description/explanation)
+    const latestRemoteCommit: string = await new Promise((resolve) => {
+      exec('git log -1 origin/master --format="%h - %s (%an, %ar)"', (err, stdout) => {
+        if (err) {
+          exec('git log -1 origin/main --format="%h - %s (%an, %ar)"', (err2, stdout2) => {
+            if (err2) resolve("Unknown");
+            else resolve(stdout2.trim());
+          });
+        } else {
+          resolve(stdout.trim());
+        }
+      });
+    });
+
     res.json({
       success: true,
       updateAvailable: commitsBehind > 0,
       commitsBehind,
       latestCommits,
-      currentVersion
+      currentVersion,
+      latestRemoteCommit
     });
   } catch (err: any) {
     console.error("Check update error:", err.message);
