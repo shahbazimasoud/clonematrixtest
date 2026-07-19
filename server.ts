@@ -3525,6 +3525,129 @@ app.post("/api/matrix/rooms/members/kick", authenticateToken, checkPermission(["
   res.json({ success: true, room });
 });
 
+app.post("/api/matrix/rooms/members/join", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
+  const { roomId, mxid } = req.body;
+  if (!roomId || !mxid) return res.status(400).json({ error: "Room ID and MXID are required" });
+
+  const activeConn = getActiveConnection();
+  let apiSuccess = false;
+  let apiError = null;
+
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      console.log(`Forcing user ${mxid} to join room ${roomId}...`);
+      await callSynapseAdminAPI("POST", `/_synapse/admin/v1/join/${encodeURIComponent(roomId)}`, {
+        user_id: mxid
+      });
+      apiSuccess = true;
+    } catch (err: any) {
+      apiError = err.message || err;
+      console.error("Synapse force join error:", apiError);
+    }
+  } else {
+    apiSuccess = true; // For local sandbox
+  }
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (room) {
+    if (!room.joinedMembers) room.joinedMembers = [];
+    const exists = room.joinedMembers.some((m: any) => m.mxid === mxid);
+    if (!exists) {
+      room.joinedMembers.push({ mxid, role: "Member", powerLevel: 0 });
+      room.membersCount = room.joinedMembers.length;
+    }
+    writeDb(db);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Add Room Member",
+    target: mxid,
+    status: apiSuccess ? "success" : "failed",
+    details: `Added user ${mxid} to room ${room ? room.name : roomId}. API Status: ${apiSuccess ? "Success" : "Failed (" + apiError + ")"}`
+  });
+  writeDb(db);
+
+  if (!apiSuccess) {
+    return res.status(500).json({ error: `Could not add user via Synapse Admin API: ${apiError}` });
+  }
+
+  res.json({ success: true, room });
+});
+
+app.post("/api/matrix/rooms/power_levels", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
+  const { roomId, mxid, powerLevel } = req.body;
+  if (!roomId || !mxid || powerLevel === undefined) {
+    return res.status(400).json({ error: "Room ID, MXID, and powerLevel are required" });
+  }
+
+  const pLevelInt = parseInt(powerLevel, 10);
+  if (isNaN(pLevelInt)) return res.status(400).json({ error: "Power level must be an integer" });
+
+  const activeConn = getActiveConnection();
+  let apiSuccess = false;
+  let apiError = null;
+
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      console.log(`Fetching current power levels for room ${roomId}...`);
+      const plRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`);
+      if (plRes && !plRes.error) {
+        if (!plRes.users) plRes.users = {};
+        plRes.users[mxid] = pLevelInt;
+
+        console.log(`Updating power levels for room ${roomId} to assign level ${pLevelInt} to ${mxid}...`);
+        await callSynapseAdminAPI("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, plRes);
+        apiSuccess = true;
+      } else {
+        apiError = plRes ? plRes.error : "Failed to fetch power levels";
+      }
+    } catch (err: any) {
+      apiError = err.message || err;
+      console.error("Synapse power level update error:", apiError);
+    }
+  } else {
+    apiSuccess = true; // For local sandbox
+  }
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (room) {
+    if (!room.joinedMembers) room.joinedMembers = [];
+    let member = room.joinedMembers.find((m: any) => m.mxid === mxid);
+    const roleStr = pLevelInt >= 100 ? "Admin" : (pLevelInt >= 50 ? "Moderator" : "Member");
+    if (!member) {
+      member = { mxid, role: roleStr, powerLevel: pLevelInt };
+      room.joinedMembers.push(member);
+      room.membersCount = room.joinedMembers.length;
+    } else {
+      member.powerLevel = pLevelInt;
+      member.role = roleStr;
+    }
+    writeDb(db);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Modify Room Power Levels",
+    target: mxid,
+    status: apiSuccess ? "success" : "failed",
+    details: `Set power level of ${mxid} to ${pLevelInt} in room ${room ? room.name : roomId}. API Status: ${apiSuccess ? "Success" : "Failed (" + apiError + ")"}`
+  });
+  writeDb(db);
+
+  if (!apiSuccess) {
+    return res.status(500).json({ error: `Could not set power level via Synapse Admin API: ${apiError}` });
+  }
+
+  res.json({ success: true, room });
+});
+
 // -------------------------------------------------------------
 // Matrix Media Cleanup (Ketesa features)
 // -------------------------------------------------------------

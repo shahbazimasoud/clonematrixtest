@@ -112,6 +112,15 @@ const faTranslations = {
   sendMessageLabel: "ارسال پیام خداحافظی به اعضا قبل از حذف",
   sendMessagePlaceholder: "این اتاق به دلیل عدم رعایت قوانین سرور مسدود گردید.",
   leaveRoomLabel: "خروج تمامی اعضا از اتاق (Leave)",
+  addPrivilegedUserBtn: "افزودن کاربر ویژه",
+  addMemberBtn: "افزودن عضو جدید",
+  addPrivilegedUserTitle: "ارتقای سطح دسترسی کاربر ویژه",
+  addMemberTitle: "افزودن عضو جدید به اتاق",
+  powerLevelLabel: "سطح دسترسی (Power Level)",
+  adminPower: "مدیر کامل (سطح ۱۰۰)",
+  modPower: "ناظر (سطح ۵۰)",
+  customPower: "سفارشی",
+  addBtn: "افزودن",
   
   // Media
   mediaStatsTitle: "آمار ذخیره‌سازی رسانه‌های ماتریکس",
@@ -221,6 +230,15 @@ const enTranslations = {
   sendMessageLabel: "Send farewell block message to room members first",
   sendMessagePlaceholder: "This room has been shut down due to violation of server policy.",
   leaveRoomLabel: "Force all members to leave / kick them first (Leave)",
+  addPrivilegedUserBtn: "Add Privileged User",
+  addMemberBtn: "Add Member",
+  addPrivilegedUserTitle: "Assign Privileged Power Level",
+  addMemberTitle: "Add New Member to Room",
+  powerLevelLabel: "Power Level",
+  adminPower: "Administrator (Level 100)",
+  modPower: "Moderator (Level 50)",
+  customPower: "Custom Power Level",
+  addBtn: "Add",
   
   // Media
   mediaStatsTitle: "Matrix Media Storage Analytics",
@@ -417,6 +435,15 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   const [showShutdownRoomModal, setShowShutdownRoomModal] = useState<MatrixRoom | null>(null);
   const [shutdownRoomConfig, setShutdownRoomConfig] = useState({ purge: true, sendMessage: true, messageText: '', leave: false });
+  const [shutdownRoomLoading, setShutdownRoomLoading] = useState(false);
+
+  const [showAddPrivilegedModal, setShowAddPrivilegedModal] = useState<MatrixRoom | null>(null);
+  const [privilegedUserConfig, setPrivilegedUserConfig] = useState({ mxid: '', powerLevel: '50' });
+  const [privilegedLoading, setPrivilegedLoading] = useState(false);
+
+  const [showAddMemberModal, setShowAddMemberModal] = useState<MatrixRoom | null>(null);
+  const [addMemberConfig, setAddMemberConfig] = useState({ mxid: '' });
+  const [addMemberLoading, setAddMemberLoading] = useState(false);
 
   const [showCreateTokenModal, setShowCreateTokenModal] = useState(false);
   const [newToken, setNewToken] = useState({ token: '', usesAllowed: '', expiryTime: '' });
@@ -1293,6 +1320,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!showShutdownRoomModal) return;
 
+    setShutdownRoomLoading(true);
     try {
       const res = await fetch('/api/matrix/rooms/delete', {
         method: 'POST',
@@ -1321,6 +1349,85 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       }
     } catch (e) {
       showToast('error', t.errorAction);
+    } finally {
+      setShutdownRoomLoading(false);
+    }
+  };
+
+  const handleSetPrivilegedUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!showAddPrivilegedModal) return;
+    if (!privilegedUserConfig.mxid) return showToast('error', isRtl ? 'لطفا شناسه ماتریکس را وارد کنید' : 'Please enter the Matrix ID');
+
+    setPrivilegedLoading(true);
+    try {
+      const res = await fetch('/api/matrix/rooms/power_levels', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          roomId: showAddPrivilegedModal.id,
+          mxid: privilegedUserConfig.mxid,
+          powerLevel: parseInt(privilegedUserConfig.powerLevel, 10)
+        })
+      });
+
+      if (res.ok) {
+        showToast('success', t.successAction);
+        setShowAddPrivilegedModal(null);
+        setPrivilegedUserConfig({ mxid: '', powerLevel: '50' });
+        // Refresh rooms
+        const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (roomsRes.ok) setRooms(await roomsRes.json());
+      } else {
+        const err = await res.json();
+        showToast('error', err.error || t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    } finally {
+      setPrivilegedLoading(false);
+    }
+  };
+
+  const handleForceJoinMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!showAddMemberModal) return;
+    if (!addMemberConfig.mxid) return showToast('error', isRtl ? 'لطفا شناسه ماتریکس را وارد کنید' : 'Please enter the Matrix ID');
+
+    setAddMemberLoading(true);
+    try {
+      const res = await fetch('/api/matrix/rooms/members/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          roomId: showAddMemberModal.id,
+          mxid: addMemberConfig.mxid
+        })
+      });
+
+      if (res.ok) {
+        showToast('success', t.successAction);
+        setShowAddMemberModal(null);
+        setAddMemberConfig({ mxid: '' });
+        // Refresh rooms
+        const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (roomsRes.ok) setRooms(await roomsRes.json());
+      } else {
+        const err = await res.json();
+        showToast('error', err.error || t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    } finally {
+      setAddMemberLoading(false);
     }
   };
 
@@ -2063,11 +2170,11 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                     </div>
 
                     {/* Room actions footer */}
-                    <div className="flex justify-between items-center gap-2">
-                      <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-t border-white/5 pt-3.5 mt-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => setShowRoomMembersModal(r)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-850 hover:bg-slate-800 text-gray-300 border border-white/5 rounded-lg transition-colors duration-200"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-slate-850 hover:bg-slate-800 text-gray-300 border border-white/5 rounded-lg transition-colors duration-200"
                         >
                           <Users className="h-3.5 w-3.5" />
                           <span>{t.viewMembers}</span>
@@ -2075,17 +2182,43 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
                         <button
                           onClick={() => handleOpenRoomChat(r.id, r.name)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 border border-indigo-500/20 rounded-lg transition-colors duration-200"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 border border-indigo-500/20 rounded-lg transition-colors duration-200"
                         >
                           <MessageSquare className="h-3.5 w-3.5" />
                           <span>{isRtl ? 'پایش گفتگو' : 'Inspect Chat'}</span>
                         </button>
+
+                        {hasWriteAccess && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setShowAddPrivilegedModal(r);
+                                setPrivilegedUserConfig({ mxid: '', powerLevel: '50' });
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/20 rounded-lg transition-colors duration-200"
+                            >
+                              <Shield className="h-3.5 w-3.5" />
+                              <span>{t.addPrivilegedUserBtn}</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setShowAddMemberModal(r);
+                                setAddMemberConfig({ mxid: '' });
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/20 rounded-lg transition-colors duration-200"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                              <span>{t.addMemberBtn}</span>
+                            </button>
+                          </>
+                        )}
                       </div>
 
                       {hasWriteAccess && (
                         <button
                           onClick={() => setShowShutdownRoomModal(r)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/25 rounded-lg transition-colors duration-200"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/25 rounded-lg transition-colors duration-200 self-start sm:self-auto"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           <span>{t.shutdownRoomBtn.split(' ')[0]}</span>
@@ -3252,14 +3385,15 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       type="checkbox"
                       id="sd-purge-cb"
                       checked={shutdownRoomConfig.purge}
+                      disabled={shutdownRoomLoading}
                       onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, purge: e.target.checked }))}
                       className={`h-4 w-4 rounded focus:ring-0 ${
                         isLightMode ? 'border-slate-300 bg-white text-red-600' : 'border-white/10 bg-slate-900 text-red-600'
-                      }`}
+                      } ${shutdownRoomLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     />
                     <label htmlFor="sd-purge-cb" className={`text-xs leading-tight select-none ${
                       isLightMode ? 'text-slate-700' : 'text-gray-300'
-                    }`}>
+                    } ${shutdownRoomLoading ? 'opacity-50' : ''}`}>
                       {t.purgeRoomLabel}
                     </label>
                   </div>
@@ -3271,14 +3405,15 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       type="checkbox"
                       id="sd-sendmsg-cb"
                       checked={shutdownRoomConfig.sendMessage}
+                      disabled={shutdownRoomLoading}
                       onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, sendMessage: e.target.checked }))}
                       className={`h-4 w-4 rounded focus:ring-0 ${
                         isLightMode ? 'border-slate-300 bg-white text-red-600' : 'border-white/10 bg-slate-900 text-red-600'
-                      }`}
+                      } ${shutdownRoomLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     />
                     <label htmlFor="sd-sendmsg-cb" className={`text-xs leading-tight select-none ${
                       isLightMode ? 'text-slate-700' : 'text-gray-300'
-                    }`}>
+                    } ${shutdownRoomLoading ? 'opacity-50' : ''}`}>
                       {t.sendMessageLabel}
                     </label>
                   </div>
@@ -3290,14 +3425,15 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       type="checkbox"
                       id="sd-leave-cb"
                       checked={shutdownRoomConfig.leave}
+                      disabled={shutdownRoomLoading}
                       onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, leave: e.target.checked }))}
                       className={`h-4 w-4 rounded focus:ring-0 ${
                         isLightMode ? 'border-slate-300 bg-white text-red-600' : 'border-white/10 bg-slate-900 text-red-600'
-                      }`}
+                      } ${shutdownRoomLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     />
                     <label htmlFor="sd-leave-cb" className={`text-xs leading-tight select-none ${
                       isLightMode ? 'text-slate-700' : 'text-gray-300'
-                    }`}>
+                    } ${shutdownRoomLoading ? 'opacity-50' : ''}`}>
                       {t.leaveRoomLabel}
                     </label>
                   </div>
@@ -3307,6 +3443,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                   <div className="space-y-1">
                     <textarea
                       value={shutdownRoomConfig.messageText}
+                      disabled={shutdownRoomLoading}
                       onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, messageText: e.target.value }))}
                       placeholder={t.sendMessagePlaceholder}
                       rows={2}
@@ -3314,7 +3451,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                         isLightMode 
                           ? 'bg-white border-slate-300 text-slate-800' 
                           : 'bg-black/40 border-white/5 text-gray-200'
-                      }`}
+                      } ${shutdownRoomLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     />
                   </div>
                 )}
@@ -3324,7 +3461,124 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                 }`}>
                   <button
                     type="button"
+                    disabled={shutdownRoomLoading}
                     onClick={() => setShowShutdownRoomModal(null)}
+                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    } ${shutdownRoomLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={shutdownRoomLoading}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {shutdownRoomLoading ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        <span>{isRtl ? 'در حال حذف...' : 'Shutting down...'}</span>
+                      </>
+                    ) : (
+                      <span>Shutdown Room</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================== */}
+      {/* MODAL 5A: ADD PRIVILEGED USER */}
+      {/* ========================================== */}
+      <AnimatePresence>
+        {showAddPrivilegedModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md p-6 rounded-2xl relative space-y-4 spatial-glass"
+              id="add-privileged-modal"
+            >
+              <button
+                onClick={() => setShowAddPrivilegedModal(null)}
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
+                disabled={privilegedLoading}
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-purple-600 border-slate-200' : 'text-purple-400 border-white/5'
+              }`}>
+                <Shield className="h-5 w-5 text-purple-500 animate-pulse" />
+                <span>{t.addPrivilegedUserTitle}</span>
+              </h3>
+
+              <div className={`text-xs space-y-1 p-3 rounded-lg border ${
+                isLightMode ? 'bg-purple-50 border-purple-100 text-purple-900' : 'text-gray-400 bg-black/40 border-white/5'
+              }`}>
+                <p>Room: <span className="font-semibold">{showAddPrivilegedModal.name}</span></p>
+                <p className="font-mono text-[10px] truncate">ID: {showAddPrivilegedModal.id}</p>
+              </div>
+
+              <form onSubmit={handleSetPrivilegedUser} className="space-y-4 text-sm font-medium">
+                <div className="space-y-3">
+                  <div>
+                    <label className={`block text-xs mb-1.5 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
+                      {t.mxidLabel}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      disabled={privilegedLoading}
+                      value={privilegedUserConfig.mxid}
+                      onChange={(e) => setPrivilegedUserConfig(prev => ({ ...prev, mxid: e.target.value }))}
+                      placeholder="@username:example.com"
+                      className={`w-full border rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-purple-500' 
+                          : 'bg-black/40 border-white/5 text-gray-200 focus:border-purple-500'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-xs mb-1.5 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
+                      {t.powerLevelLabel}
+                    </label>
+                    <select
+                      disabled={privilegedLoading}
+                      value={privilegedUserConfig.powerLevel}
+                      onChange={(e) => setPrivilegedUserConfig(prev => ({ ...prev, powerLevel: e.target.value }))}
+                      className={`w-full border rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-purple-500' 
+                          : 'bg-black/40 border-white/5 text-gray-200 focus:border-purple-500'
+                      }`}
+                    >
+                      <option value="100">{t.adminPower}</option>
+                      <option value="50">{t.modPower}</option>
+                      <option value="75">Custom Level 75 (Moderator+)</option>
+                      <option value="25">Custom Level 25 (Helper)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className={`flex justify-end gap-2 border-t pt-4 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/5'
+                }`}>
+                  <button
+                    type="button"
+                    disabled={privilegedLoading}
+                    onClick={() => setShowAddPrivilegedModal(null)}
                     className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
                       isLightMode 
                         ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
@@ -3335,9 +3589,110 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md"
+                    disabled={privilegedLoading}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    Shutdown Room
+                    {privilegedLoading ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        <span>{isRtl ? 'در حال ثبت...' : 'Saving...'}</span>
+                      </>
+                    ) : (
+                      <span>{t.addBtn}</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================== */}
+      {/* MODAL 5B: ADD MEMBER */}
+      {/* ========================================== */}
+      <AnimatePresence>
+        {showAddMemberModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md p-6 rounded-2xl relative space-y-4 spatial-glass"
+              id="add-member-modal"
+            >
+              <button
+                onClick={() => setShowAddMemberModal(null)}
+                className={`absolute top-4 right-4 transition-colors duration-200 ${
+                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
+                }`}
+                disabled={addMemberLoading}
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <h3 className={`text-lg font-bold flex items-center gap-2 border-b pb-2 ${
+                isLightMode ? 'text-emerald-600 border-slate-200' : 'text-emerald-400 border-white/5'
+              }`}>
+                <UserPlus className="h-5 w-5 text-emerald-500 animate-pulse" />
+                <span>{t.addMemberTitle}</span>
+              </h3>
+
+              <div className={`text-xs space-y-1 p-3 rounded-lg border ${
+                isLightMode ? 'bg-emerald-50 border-emerald-100 text-emerald-900' : 'text-gray-400 bg-black/40 border-white/5'
+              }`}>
+                <p>Room: <span className="font-semibold">{showAddMemberModal.name}</span></p>
+                <p className="font-mono text-[10px] truncate">ID: {showAddMemberModal.id}</p>
+              </div>
+
+              <form onSubmit={handleForceJoinMember} className="space-y-4 text-sm font-medium">
+                <div>
+                  <label className={`block text-xs mb-1.5 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
+                    {t.mxidLabel}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    disabled={addMemberLoading}
+                    value={addMemberConfig.mxid}
+                    onChange={(e) => setAddMemberConfig(prev => ({ ...prev, mxid: e.target.value }))}
+                    placeholder="@username:example.com"
+                    className={`w-full border rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800 focus:border-emerald-500' 
+                        : 'bg-black/40 border-white/5 text-gray-200 focus:border-emerald-500'
+                    }`}
+                  />
+                </div>
+
+                <div className={`flex justify-end gap-2 border-t pt-4 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/5'
+                }`}>
+                  <button
+                    type="button"
+                    disabled={addMemberLoading}
+                    onClick={() => setShowAddMemberModal(null)}
+                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    }`}
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addMemberLoading}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {addMemberLoading ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        <span>{isRtl ? 'در حال افزودن...' : 'Adding...'}</span>
+                      </>
+                    ) : (
+                      <span>{t.addBtn}</span>
+                    )}
                   </button>
                 </div>
               </form>
