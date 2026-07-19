@@ -6599,11 +6599,26 @@ wss.on("connection", (ws: WebSocket, request: any) => {
             
             // Build the execution command
             let fullCmd = command;
-            if (command === "custom_install") {
-              const selectedComponents = args?.components || ["synapse", "element", "postgres", "coturn", "nginx"];
+            if (command === "custom_install" || command === "install") {
+              const selectedComponents = (command === "install") ? ["synapse", "element", "postgres", "coturn", "nginx"] : (args?.components || ["synapse", "element", "postgres", "coturn", "nginx"]);
               const confObj = args?.config || {};
+              
+              if (command === "install") {
+                confObj.HS_DOMAIN = confObj.HS_DOMAIN || (activeConn.domain ? `matrix.${activeConn.domain}` : "matrix.company.local");
+                confObj.ELEMENT_DOMAIN = confObj.ELEMENT_DOMAIN || (activeConn.domain ? `chat.${activeConn.domain}` : "chat.company.local");
+                confObj.BASE_DOMAIN = confObj.BASE_DOMAIN || activeConn.domain || "company.local";
+                confObj.PUBLIC_IP = confObj.PUBLIC_IP || activeConn.host || "127.0.0.1";
+                confObj.LE_EMAIL = confObj.LE_EMAIL || `admin@${confObj.BASE_DOMAIN}`;
+                confObj.SSL_MODE = confObj.SSL_MODE || "selfsigned";
+                confObj.PG_DB = confObj.PG_DB || "synapse";
+                confObj.PG_USER = confObj.PG_USER || "synapse_user";
+                confObj.PG_PASS = confObj.PG_PASS || "synapse_pass";
+                confObj.PG_HOST = confObj.PG_HOST || "localhost";
+                confObj.PG_PORT = confObj.PG_PORT || "5432";
+              }
+
               // Convert config to env vars prefixed command
-              let envStr = "";
+              let envStr = "NON_INTERACTIVE=true ";
               Object.entries(confObj).forEach(([k, v]) => {
                 envStr += `${k}='${String(v).replace(/'/g, "'\\''")}' `;
               });
@@ -6612,7 +6627,74 @@ wss.on("connection", (ws: WebSocket, request: any) => {
               envStr += `INSTALL_POSTGRES='${selectedComponents.includes("postgres")}' `;
               envStr += `INSTALL_COTURN='${selectedComponents.includes("coturn")}' `;
               envStr += `INSTALL_NGINX='${selectedComponents.includes("nginx")}' `;
-              fullCmd = `${envStr} bash ./install-matrix-stack.sh`;
+
+              // Read our local /install-matrix-stack.sh script content from workspace
+              const scriptPath = path.join(process.cwd(), "install-matrix-stack.sh");
+              const scriptContent = fs.readFileSync(scriptPath, "utf8");
+              
+              // Upload script using inline tee
+              const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+              const writeCmd = `${sudoPrefix}tee "/tmp/install-matrix-stack.sh" << 'EOF' >/dev/null\n${scriptContent}\nEOF`;
+              
+              ws.send(JSON.stringify({ type: "cmd_stdout", text: "📤 Uploading Matrix installation script to remote server..." }));
+              
+              conn.exec(writeCmd, (err, stream) => {
+                if (err) {
+                  ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to upload installer script: ${err.message}` }));
+                  ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+                  return;
+                }
+                stream.on("close", () => {
+                  conn.exec(`${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh`, (err2, stream2) => {
+                    if (err2) {
+                      ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to chmod installer script: ${err2.message}` }));
+                      ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+                      return;
+                    }
+                    stream2.on("close", () => {
+                      // Trigger execution of the newly uploaded installer
+                      ws.send(JSON.stringify({ type: "cmd_stdout", text: "🚀 Execution starting on remote host..." }));
+                      const finalCmd = `${envStr} bash /tmp/install-matrix-stack.sh`;
+                      conn.exec(finalCmd, (err3, finalStream) => {
+                        if (err3) {
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to execute command: ${err3.message}` }));
+                          ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+                          return;
+                        }
+                        
+                        finalStream.on("close", (code) => {
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: `🏁 [REMOTE] Installer finished with exit code: ${code}` }));
+                          ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
+                          
+                          // Update remote state in database
+                          if (code === 0) {
+                            try {
+                              const db = readDb();
+                              const connIndex = db.connections.findIndex((c: any) => c.id === activeConn.id);
+                              if (connIndex !== -1) {
+                                db.connections[connIndex].status = "online";
+                                // Update paths
+                                db.connections[connIndex].configPath = "/etc/matrix-stack.conf";
+                                db.connections[connIndex].homeserverYamlPath = "/etc/matrix-synapse/homeserver.yaml";
+                                db.connections[connIndex].elementConfigPath = "/var/www/element/config.json";
+                                writeDb(db);
+                              }
+                            } catch (e) {
+                              console.error("Failed to update remote connection configuration:", e);
+                            }
+                          }
+                          conn.end();
+                        }).on("data", (data: any) => {
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+                        }).stderr.on("data", (data: any) => {
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
+                        });
+                      });
+                    });
+                  });
+                });
+              });
+              return;
             } else if (command === "install_workers") {
               const workerCount = args?.count || 2;
               const enableFed = args?.federationSender ? "true" : "false";
@@ -6912,18 +6994,33 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
 
         // Real production target VPS execution wrapper
         const isSandbox = !fs.existsSync("/bin/systemctl");
-        if (!isSandbox && command === "custom_install") {
-          const selectedComponents = args?.components || ["synapse", "element", "postgres", "coturn", "nginx"];
+        if (!isSandbox && (command === "custom_install" || command === "install")) {
+          const selectedComponents = (command === "install") ? ["synapse", "element", "postgres", "coturn", "nginx"] : (args?.components || ["synapse", "element", "postgres", "coturn", "nginx"]);
           const confObj = args?.config || {};
+
+          if (command === "install") {
+            try {
+              const currentConf = readSandboxFile("/etc/matrix-stack.conf") || "";
+              currentConf.split("\n").forEach((line) => {
+                const parts = line.split("=");
+                if (parts.length === 2) {
+                  confObj[parts[0].trim()] = parts[1].trim();
+                }
+              });
+            } catch (e) {
+              console.error("No existing configuration file found, using default installation parameters");
+            }
+          }
 
           const envVars = {
             ...process.env,
+            NON_INTERACTIVE: "true",
             HS_DOMAIN: String(confObj.HS_DOMAIN || "matrix.company.local"),
             ELEMENT_DOMAIN: String(confObj.ELEMENT_DOMAIN || "chat.company.local"),
             BASE_DOMAIN: String(confObj.BASE_DOMAIN || "company.local"),
             PUBLIC_IP: String(confObj.PUBLIC_IP || "127.0.0.1"),
             LE_EMAIL: String(confObj.LE_EMAIL || "admin@company.local"),
-            SSL_MODE: "selfsigned",
+            SSL_MODE: String(confObj.SSL_MODE || "selfsigned"),
             PG_DB: String(confObj.PG_DB || "synapse"),
             PG_USER: String(confObj.PG_USER || "synapse_user"),
             PG_PASS: String(confObj.PG_PASS || "synapse_pass"),
