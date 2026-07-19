@@ -3342,18 +3342,79 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   try {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
     if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms)) {
-      const mappedRooms = apiRes.rooms.map((r: any) => ({
-        id: r.room_id,
-        name: r.name || r.room_id,
-        alias: r.canonical_alias || "",
-        topic: r.topic || "",
-        creator: r.creator || "",
-        membersCount: r.joined_members || 0,
-        joinedMembers: [],
-        version: r.version || "1",
-        isFederated: r.federatable !== false,
-        isPublic: r.public === true,
-        createdAt: new Date().toISOString()
+      const db = readDb();
+      const mappedRooms = await Promise.all(apiRes.rooms.map(async (r: any) => {
+        let joinedMembers: any[] = [];
+        let bannedMembers: string[] = [];
+
+        try {
+          // Query Postgres for membership in this room
+          const dbMembers = await queryPostgres(`
+            SELECT rm.user_id as mxid, rm.membership, p.displayname
+            FROM room_memberships rm
+            LEFT JOIN profiles p ON rm.user_id = p.user_id
+            WHERE rm.room_id = $1
+          `, [r.room_id]);
+
+          if (dbMembers && dbMembers.length > 0) {
+            dbMembers.forEach((m: any) => {
+              if (m.membership === 'join') {
+                joinedMembers.push({
+                  mxid: m.mxid,
+                  displayName: m.displayname || "",
+                  role: m.mxid === r.creator ? "Admin" : "Member",
+                  powerLevel: m.mxid === r.creator ? 100 : 0
+                });
+              } else if (m.membership === 'ban') {
+                bannedMembers.push(m.mxid);
+              }
+            });
+          } else {
+            // Fallback to Synapse API if no records in Postgres
+            const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(r.room_id)}/members`);
+            if (membersRes && Array.isArray(membersRes.members)) {
+              joinedMembers = membersRes.members.map((m: string) => ({
+                mxid: m,
+                role: m === r.creator ? "Admin" : "Member",
+                powerLevel: m === r.creator ? 100 : 0
+              }));
+            }
+          }
+        } catch (dbErr) {
+          // Fallback to Synapse API
+          try {
+            const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(r.room_id)}/members`);
+            if (membersRes && Array.isArray(membersRes.members)) {
+              joinedMembers = membersRes.members.map((m: string) => ({
+                mxid: m,
+                role: m === r.creator ? "Admin" : "Member",
+                powerLevel: m === r.creator ? 100 : 0
+              }));
+            }
+          } catch (apiErr) {
+            console.warn("Could not fetch room members for:", r.room_id, apiErr);
+          }
+        }
+
+        // Merge with local DB configurations like AD groups
+        const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === r.room_id);
+        const adGroups = localRoom ? (localRoom.adGroups || []) : [];
+
+        return {
+          id: r.room_id,
+          name: r.name || r.room_id,
+          alias: r.canonical_alias || "",
+          topic: r.topic || "",
+          creator: r.creator || "",
+          membersCount: r.joined_members || joinedMembers.length || 0,
+          joinedMembers,
+          bannedMembers,
+          adGroups,
+          version: r.version || "1",
+          isFederated: r.federatable !== false,
+          isPublic: r.public === true,
+          createdAt: new Date().toISOString()
+        };
       }));
       return res.json(mappedRooms);
     }

@@ -446,6 +446,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [showAddMemberModal, setShowAddMemberModal] = useState<MatrixRoom | null>(null);
   const [addMemberConfig, setAddMemberConfig] = useState({ mxid: '' });
   const [addMemberLoading, setAddMemberLoading] = useState(false);
+  const [addingMemberMxid, setAddingMemberMxid] = useState<string | null>(null);
 
   // New States for Room Member Search and Active Directory Integration
   const [memberSearch, setMemberSearch] = useState('');
@@ -1413,6 +1414,9 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     const targetMxid = customMxid || addMemberConfig.mxid;
     if (!targetMxid) return showToast('error', isRtl ? 'لطفا شناسه ماتریکس را وارد کنید' : 'Please enter the Matrix ID');
 
+    if (customMxid) {
+      setAddingMemberMxid(customMxid);
+    }
     setAddMemberLoading(true);
     try {
       const res = await fetch('/api/matrix/rooms/members/join', {
@@ -1452,6 +1456,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       showToast('error', t.errorAction);
     } finally {
       setAddMemberLoading(false);
+      setAddingMemberMxid(null);
     }
   };
 
@@ -4038,7 +4043,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                                 onClick={() => handleForceJoinMember(undefined, u.mxid)}
                                 className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] rounded-lg transition-colors duration-200 shadow-sm font-semibold disabled:opacity-50"
                               >
-                                {addMemberLoading ? (
+                                {addingMemberMxid === u.mxid ? (
                                   <RefreshCw className="h-3 w-3 animate-spin" />
                                 ) : (
                                   <Plus className="h-3.5 w-3.5" />
