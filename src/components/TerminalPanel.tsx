@@ -12,12 +12,231 @@ interface TerminalPanelProps {
   onExecuteCommand: (command: string) => void;
   userRole: string;
   authToken: string | null;
-  lang: 'fa' | 'en';
+  lang: 'en' | 'fa' | 'es' | 'ar' | 'de' | 'ru';
   isLightMode?: boolean;
   showToast: (type: 'success' | 'error', text: string) => void;
   initialTab?: 'console' | 'install' | 'updates';
   onTabChange?: (tab: 'console' | 'install' | 'updates') => void;
 }
+
+const terminalTranslations: Record<string, any> = {
+  en: {
+    quickTasks: 'Quick Tasks',
+    quickTasksSub: 'Execute high-privilege shell routines on the virtual Matrix node. Changes reflect in real-time.',
+    standardInstall: 'Standard Install Stack',
+    standardInstallSub: 'Nginx, Synapse, Element, TURN, Postgres',
+    enableWorkers: 'Enable Redis Workers',
+    enableWorkersSub: 'Deploy 2 generic workers and a proxy',
+    disableE2ee: 'Disable E2EE Org-Wide',
+    disableE2eeSub: '4-layer enforcement to lock room encryption',
+    triggerBackup: 'Trigger Full Backup',
+    triggerBackupSub: 'Database, Keys, Elements Web archive',
+    updatePanel: 'Update Matrix Panel',
+    updatePanelSub: 'Check status and pull latest commits from git',
+    activeSsh: 'Active SSH Terminal',
+    activeSshSub: 'Interact with live service CLI terminal',
+    checkLogs: 'Check Installation Logs',
+    checkLogsSub: 'Read /var/log/matrix_stack_install.log',
+    accessRestricted: 'Access Restricted',
+    accessRestrictedDesc: (role: string) => `Your role is ${role}. Some commands require Super Admin or Owner privileges.`,
+    consoleModeActive: 'Console Mode Active',
+    consoleModeActiveDesc: 'You have full Write/Execute capability. Take precautions when configuring the Homeserver.',
+    unauthorizedViewer: 'Unauthorized: Viewer role cannot input console commands',
+    inputPlaceholder: 'Type custom action (install, backup, workers, e2ee_disable) and press Enter...',
+    checking: 'Checking...',
+    currentInstalled: 'Currently Installed Version:',
+    updateControl: 'Panel Update Control Center',
+    checkUpdates: 'Check Updates',
+    installUpdate: 'Install Update',
+    newUpdateAvailable: 'New Update Available!',
+    updateAvailableDesc: (commits: number) => `You are currently ${commits} commits behind the main branch. Please update to get the latest features.`,
+    latestChanges: 'Latest available update description:',
+    systemUpToDate: 'System Up to Date',
+    systemUpToDateDesc: 'Your Matrix Admin panel is running the latest code from the remote repository.',
+    readyMsg: '# Update Manager ready.',
+    clickToQuery: '# Click "Check for Updates" to query the repository status.'
+  },
+  fa: {
+    quickTasks: 'عملیات سریع سیستمی',
+    quickTasksSub: 'رابط اجرای اسکریپت‌های سیستمی با سطح دسترسی روت روی سرور مجازی ماتریکس.',
+    standardInstall: 'نصب مخزن استاندارد ماتریکس',
+    standardInstallSub: 'نصب و کانفیگ خودکار Nginx, Synapse, Element, TURN, Postgres',
+    enableWorkers: 'فعال‌سازی ورکر‌های Redis',
+    enableWorkersSub: 'راه‌اندازی ۲ ورکر عمومی و پروکسی ماتریکس جهت افزایش پایداری و بازدهی',
+    disableE2ee: 'غیرفعال‌سازی سرتاسری رمزنگاری E2EE',
+    disableE2eeSub: 'اعمال قفل غیرفعال‌سازی اجباری رمزگذاری پیام‌ها در تمامی اتاق‌ها',
+    triggerBackup: 'تهیه نسخه پشتیبان کامل',
+    triggerBackupSub: 'بک‌آپ کامل از دیتابیس، کلیدهای رمزنگاری و فایل‌های المنت',
+    updatePanel: 'بروزرسانی پنل ماتریکس',
+    updatePanelSub: 'بررسی وضعیت و دریافت جدیدترین کامیت‌ها از مخزن گیت‌هاب',
+    activeSsh: 'ترمینال تعاملی SSH روت',
+    activeSshSub: 'تعامل زنده با خط فرمان سرور مجازی ماتریکس',
+    checkLogs: 'گزارش‌های راه‌اندازی اولیه',
+    checkLogsSub: 'مشاهده فایل گزارش نصب سیستم /var/log/matrix_stack_install.log',
+    accessRestricted: 'محدودیت دسترسی امنیتی',
+    accessRestrictedDesc: (role: string) => `نقش شما ${role} است. برخی دستورات نیاز به دسترسی Super Admin یا مالک دارند.`,
+    consoleModeActive: 'حالت کنسول فعال است',
+    consoleModeActiveDesc: 'شما دسترسی کامل برای اجرا و تغییرات دارید. در هنگام ویرایش پیکربندی‌ها مراقب باشید.',
+    unauthorizedViewer: 'عدم دسترسی: نقش ناظر امکان وارد کردن دستورات خط فرمان را ندارد',
+    inputPlaceholder: 'دستور مورد نظر را تایپ کنید (install, backup, workers, e2ee_disable)...',
+    checking: 'در حال بررسی...',
+    currentInstalled: 'نسخه فعلی نصب شده:',
+    updateControl: 'مرکز کنترل بروزرسانی پنل',
+    checkUpdates: 'بررسی بروزرسانی',
+    installUpdate: 'نصب بروزرسانی',
+    newUpdateAvailable: 'بروزرسانی جدید در دسترس است!',
+    updateAvailableDesc: (commits: number) => `نسخه شما به تعداد ${commits} کامیت از نسخه اصلی گیت عقب‌تر است. جهت بروزرسانی دکمه نصب را بزنید.`,
+    latestChanges: 'توضیحات آخرین تغییرات در این بروزرسانی:',
+    systemUpToDate: 'سیستم کاملاً بروز است',
+    systemUpToDateDesc: 'پنل مدیریت ماتریکس شما در حال حاضر از آخرین کد‌های مخزن اصلی استفاده می‌کند.',
+    readyMsg: '# مدیر بروزرسانی آماده است.',
+    clickToQuery: '# جهت دریافت آخرین وضعیت سرور روی "بررسی بروزرسانی" کلیک کنید.'
+  },
+  es: {
+    quickTasks: 'Tareas Rápidas',
+    quickTasksSub: 'Ejecute rutinas de shell de alto privilegio en el nodo Matrix virtual. Los cambios se reflejan en tiempo real.',
+    standardInstall: 'Pila de Instalación Estándar',
+    standardInstallSub: 'Nginx, Synapse, Element, TURN, Postgres',
+    enableWorkers: 'Habilitar Workers de Redis',
+    enableWorkersSub: 'Implementar 2 workers genéricos y un proxy',
+    disableE2ee: 'Deshabilitar E2EE en toda la Org',
+    disableE2eeSub: 'Aplicación de 4 capas para bloquear el cifrado de salas',
+    triggerBackup: 'Ejecutar Respaldo Completo',
+    triggerBackupSub: 'Base de datos, Claves, archivo Web de Element',
+    updatePanel: 'Actualizar Panel Matrix',
+    updatePanelSub: 'Comprobar estado y descargar últimos commits de git',
+    activeSsh: 'Terminal SSH Activa',
+    activeSshSub: 'Interactuar con la CLI del servicio en vivo',
+    checkLogs: 'Ver Registros de Instalación',
+    checkLogsSub: 'Leer /var/log/matrix_stack_install.log',
+    accessRestricted: 'Acceso Restringido',
+    accessRestrictedDesc: (role: string) => `Su rol es ${role}. Algunos comandos requieren privilegios de Super Admin o Propietario.`,
+    consoleModeActive: 'Modo Consola Activo',
+    consoleModeActiveDesc: 'Tiene capacidad completa de Escritura/Ejecución. Tome precauciones al configurar el Homeserver.',
+    unauthorizedViewer: 'No autorizado: El rol de Visor no puede introducir comandos de consola',
+    inputPlaceholder: 'Escriba una acción personalizada (install, backup, workers, e2ee_disable) y presione Enter...',
+    checking: 'Comprobando...',
+    currentInstalled: 'Versión Instalada Actualmente:',
+    updateControl: 'Centro de Control de Actualizaciones',
+    checkUpdates: 'Buscar Actualizaciones',
+    installUpdate: 'Instalar Actualización',
+    newUpdateAvailable: '¡Nueva Actualización Disponible!',
+    updateAvailableDesc: (commits: number) => `Actualmente está ${commits} commits por detrás de la rama principal. Por favor, actualice.`,
+    latestChanges: 'Última descripción de actualización disponible:',
+    systemUpToDate: 'Sistema Actualizado',
+    systemUpToDateDesc: 'Su panel de administración de Matrix está ejecutando el código más reciente del repositorio remoto.',
+    readyMsg: '# Administrador de actualizaciones listo.',
+    clickToQuery: '# Haga clic en "Buscar actualizaciones" para consultar el estado del repositorio.'
+  },
+  ar: {
+    quickTasks: 'المهام السريعة',
+    quickTasksSub: 'تنفيذ أوامر شل ذات الامتيازات العالية على خادم ماتركس الافتراضي. تظهر التغييرات في الوقت الفعلي.',
+    standardInstall: 'حزمة التثبيت القياسية',
+    standardInstallSub: 'Nginx, Synapse, Element, TURN, Postgres',
+    enableWorkers: 'تفعيل عمال Redis',
+    enableWorkersSub: 'نشر 2 عمال عامين ووكيل',
+    disableE2ee: 'تعطيل التشفير E2EE على مستوى المؤسسة',
+    disableE2eeSub: 'فرض 4 طبقات لقفل تشفير الغرف',
+    triggerBackup: 'تشغيل النسخ الاحتياطي الكامل',
+    triggerBackupSub: 'قاعدة البيانات، المفاتيح، أرشيف Element ويب',
+    updatePanel: 'تحديث لوحة ماتركس',
+    updatePanelSub: 'التحقق من الحالة وجلب آخر التغييرات من غيت',
+    activeSsh: 'محطة SSH نشطة',
+    activeSshSub: 'التفاعل مع واجهة أوامر الخدمة الحية',
+    checkLogs: 'التحقق من سجلات التثبيت',
+    checkLogsSub: 'قراءة الملف /var/log/matrix_stack_install.log',
+    accessRestricted: 'الوصول مقيد',
+    accessRestrictedDesc: (role: string) => `دورك هو ${role}. تتطلب بعض الأوامر امتيازات Super Admin أو المالك.`,
+    consoleModeActive: 'وضع وحدة التحكم نشط',
+    consoleModeActiveDesc: 'لديك صلاحية الكتابة والتنفيذ الكاملة. اتخذ الاحتياطات اللازمة عند إعداد الخادم.',
+    unauthorizedViewer: 'غير مصرح: لا يمكن لدور المشاهد إدخال أوامر وحدة التحكم',
+    inputPlaceholder: 'اكتب الأمر المخصص (install, backup, workers, e2ee_disable) واضغط Enter...',
+    checking: 'جاري التحقق...',
+    currentInstalled: 'الإصدار المثبت حاليًا:',
+    updateControl: 'مركز التحكم في تحديثات اللوحة',
+    checkUpdates: 'التحقق من التحديثات',
+    installUpdate: 'تثبيت التحديث',
+    newUpdateAvailable: 'تحديث جديد متاح!',
+    updateAvailableDesc: (commits: number) => `أنت متأخر حاليًا بـ ${commits} من الالتزامات عن الفرع الرئيسي. يرجى التحديث.`,
+    latestChanges: 'وصف آخر تحديث متاح:',
+    systemUpToDate: 'النظام محدث بالكامل',
+    systemUpToDateDesc: 'لوحة تحكم ماتركس تعمل بأحدث كود من المستودع البعيد.',
+    readyMsg: '# مدير التحديثات جاهز.',
+    clickToQuery: '# انقر على "التحقق من التحديثات" للاستعلام عن حالة المستودع.'
+  },
+  de: {
+    quickTasks: 'Schnelle Aufgaben',
+    quickTasksSub: 'Führen Sie Shell-Routinen mit hohen Privilegien auf dem virtuellen Matrix-Knoten aus. Änderungen werden in Echtzeit übernommen.',
+    standardInstall: 'Standard-Installationsstack',
+    standardInstallSub: 'Nginx, Synapse, Element, TURN, Postgres',
+    enableWorkers: 'Redis-Worker aktivieren',
+    enableWorkersSub: '2 generische Worker und einen Proxy bereitstellen',
+    disableE2ee: 'E2EE organisationsweit deaktivieren',
+    disableE2eeSub: '4-Schichten-Erzwingung zum Sperren der Raumverschlüsselung',
+    triggerBackup: 'Vollständiges Backup auslösen',
+    triggerBackupSub: 'Datenbank, Schlüssel, Element-Webarchiv',
+    updatePanel: 'Matrix-Panel aktualisieren',
+    updatePanelSub: 'Status prüfen und neueste Commits von Git abrufen',
+    activeSsh: 'Aktives SSH-Terminal',
+    activeSshSub: 'Interagieren Sie mit der Live-Dienst-CLI',
+    checkLogs: 'Installationsprotokolle prüfen',
+    checkLogsSub: 'Lesen von /var/log/matrix_stack_install.log',
+    accessRestricted: 'Zugriff eingeschränkt',
+    accessRestrictedDesc: (role: string) => `Ihre Rolle ist ${role}. Einige Befehle erfordern Super-Admin- oder Besitzerrechte.`,
+    consoleModeActive: 'Konsolenmodus aktiv',
+    consoleModeActiveDesc: 'Sie haben volle Schreib- und Ausführungsrechte. Lassen Sie bei der Konfiguration des Homeservers Vorsicht walten.',
+    unauthorizedViewer: 'Nicht autorisiert: Die Rolle „Viewer“ kann keine Konsolenbefehle eingeben',
+    inputPlaceholder: 'Geben Sie eine benutzerdefinierte Aktion ein (install, backup, workers, e2ee_disable) und drücken Sie Enter...',
+    checking: 'Prüfen...',
+    currentInstalled: 'Aktuell installierte Version:',
+    updateControl: 'Panel-Update-Kontrollzentrum',
+    checkUpdates: 'Updates prüfen',
+    installUpdate: 'Update installieren',
+    newUpdateAvailable: 'Neues Update verfügbar!',
+    updateAvailableDesc: (commits: number) => `Sie sind derzeit um ${commits} Commits hinter dem Hauptzweig. Bitte aktualisieren Sie.`,
+    latestChanges: 'Beschreibung des neuesten verfügbaren Updates:',
+    systemUpToDate: 'System auf dem neuesten Stand',
+    systemUpToDateDesc: 'Ihr Matrix-Admin-Panel läuft mit dem neuesten Code aus dem Remote-Repository.',
+    readyMsg: '# Update-Manager bereit.',
+    clickToQuery: '# Klicken Sie auf „Updates prüfen“, um den Repository-Status abzufragen.'
+  },
+  ru: {
+    quickTasks: 'Быстрые задачи',
+    quickTasksSub: 'Выполняйте консольные скрипты с высокими правами доступа на виртуальном узле Matrix. Изменения вступают в силу мгновенно.',
+    standardInstall: 'Стандартный стек установки',
+    standardInstallSub: 'Nginx, Synapse, Element, TURN, Postgres',
+    enableWorkers: 'Включить воркеры Redis',
+    enableWorkersSub: 'Развернуть 2 стандартных воркера и прокси',
+    disableE2ee: 'Отключить E2EE по всей организации',
+    disableE2eeSub: '4-уровневое принудительное отключение шифрования комнат',
+    triggerBackup: 'Запустить резервное копирование',
+    triggerBackupSub: 'База данных, Ключи, веб-архив Element',
+    updatePanel: 'Обновить панель Matrix',
+    updatePanelSub: 'Проверить статус и загрузить последние коммиты из git',
+    activeSsh: 'Активный SSH-терминал',
+    activeSshSub: 'Прямое взаимодействие с консолью CLI',
+    checkLogs: 'Логи установки стека',
+    checkLogsSub: 'Прочитать /var/log/matrix_stack_install.log',
+    accessRestricted: 'Доступ ограничен',
+    accessRestrictedDesc: (role: string) => `Ваша роль — ${role}. Некоторые команды требуют прав Super Admin или Владельца.`,
+    consoleModeActive: 'Режим консоли активен',
+    consoleModeActiveDesc: 'У вас есть полные права на запись и выполнение. Соблюдайте осторожность при изменении конфигурации.',
+    unauthorizedViewer: 'Недостаточно прав: роль Наблюдателя не может вводить команды в консоль',
+    inputPlaceholder: 'Введите команду (install, backup, workers, e2ee_disable) и нажмите Enter...',
+    checking: 'Проверка...',
+    currentInstalled: 'Текущая установленная версия:',
+    updateControl: 'Центр управления обновлениями',
+    checkUpdates: 'Проверить обновления',
+    installUpdate: 'Установить обновление',
+    newUpdateAvailable: 'Доступно новое обновление!',
+    updateAvailableDesc: (commits: number) => `Вы отстаете от основной ветки на ${commits} коммитов. Пожалуйста, обновитесь.`,
+    latestChanges: 'Описание последних изменений в обновлении:',
+    systemUpToDate: 'Система обновлена',
+    systemUpToDateDesc: 'Ваша панель управления Matrix работает на последней версии кода из удаленного репозитория.',
+    readyMsg: '# Менеджер обновлений готов к работе.',
+    clickToQuery: '# Нажмите «Проверить обновления», чтобы запросить статус репозитория.'
+  }
+};
 
 export default function TerminalPanel({ 
   logs, 
@@ -48,19 +267,21 @@ export default function TerminalPanel({
   };
   const [customInput, setCustomInput] = useState('');
 
+  const t = terminalTranslations[lang] || terminalTranslations.en;
+
   // System Updates & Maintenance States
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
   const [commitsBehind, setCommitsBehind] = useState<number>(0);
   const [latestCommits, setLatestCommits] = useState<any[]>([]);
   const [currentVersion, setCurrentVersion] = useState<string>('');
   const [updateLogs, setUpdateLogs] = useState<string[]>([
-    '# Update Manager ready.',
-    '# Click "Check for Updates" to query the repository status.'
+    t.readyMsg,
+    t.clickToQuery
   ]);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState<boolean>(false);
 
-  const isRtl = lang === 'fa';
+  const isRtl = ['fa', 'ar'].includes(lang);
   const hasWriteAccess = userRole !== 'Viewer';
 
   const safeConfirm = (msg: string): boolean => {
@@ -213,18 +434,18 @@ export default function TerminalPanel({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)] overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)] overflow-hidden" dir={isRtl ? "rtl" : "ltr"}>
       {/* Sidebar: Preset Quick Actions */}
-      <div className="spatial-glass rounded-3xl p-5 border border-white/5 flex flex-col justify-between h-full overflow-y-auto">
+      <div className={`spatial-glass rounded-3xl p-5 border border-white/5 flex flex-col justify-between h-full overflow-y-auto ${isRtl ? 'text-right' : 'text-left'}`}>
         <div>
-          <div className="flex items-center gap-3 mb-4">
+          <div className={`flex items-center gap-3 mb-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
             <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/10">
               <Terminal className="w-5 h-5" />
             </div>
-            <h2 className="text-xl font-display font-bold text-white">Quick Tasks</h2>
+            <h2 className="text-xl font-display font-bold text-white">{t.quickTasks}</h2>
           </div>
           <p className="text-xs text-slate-400 mb-6">
-            Execute high-privilege shell routines on the virtual Matrix node. Changes reflect in real-time.
+            {t.quickTasksSub}
           </p>
 
           <div className="space-y-3">
@@ -232,88 +453,88 @@ export default function TerminalPanel({
             <button
               onClick={() => handleRunCommand('install')}
               disabled={isExecuting || isViewer || isModerator}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group ${
+              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
                 isExecuting 
                   ? 'bg-white/5 border-white/5 text-gray-500' 
                   : isViewer || isModerator
                     ? 'border-red-500/10 bg-red-500/5 text-gray-400 cursor-not-allowed'
                     : 'border-white/5 bg-white/5 hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-200'
-              }`}
+              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  Standard Install Stack 
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {t.standardInstall}
                   {isModerator && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-mono font-normal">SuperAdmin+</span>}
                 </h4>
-                <p className="text-[11px] text-slate-400 mt-1">Nginx, Synapse, Element, TURN, Postgres</p>
+                <p className="text-[11px] text-slate-400 mt-1">{t.standardInstallSub}</p>
               </div>
-              <Play className="w-4 h-4 text-rose-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-rose-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
             {/* Turn on Workers Scaling */}
             <button
               onClick={() => handleRunCommand('workers_enable')}
               disabled={isExecuting || isViewer || isModerator}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group ${
+              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
                 isExecuting 
                   ? 'bg-white/5 border-white/5 text-gray-500' 
                   : isViewer || isModerator
                     ? 'border-red-500/10 bg-red-500/5 text-gray-400 cursor-not-allowed'
                     : 'border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200'
-              }`}
+              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  Enable Redis Workers 
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {t.enableWorkers}
                   {isModerator && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-mono font-normal">SuperAdmin+</span>}
                 </h4>
-                <p className="text-[11px] text-slate-400 mt-1">Deploy 2 generic workers and a proxy</p>
+                <p className="text-[11px] text-slate-400 mt-1">{t.enableWorkersSub}</p>
               </div>
-              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
             {/* Trigger E2EE Lockdown */}
             <button
               onClick={() => handleRunCommand('e2ee_disable')}
               disabled={isExecuting || isViewer || isModerator}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group ${
+              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
                 isExecuting 
                   ? 'bg-white/5 border-white/5 text-gray-500' 
                   : isViewer || isModerator
                     ? 'border-red-500/10 bg-red-500/5 text-gray-400 cursor-not-allowed'
                     : 'border-white/5 bg-white/5 hover:bg-purple-500/10 hover:border-purple-500/20 text-slate-200'
-              }`}
+              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  Disable E2EE Org-Wide 
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {t.disableE2ee}
                   {isModerator && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-mono font-normal">SuperAdmin+</span>}
                 </h4>
-                <p className="text-[11px] text-slate-400 mt-1">4-layer enforcement to lock room encryption</p>
+                <p className="text-[11px] text-slate-400 mt-1">{t.disableE2eeSub}</p>
               </div>
-              <Play className="w-4 h-4 text-purple-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-purple-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
             {/* Execute System Backup */}
             <button
               onClick={() => handleRunCommand('backup')}
               disabled={isExecuting || isViewer}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group ${
+              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
                 isExecuting 
                   ? 'bg-white/5 border-white/5 text-gray-500' 
                   : isViewer
                     ? 'border-red-500/10 bg-red-500/5 text-gray-400 cursor-not-allowed'
                     : 'border-white/5 bg-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/20 text-slate-200'
-              }`}
+              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  Trigger Full Backup 
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {t.triggerBackup}
                   {isViewer && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-mono font-normal">Admin+</span>}
                 </h4>
-                <p className="text-[11px] text-slate-400 mt-1">Database, Keys, Elements Web archive</p>
+                <p className="text-[11px] text-slate-400 mt-1">{t.triggerBackupSub}</p>
               </div>
-              <Play className="w-4 h-4 text-emerald-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-emerald-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
             {/* Update Matrix Panel */}
@@ -324,80 +545,80 @@ export default function TerminalPanel({
                 checkSystemUpdates();
               }}
               disabled={isCheckingUpdate || isApplyingUpdate}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group ${
+              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
                 isCheckingUpdate || isApplyingUpdate
                   ? 'bg-white/5 border-white/5 text-gray-500' 
                   : 'border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200'
-              }`}
+              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  {isRtl ? 'بروزرسانی پنل ماتریکس' : 'Update Matrix Panel'}
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {t.updatePanel}
                   {updateAvailable && (
                     <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
                   )}
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  {isRtl ? 'بررسی وضعیت و دریافت جدیدترین کامیت‌ها از گیت' : 'Check status and pull latest commits from git'}
+                  {t.updatePanelSub}
                 </p>
               </div>
-              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
             {/* Active SSH Terminal Navigation Shortcut */}
             <button
               type="button"
               onClick={() => handleTabChange('console')}
-              className="w-full text-left p-3.5 rounded-2xl border border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200 transition-all flex items-center justify-between group"
+              className={`w-full text-left p-3.5 rounded-2xl border border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200 transition-all flex items-center justify-between group cursor-pointer ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  {isRtl ? 'ترمینال تعاملی SSH' : 'Active SSH Terminal'}
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {t.activeSsh}
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  {isRtl ? 'تعامل زنده با خط فرمان سرور مجازی' : 'Interact with live service CLI terminal'}
+                  {t.activeSshSub}
                 </p>
               </div>
-              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
             {/* Check Installation Logs Navigation Shortcut */}
             <button
               type="button"
               onClick={() => handleTabChange('install')}
-              className="w-full text-left p-3.5 rounded-2xl border border-white/5 bg-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/20 text-slate-200 transition-all flex items-center justify-between group"
+              className={`w-full text-left p-3.5 rounded-2xl border border-white/5 bg-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/20 text-slate-200 transition-all flex items-center justify-between group cursor-pointer ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  {isRtl ? 'گزارش‌های راه‌اندازی اولیه' : 'Check Installation Logs'}
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {t.checkLogs}
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  {isRtl ? 'مشاهده خروجی فرآیند نصب مخزن ماتریکس' : 'Read /var/log/matrix_stack_install.log'}
+                  {t.checkLogsSub}
                 </p>
               </div>
-              <Play className="w-4 h-4 text-emerald-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-emerald-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
           </div>
         </div>
 
         {/* Security / RBAC Banner */}
         {isViewer || isModerator ? (
-          <div className="mt-4 p-4 rounded-2xl bg-red-500/10 border border-red-500/10 text-red-400 flex items-start gap-3">
+          <div className={`mt-4 p-4 rounded-2xl bg-red-500/10 border border-red-500/10 text-red-400 flex items-start gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
             <ShieldAlert className="w-5 h-5 mt-0.5 shrink-0" />
             <div>
-              <h5 className="text-xs font-bold font-display uppercase tracking-wider">Access Restricted</h5>
+              <h5 className="text-xs font-bold font-display uppercase tracking-wider">{t.accessRestricted}</h5>
               <p className="text-[11px] text-slate-400 mt-1">
-                Your role is <strong className="text-white">{userRole}</strong>. Some commands require Super Admin or Owner privileges.
+                {t.accessRestrictedDesc(userRole)}
               </p>
             </div>
           </div>
         ) : (
-          <div className="mt-4 p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/10 text-indigo-400 flex items-start gap-3">
+          <div className={`mt-4 p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/10 text-indigo-400 flex items-start gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
             <ShieldAlert className="w-5 h-5 mt-0.5 shrink-0" />
             <div>
-              <h5 className="text-xs font-bold font-display uppercase tracking-wider">Console Mode Active</h5>
+              <h5 className="text-xs font-bold font-display uppercase tracking-wider">{t.consoleModeActive}</h5>
               <p className="text-[11px] text-slate-400 mt-1">
-                You have full <strong className="text-white">Write/Execute</strong> capability. Take precautions when configuring the Homeserver.
+                {t.consoleModeActiveDesc}
               </p>
             </div>
           </div>
@@ -405,7 +626,7 @@ export default function TerminalPanel({
       </div>
 
       {/* Main Panel: Interactive Terminal */}
-      <div className="lg:col-span-2 spatial-glass rounded-3xl border border-white/5 flex flex-col h-full overflow-hidden">
+      <div className="lg:col-span-2 spatial-glass rounded-3xl border border-white/5 flex flex-col h-full overflow-hidden" dir="ltr">
         {/* Terminal Header */}
         <div className="px-5 py-3 bg-black/30 border-b border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -419,21 +640,21 @@ export default function TerminalPanel({
             <button 
               type="button"
               onClick={() => handleTabChange('console')} 
-              className={`text-xs px-3 py-1 rounded-md font-mono ${activeTab === 'console' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`text-xs px-3 py-1 rounded-md font-mono cursor-pointer ${activeTab === 'console' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               active-terminal
             </button>
             <button 
               type="button"
               onClick={() => handleTabChange('install')} 
-              className={`text-xs px-3 py-1 rounded-md font-mono ${activeTab === 'install' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`text-xs px-3 py-1 rounded-md font-mono cursor-pointer ${activeTab === 'install' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               install.log
             </button>
             <button 
               type="button"
               onClick={() => handleTabChange('updates')} 
-              className={`text-xs px-3 py-1 rounded-md font-mono flex items-center gap-1.5 ${activeTab === 'updates' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`text-xs px-3 py-1 rounded-md font-mono flex items-center gap-1.5 cursor-pointer ${activeTab === 'updates' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               <RefreshCw className={`h-3 w-3 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
               <span>panel-updates</span>
@@ -482,11 +703,11 @@ export default function TerminalPanel({
                 <div>
                   <h3 className="font-bold text-sm text-gray-100 flex items-center gap-2">
                     <RefreshCw className={`h-4 w-4 text-indigo-400 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-                    <span>{isRtl ? 'مدیریت بروزرسانی‌های پنل' : 'Panel Update Control Center'}</span>
+                    <span>{t.updateControl}</span>
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    {isRtl ? 'نسخه فعلی نصب شده:' : 'Currently Installed Version:'}{' '}
-                    <span className="font-mono text-indigo-400 font-semibold">{currentVersion || (isRtl ? 'در حال بررسی...' : 'Checking...')}</span>
+                    {t.currentInstalled}{' '}
+                    <span className="font-mono text-indigo-400 font-semibold">{currentVersion || t.checking}</span>
                   </p>
                 </div>
 
@@ -502,7 +723,7 @@ export default function TerminalPanel({
                     }`}
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-                    <span>{isRtl ? 'بررسی بروزرسانی' : 'Check Updates'}</span>
+                    <span>{t.checkUpdates}</span>
                   </button>
 
                   <button
@@ -524,7 +745,7 @@ export default function TerminalPanel({
                     ) : (
                       <Download className="h-3.5 w-3.5" />
                     )}
-                    <span>{isRtl ? 'نصب بروزرسانی' : 'Install Update'}</span>
+                    <span>{t.installUpdate}</span>
                   </button>
                 </div>
               </div>
@@ -539,12 +760,10 @@ export default function TerminalPanel({
                     </span>
                     <div>
                       <span className="font-bold text-xs block text-amber-400">
-                        {isRtl ? 'بروزرسانی جدید در دسترس است!' : 'New Update Available!'}
+                        {t.newUpdateAvailable}
                       </span>
                       <p className="text-[11px] leading-relaxed mt-0.5 text-slate-300">
-                        {isRtl 
-                          ? `نسخه شما به تعداد ${commitsBehind} کامیت از مخزن اصلی عقب‌تر است. لطفاً جهت دریافت جدیدترین امکانات دکمه بروزرسانی را بزنید.`
-                          : `You are currently ${commitsBehind} commits behind the main branch. Please update to get the latest features.`}
+                        {t.updateAvailableDesc(commitsBehind)}
                       </p>
                     </div>
                   </div>
@@ -552,7 +771,7 @@ export default function TerminalPanel({
                   {latestCommits && latestCommits.length > 0 && (
                     <div className="mt-1 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/10 font-mono text-[10px] text-amber-300/90 whitespace-pre-wrap leading-normal text-left ltr">
                       <span className="font-sans font-bold block text-amber-400 mb-1">
-                        {isRtl ? 'توضیحات آخرین تغییرات در این بروزرسانی:' : 'Latest available update description:'}
+                        {t.latestChanges}
                       </span>
                       {latestCommits[0]}
                     </div>
@@ -563,12 +782,10 @@ export default function TerminalPanel({
                   <span className="h-2 w-2 rounded-full bg-emerald-500 mt-1 shrink-0"></span>
                   <div>
                     <span className="font-bold text-xs block">
-                      {isRtl ? 'سیستم بروز است' : 'System Up to Date'}
+                      {t.systemUpToDate}
                     </span>
                     <p className="text-[11px] leading-relaxed mt-0.5 text-slate-400">
-                      {isRtl 
-                        ? 'پنل ماتریکس شما در حال حاضر از آخرین نسخه مخزن استفاده می‌کند و نیازی به بروزرسانی ندارد.'
-                        : 'Your Matrix Admin panel is running the latest code from the remote repository.'}
+                      {t.systemUpToDateDesc}
                     </p>
                   </div>
                 </div>
@@ -586,7 +803,7 @@ export default function TerminalPanel({
                         '# Click "Check for Updates" to retrieve current status.'
                       ]);
                     }}
-                    className="text-[9px] text-gray-500 hover:text-gray-300 font-semibold uppercase px-1.5 py-0.5 rounded border border-white/5 hover:border-white/10 transition-all font-mono"
+                    className="text-[9px] text-gray-500 hover:text-gray-300 font-semibold uppercase px-1.5 py-0.5 rounded border border-white/5 hover:border-white/10 transition-all font-mono cursor-pointer"
                   >
                     Clear
                   </button>
@@ -629,8 +846,8 @@ export default function TerminalPanel({
             disabled={isExecuting || isViewer}
             placeholder={
               isViewer 
-                ? "Unauthorized: Viewer role can't input console commands"
-                : "Type custom action (install, backup, workers, e2ee_disable) and press Enter..."
+                ? t.unauthorizedViewer
+                : t.inputPlaceholder
             }
             className="flex-1 bg-transparent text-slate-100 font-mono text-xs outline-none border-none focus:ring-0 placeholder:text-slate-600 disabled:opacity-50"
             id="terminal-input"
@@ -638,7 +855,7 @@ export default function TerminalPanel({
           <button 
             type="submit" 
             disabled={isExecuting || isViewer || !customInput.trim()}
-            className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40"
+            className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 cursor-pointer"
           >
             <ArrowUpRight className="w-4 h-4" />
           </button>

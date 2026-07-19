@@ -57,8 +57,410 @@ interface ReportingPanelProps {
   authToken: string;
   showToast: (type: 'success' | 'error' | 'info', message: string) => void;
   isLightMode?: boolean;
-  lang?: 'fa' | 'en';
+  lang?: 'fa' | 'en' | 'es' | 'ar' | 'de' | 'ru';
 }
+
+const faTranslations = {
+  tabAnalytics: "آنالیز عملکرد سیستم",
+  tabRbac: "مدیریت نقش‌ها (RBAC)",
+  tabBackups: "پشتیبان‌گیری و Snapshot",
+  tabAudit: "لاگ‌های امنیتی سیستم",
+  titleReports: "گزارشات و مدیریت",
+  analyticsTitle: "آنالیز عملکرد سخت‌افزار",
+  analyticsSub: "نظارت زنده بر منابع مصرفی پردازنده، حافظه رم، ترد‌های ماتریکس و پهنای باند شبکه.",
+  cpuUsage: "مصرف پردازنده (%)",
+  live: "زنده",
+  memoryUsage: "حافظه رم اختصاص یافته (GB)",
+  threadsTitle: "تردها و نشست‌های فعال ماتریکس",
+  syncing: "در حال همگام‌سازی",
+  loadingStream: "در حال اتصال به جریان وب‌سوکت برای تحلیل عملکرد...",
+  rbacTitle: "سیستم کنترل دسترسی نقش‌محور (RBAC)",
+  rbacSub: "تعیین سطوح دسترسی، ایجاد اپراتورهای جدید و مدیریت مدیران پورتال ماتریکس.",
+  grantAccess: "اعطای دسترسی به پورتال",
+  username: "نام کاربری",
+  email: "آدرس ایمیل",
+  password: "رمز عبور موقت",
+  authRole: "نقش پورتال",
+  createBtn: "ایجاد اپراتور جدید",
+  activeOps: "اپراتورهای فعال سیستم",
+  actionCol: "عملیات",
+  auditTitle: "لاگ‌های حسابرسی و امنیت سیستم",
+  auditSub: "گزارش و ردیابی کامل ورودها، خروجی‌ها و تغییرات پیکربندی پورتال مدیریت.",
+  exportCsv: "خروجی CSV (اکسل)",
+  exportHtml: "دانلود گزارش HTML",
+  timeCol: "زمان ثبت",
+  userCol: "نام کاربری",
+  actionTypeCol: "نوع عملیات",
+  targetCol: "هدف / ماژول",
+  statusCol: "وضعیت",
+  detailsCol: "توضیحات و جزئیات",
+  backupsTitle: "مدیریت نسخه‌های پشتیبان ماتریکس",
+  backupsSub: "تهیه فایل‌های پشتیبان رمزگذاری شده از پایگاه داده و فایل‌های تنظیمات ماتریکس.",
+  backupListTab: "لیست فایل‌های پشتیبان",
+  backupSettingsTab: "تنظیمات زمان‌بندی",
+  backupNow: "تهیه نسخه پشتیبان سریع",
+  includeSsl: "شامل فایل‌های گواهینامه SSL در فایل پشتیبان",
+  uploadBackup: "بارگذاری فایل بک‌آپ موجود",
+  tableFilename: "نام فایل پشتیبان",
+  tableSize: "حجم",
+  tableType: "نوع پشتیبان",
+  tableDate: "تاریخ تولید",
+  downloadBtn: "دانلود",
+  restoreBtn: "بازنشانی / Restore",
+  deleteBtn: "حذف بک‌آپ",
+  noBackups: "هیچ فایل پشتیبانی یافت نشد.",
+  backupConfig: "پیکربندی هوشمند زمان‌بندی نسخه‌های پشتیبان",
+  backupPath: "مسیر پیش‌فرض ذخیره‌سازی نسخه‌ها روی سرور",
+  retention: "مدت زمان نگهداری فایل‌ها (روز)",
+  autoDbBackup: "پشتیبان‌گیری خودکار دیتابیس (Cron Job)",
+  cronExpr: "عبارت زمان‌بندی کرون (Cron Expression)",
+  autoConfigBackup: "پشتیبان‌گیری خودکار تنظیمات",
+  saveSettings: "ذخیره تنظیمات زمان‌بندی",
+  warningTitle: "هشدار جدی: بازگردانی وضعیت سرور",
+  warningSub: "عملیات بازیابی و ریکاوری سرور ماتریکس",
+  warningDesc: "آیا مطمئن هستید که می‌خواهید وضعیت سیستم را به فایل پشتیبان بازگردانید؟ این فرآیند غیرقابل بازگشت است.",
+  warningEffects: "اثرات جانبی و غیرقابل برگشت این بازگردانی:",
+  dbEffect: "تمام اطلاعات فعلی شامل نشست‌ها، کاربران و دسترسی‌ها با فایل قدیمی جایگزین خواهند شد.",
+  configEffect: "تنظیمات اصلی سرور، کلاینت المنت و پروکسی بازنویسی شده و سرویس‌ها ریستارت خواهند شد.",
+  cancel: "انصراف",
+  confirmRestore: "تایید نهایی و بازنشانی سیستم",
+  noLogsMsg: "هیچ لاگی برای نمایش وجود ندارد."
+};
+
+const enTranslations = {
+  tabAnalytics: "Real-time Analytics",
+  tabRbac: "Role Management",
+  tabBackups: "Backups & Snapshots",
+  tabAudit: "Security Audit Logs",
+  titleReports: "Reports & Admin",
+  analyticsTitle: "System Performance Analysis",
+  analyticsSub: "Monitor CPU usage, memory levels, active Synapse threads, and network trends.",
+  cpuUsage: "CPU Usage Over Time (%)",
+  live: "Live",
+  memoryUsage: "Memory Committed (GB)",
+  threadsTitle: "Active Synapse Threads & Sessions",
+  syncing: "Syncing",
+  loadingStream: "Establishing WebSocket performance analysis stream...",
+  rbacTitle: "Role-Based Access Control (RBAC)",
+  rbacSub: "Configure management access levels for security. Assign fine access parameters.",
+  grantAccess: "Grant Panel Access",
+  username: "Username",
+  email: "Email",
+  password: "Password",
+  authRole: "Authorization Role",
+  createBtn: "Create Operator",
+  activeOps: "Active System Operators",
+  actionCol: "Actions",
+  auditTitle: "Security Audit & Operations Logs",
+  auditSub: "Track and trace administrator logins, credential resets, configuration updates, and VM health events.",
+  exportCsv: "Export CSV/Excel",
+  exportHtml: "Download HTML Report",
+  timeCol: "Timestamp",
+  userCol: "Portal User",
+  actionTypeCol: "Action Type",
+  targetCol: "Target / Module",
+  statusCol: "Status",
+  detailsCol: "Details & Context",
+  backupsTitle: "Matrix Backup & Snapshots Management",
+  backupsSub: "Configure automated local/cloud backup tasks. Download or roll back Synapse DB and config units.",
+  backupListTab: "Backups Repository",
+  backupSettingsTab: "Scheduler Config",
+  backupNow: "Trigger On-Demand Backup",
+  includeSsl: "Include Active Directory SSL credentials in export",
+  uploadBackup: "Upload Existing Backup File",
+  tableFilename: "Backup File Name",
+  tableSize: "Size",
+  tableType: "Backup Type",
+  tableDate: "Created At",
+  downloadBtn: "Download",
+  restoreBtn: "Rollback System",
+  deleteBtn: "Purge",
+  noBackups: "No system backups found in repository.",
+  backupConfig: "Automated Backup Daemon Configuration",
+  backupPath: "Default Backup Path",
+  retention: "Retention Limit (Days)",
+  autoDbBackup: "Automated Database Backup Schedule (Cron Job)",
+  cronExpr: "Cron Expression",
+  autoConfigBackup: "Automated Configuration Backup Schedule",
+  saveSettings: "Save Scheduler Settings",
+  warningTitle: "Critical Warning: Restore System",
+  warningSub: "Matrix Server Backup Recovery Operations",
+  warningDesc: "Are you absolutely sure you want to restore the server state to backup file?",
+  warningEffects: "Irreversible side-effects of this rollback:",
+  dbEffect: "The current database state including user rosters, active sessions, and access permissions will be entirely replaced.",
+  configEffect: "Critical system configuration files, Element client options, and reverse proxy properties will be rewritten. Sync processes and server units will restart to reload newly written configurations.",
+  cancel: "Cancel",
+  confirmRestore: "Confirm Restoration",
+  noLogsMsg: "No audit logs available."
+};
+
+const esTranslations = {
+  tabAnalytics: "Análisis de Rendimiento",
+  tabRbac: "Gestión de Roles (RBAC)",
+  tabBackups: "Copias de Seguridad",
+  tabAudit: "Registros de Auditoría",
+  titleReports: "Informes y Gestión",
+  analyticsTitle: "Análisis de Rendimiento del Sistema",
+  analyticsSub: "Monitoree el uso de CPU, memoria, hilos activos de Synapse y red.",
+  cpuUsage: "Uso de CPU en el tiempo (%)",
+  live: "En vivo",
+  memoryUsage: "Memoria Cometida (GB)",
+  threadsTitle: "Hilos y Sesiones Activas de Synapse",
+  syncing: "Sincronizando",
+  loadingStream: "Estableciendo conexión para análisis de rendimiento en tiempo real...",
+  rbacTitle: "Control de Acceso Basado en Roles (RBAC)",
+  rbacSub: "Configure niveles de acceso administrativo y asigne parámetros de seguridad.",
+  grantAccess: "Conceder Acceso al Panel",
+  username: "Nombre de usuario",
+  email: "Correo electrónico",
+  password: "Contraseña temporal",
+  authRole: "Rol de Autorización",
+  createBtn: "Crear Operador",
+  activeOps: "Operadores de Sistema Activos",
+  actionCol: "Acciones",
+  auditTitle: "Registros de Auditoría y Seguridad",
+  auditSub: "Rastree los inicios de sesión de administradores, cambios de configuración y salud del VM.",
+  exportCsv: "Exportar CSV/Excel",
+  exportHtml: "Descargar Informe HTML",
+  timeCol: "Marca de Tiempo",
+  userCol: "Usuario del Portal",
+  actionTypeCol: "Tipo de Acción",
+  targetCol: "Módulo Objetivo",
+  statusCol: "Estado",
+  detailsCol: "Detalles y Contexto",
+  backupsTitle: "Gestión de Copias de Seguridad de Matrix",
+  backupsSub: "Configure tareas de copia automatizadas. Descargue o restaure bases de datos y configuraciones.",
+  backupListTab: "Repositorio de Copias",
+  backupSettingsTab: "Configurar Programador",
+  backupNow: "Generar Copia de Seguridad",
+  includeSsl: "Incluir certificados SSL activos en la exportación",
+  uploadBackup: "Cargar Archivo de Copia Existente",
+  tableFilename: "Nombre del Archivo",
+  tableSize: "Tamaño",
+  tableType: "Tipo de Copia",
+  tableDate: "Creado En",
+  downloadBtn: "Descargar",
+  restoreBtn: "Restaurar Sistema",
+  deleteBtn: "Purgar",
+  noBackups: "No se encontraron copias de seguridad en el repositorio.",
+  backupConfig: "Configuración del Demonio de Copias de Seguridad",
+  backupPath: "Ruta de Almacenamiento",
+  retention: "Límite de Retención (Días)",
+  autoDbBackup: "Programación de Copias de Base de Datos (Cron Job)",
+  cronExpr: "Expresión Cron",
+  autoConfigBackup: "Programación de Copias de Configuración",
+  saveSettings: "Guardar Programación",
+  warningTitle: "Advertencia Crítica: Restaurar Sistema",
+  warningSub: "Operaciones de Recuperación del Servidor Matrix",
+  warningDesc: "¿Está completamente seguro de que desea restaurar el sistema al archivo de copia?",
+  warningEffects: "Efectos secundarios irreversibles de esta acción:",
+  dbEffect: "Se reemplazará completamente el estado de la base de datos actual, incluyendo usuarios y permisos.",
+  configEffect: "Se reescribirán archivos de configuración críticos del sistema y del cliente Element. Los servicios se reiniciarán.",
+  cancel: "Cancelar",
+  confirmRestore: "Confirmar Restauración",
+  noLogsMsg: "No hay registros de auditoría disponibles."
+};
+
+const arTranslations = {
+  tabAnalytics: "التحليلات الفورية",
+  tabRbac: "إدارة الأدوار (RBAC)",
+  tabBackups: "النسخ الاحتياطي",
+  tabAudit: "سجلات التدقيق",
+  titleReports: "التقارير والإدارة",
+  analyticsTitle: "تحليل أداء النظام",
+  analyticsSub: "مراقبة استخدام المعالج والذاكرة والنشاط النشط لخيوط ماتریکس والشبكة.",
+  cpuUsage: "استخدام المعالج بمرور الوقت (%)",
+  live: "مباشر",
+  memoryUsage: "الذاكرة المستخدمة (جيجابايت)",
+  threadsTitle: "خيوط وجلسات ماتریکس النشطة",
+  syncing: "مزامنة",
+  loadingStream: "جاري الاتصال بقناة وب‌سوکت لتحليل الأداء...",
+  rbacTitle: "التحكم بالوصول المستند إلى الأدوار (RBAC)",
+  rbacSub: "تكوين مستويات الوصول الإداري وتعيين معلمات الأمان للمشغلين.",
+  grantAccess: "منح حق الوصول للوحة",
+  username: "اسم المستخدم",
+  email: "البريد الإلكتروني",
+  password: "كلمة المرور المؤقتة",
+  authRole: "الدور المصرح به",
+  createBtn: "إنشاء مشغل",
+  activeOps: "مشغلو النظام النشطون",
+  actionCol: "الإجراءات",
+  auditTitle: "سجلات التدقيق الأمني والعمليات",
+  auditSub: "تتبع عمليات تسجيل دخول المسؤولين وتغييرات التكوين وحالة الخادم الافتراضي.",
+  exportCsv: "تصدير CSV (إكسل)",
+  exportHtml: "تحميل تقرير HTML",
+  timeCol: "طابع زمني",
+  userCol: "مستخدم البوابة",
+  actionTypeCol: "نوع الإجراء",
+  targetCol: "المستهدف / الوحدة",
+  statusCol: "الحالة",
+  detailsCol: "التفاصيل والسياق",
+  backupsTitle: "إدارة النسخ الاحتياطي واللقطات لخادم ماتریکس",
+  backupsSub: "تكوين مهام النسخ الاحتياطي التلقائي. تنزيل أو استعادة قواعد البيانات والتكوينات.",
+  backupListTab: "مستودع النسخ الاحتياطية",
+  backupSettingsTab: "إعدادات المجدول",
+  backupNow: "بدء نسخ احتياطي فوري",
+  includeSsl: "تضمين بيانات اعتماد SSL النشطة في التصدير",
+  uploadBackup: "رفع ملف نسخ احتياطي موجود",
+  tableFilename: "اسم ملف النسخ الاحتياطي",
+  tableSize: "الحجم",
+  tableType: "نوع النسخة",
+  tableDate: "تاريخ الإنشاء",
+  downloadBtn: "تنزيل",
+  restoreBtn: "استعادة النظام",
+  deleteBtn: "تطهير",
+  noBackups: "لم يتم العثور على نسخ احتياطية للنظام في المستودع.",
+  backupConfig: "تكوين خدمة النسخ الاحتياطي التلقائي",
+  backupPath: "مسار النسخ الاحتياطي الافتراضي",
+  retention: "فترة الاحتفاظ بالملفات (أيام)",
+  autoDbBackup: "جدولة النسخ الاحتياطي لقاعدة البيانات (كرون)",
+  cronExpr: "تعبير كرون",
+  autoConfigBackup: "جدولة النسخ الاحتياطي للتكوينات",
+  saveSettings: "حفظ إعدادات المجدول",
+  warningTitle: "تحذير حرج: استعادة النظام",
+  warningSub: "عمليات استرداد النسخ الاحتياطي لخادم ماتریکس",
+  warningDesc: "هل أنت متأكد تمامًا من رغبتك في استعادة حالة الخادم إلى ملف النسخ الاحتياطي؟",
+  warningEffects: "الآثار الجانبية غير القابلة للإلغاء لهذه العملية:",
+  dbEffect: "سيتم استبدال قاعدة البيانات الحالية بالكامل بما في ذلك قائمة المستخدمين والأعضاء والصلاحيات.",
+  configEffect: "ستتم إعادة كتابة ملفات التكوين الهامة للنظام وإعدادات العميل ووكيل الخادم وإعادة تشغيل الخدمات.",
+  cancel: "إلغاء",
+  confirmRestore: "تأكيد الاستعادة",
+  noLogsMsg: "لا توجد سجلات تدقيق متاحة."
+};
+
+const deTranslations = {
+  tabAnalytics: "Echtzeit-Analyse",
+  tabRbac: "Rollenverwaltung (RBAC)",
+  tabBackups: "Backups & Snapshots",
+  tabAudit: "Sicherheits-Audit-Logs",
+  titleReports: "Berichte & Admin",
+  analyticsTitle: "Systemleistungsanalyse",
+  analyticsSub: "Überwachen Sie CPU-Auslastung, Speicherpegel, aktive Synapse-Threads und Netzwerktrends.",
+  cpuUsage: "CPU-Auslastung im Zeitverlauf (%)",
+  live: "Live",
+  memoryUsage: "Speicher committed (GB)",
+  threadsTitle: "Aktive Synapse-Threads & Sessions",
+  syncing: "Synchronisierung",
+  loadingStream: "Verbindung mit dem WebSocket-Leistungsanalysestream wird hergestellt...",
+  rbacTitle: "Rollenbasierte Zugriffskontrolle (RBAC)",
+  rbacSub: "Verwalten Sie Administrationszugriffsrechte und weisen Sie Sicherheitsparameter zu.",
+  grantAccess: "Panel-Zugriff gewähren",
+  username: "Benutzername",
+  email: "E-Mail-Adresse",
+  password: "Temporäres Passwort",
+  authRole: "Autorisierungsrolle",
+  createBtn: "Operator erstellen",
+  activeOps: "Aktive System-Operatoren",
+  actionCol: "Aktionen",
+  auditTitle: "Sicherheits-Audit & Operations-Logs",
+  auditSub: "Verfolgen Sie Administrator-Anmeldungen, Konfigurationsänderungen und VM-Statusereignisse.",
+  exportCsv: "CSV/Excel exportieren",
+  exportHtml: "HTML-Bericht herunterladen",
+  timeCol: "Zeitstempel",
+  userCol: "Portal-Benutzer",
+  actionTypeCol: "Aktionstyp",
+  targetCol: "Zielmodul",
+  statusCol: "Status",
+  detailsCol: "Details & Kontext",
+  backupsTitle: "Matrix Backup & Snapshots-Verwaltung",
+  backupsSub: "Konfigurieren Sie automatische Backups. Laden Sie Datenbanken und Systemkonfigurationen herunter oder stellen Sie sie wieder her.",
+  backupListTab: "Backup-Repository",
+  backupSettingsTab: "Zeitplaner-Konfiguration",
+  backupNow: "Direktes Backup starten",
+  includeSsl: "Aktive SSL-Zertifikate in Export einschließen",
+  uploadBackup: "Vorhandenes Backup hochladen",
+  tableFilename: "Backup-Dateiname",
+  tableSize: "Größe",
+  tableType: "Backup-Typ",
+  tableDate: "Erstellt am",
+  downloadBtn: "Herunterladen",
+  restoreBtn: "System wiederherstellen",
+  deleteBtn: "Löschen",
+  noBackups: "Keine System-Backups im Repository gefunden.",
+  backupConfig: "Automatische Backup-Dämon-Konfiguration",
+  backupPath: "Standardmäßiger Backup-Pfad",
+  retention: "Aufbewahrungszeitlimit (Tage)",
+  autoDbBackup: "Automatisiertes Datenbank-Backup (Cron-Job)",
+  cronExpr: "Cron-Ausdruck",
+  autoConfigBackup: "Automatisiertes Konfigurations-Backup",
+  saveSettings: "Zeitplaner-Einstellungen speichern",
+  warningTitle: "Kritische Warnung: System wiederherstellen",
+  warningSub: "Matrix Server Backup-Wiederherstellungsvorgänge",
+  warningDesc: "Sind Sie absolut sicher, dass Sie den Server auf die ausgewählte Backup-Datei zurücksetzen möchten?",
+  warningEffects: "Unumkehrbare Nebenwirkungen dieser Wiederherstellung:",
+  dbEffect: "Der aktuelle Datenbankstatus einschließlich Benutzer, Sitzungen und Berechtigungen wird vollständig ersetzt.",
+  configEffect: "Kritische Systemkonfigurationsdateien, Element-Client-Optionen und Proxy-Einstellungen werden überschrieben. Dienste werden neu gestartet.",
+  cancel: "Abbrechen",
+  confirmRestore: "Wiederherstellung bestätigen",
+  noLogsMsg: "Keine Audit-Logs verfügbar."
+};
+
+const ruTranslations = {
+  tabAnalytics: "Аналитика",
+  tabRbac: "Управление ролями (RBAC)",
+  tabBackups: "Резервные копии",
+  tabAudit: "Журналы аудита",
+  titleReports: "Отчеты и администрирование",
+  analyticsTitle: "Анализ производительности системы",
+  analyticsSub: "Мониторинг процессора, памяти, активных потоков Synapse и сетевого трафика.",
+  cpuUsage: "Использование процессора с течением времени (%)",
+  live: "В эфире",
+  memoryUsage: "Выделенная память (ГБ)",
+  threadsTitle: "Активные потоки и сессии Synapse",
+  syncing: "Синхронизация",
+  loadingStream: "Установка подключения для анализа производительности...",
+  rbacTitle: "Управление доступом на основе ролей (RBAC)",
+  rbacSub: "Настройка уровней доступа для операторов и управление администраторами портала.",
+  grantAccess: "Предоставить доступ к панели",
+  username: "Имя пользователя",
+  email: "Электронная почта",
+  password: "Временный пароль",
+  authRole: "Роль в системе",
+  createBtn: "Создать оператора",
+  activeOps: "Активные операторы системы",
+  actionCol: "Действия",
+  auditTitle: "Журналы безопасности и аудита",
+  auditSub: "Отслеживание входов администраторов, изменений конфигурации и состояния виртуальной машины.",
+  exportCsv: "Экспорт в CSV/Excel",
+  exportHtml: "Скачать отчет HTML",
+  timeCol: "Время записи",
+  userCol: "Пользователь",
+  actionTypeCol: "Тип операции",
+  targetCol: "Целевой модуль",
+  statusCol: "Статус",
+  detailsCol: "Подробности и контекст",
+  backupsTitle: "Резервное копирование и снимки Matrix",
+  backupsSub: "Настройка автоматических резервных копий БД и файлов конфигурации Synapse.",
+  backupListTab: "Репозиторий копий",
+  backupSettingsTab: "Настройка планировщика",
+  backupNow: "Создать копию сейчас",
+  includeSsl: "Включить активные SSL-сертификаты в резервную копию",
+  uploadBackup: "Загрузить готовый файл копии",
+  tableFilename: "Имя файла резервной копии",
+  tableSize: "Размер",
+  tableType: "Тип копии",
+  tableDate: "Создана в",
+  downloadBtn: "Скачать",
+  restoreBtn: "Восстановить систему",
+  deleteBtn: "Удалить",
+  noBackups: "Резервные копии системы не найдены.",
+  backupConfig: "Настройка службы автоматического копирования",
+  backupPath: "Путь сохранения по умолчанию",
+  retention: "Срок хранения копий (дней)",
+  autoDbBackup: "Автоматическое копирование БД (Cron-Job)",
+  cronExpr: "Выражение Cron",
+  autoConfigBackup: "Автоматическое копирование конфигурации",
+  saveSettings: "Сохранить настройки",
+  warningTitle: "Критическое предупреждение: восстановление системы",
+  warningSub: "Восстановление сервера Matrix из резервной копии",
+  warningDesc: "Вы абсолютно уверены, что хотите восстановить состояние системы из выбранного файла?",
+  warningEffects: "Необратимые последствия этого восстановления:",
+  dbEffect: "Текущее состояние базы данных (пользователи, сессии, права) будет полностью заменено старыми данными.",
+  configEffect: "Критические файлы конфигурации, настройки Element и прокси будут перезаписаны. Службы будут перезапущены.",
+  cancel: "Отмена",
+  confirmRestore: "Подтвердить восстановление",
+  noLogsMsg: "Журналы аудита безопасности отсутствуют."
+};
 
 export default function ReportingPanel({
   stats,
@@ -77,6 +479,16 @@ export default function ReportingPanel({
   isLightMode = false,
   lang = 'en'
 }: ReportingPanelProps) {
+  const translationsMap = {
+    fa: faTranslations,
+    en: enTranslations,
+    es: esTranslations,
+    ar: arTranslations,
+    de: deTranslations,
+    ru: ruTranslations
+  };
+  const t = translationsMap[lang] || enTranslations;
+  const isRtl = ['fa', 'ar'].includes(lang);
   const [activeSubTab, setActiveTab] = useState<'analytics' | 'rbac' | 'audit' | 'backups'>('analytics');
 
   // New Panel User inputs
@@ -519,57 +931,57 @@ export default function ReportingPanel({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-180px)] overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-180px)] overflow-hidden" dir={isRtl ? "rtl" : "ltr"}>
       {/* Side selection */}
       <div className="spatial-glass rounded-3xl p-5 border border-white/5 flex flex-col gap-2 h-full overflow-y-auto">
-        <h3 className="text-sm font-display font-semibold text-slate-400 mb-3 px-3 uppercase tracking-wider">Reports & Admin</h3>
+        <h3 className={`text-sm font-display font-semibold text-slate-400 mb-3 px-3 uppercase tracking-wider ${isRtl ? 'text-right' : 'text-left'}`}>{t.titleReports}</h3>
 
         <button
           onClick={() => setActiveTab('analytics')}
-          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${isRtl ? 'flex-row-reverse text-right' : 'text-left'} ${
             activeSubTab === 'analytics' 
               ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(99,102,241,0.15)]' 
               : 'text-gray-400 hover:text-white hover:bg-white/5'
           }`}
         >
           <BarChart3 className="w-5 h-5 text-indigo-400" />
-          <span>Real-time Analytics</span>
+          <span>{t.tabAnalytics}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('rbac')}
-          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${isRtl ? 'flex-row-reverse text-right' : 'text-left'} ${
             activeSubTab === 'rbac' 
               ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(168,85,247,0.15)]' 
               : 'text-gray-400 hover:text-white hover:bg-white/5'
           }`}
         >
           <ShieldCheck className="w-5 h-5 text-purple-400" />
-          <span>Role Management</span>
+          <span>{t.tabRbac}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('backups')}
-          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${isRtl ? 'flex-row-reverse text-right' : 'text-left'} ${
             activeSubTab === 'backups' 
               ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(245,158,11,0.15)]' 
               : 'text-gray-400 hover:text-white hover:bg-white/5'
           }`}
         >
           <History className="w-5 h-5 text-amber-400" />
-          <span>Backups & Snapshots</span>
+          <span>{t.tabBackups}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('audit')}
-          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${isRtl ? 'flex-row-reverse text-right' : 'text-left'} ${
             activeSubTab === 'audit' 
               ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(16,185,129,0.15)]' 
               : 'text-gray-400 hover:text-white hover:bg-white/5'
           }`}
         >
           <History className="w-5 h-5 text-emerald-400" />
-          <span>Security Audit Logs</span>
+          <span>{t.tabAudit}</span>
         </button>
       </div>
 
@@ -579,11 +991,11 @@ export default function ReportingPanel({
         {/* VIEW 1: PERFORMANCE ANALYTICS */}
         {activeSubTab === 'analytics' && (
           <div className="space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-white/5">
+            <div className={`flex items-center gap-3 pb-4 border-b border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
               <BarChart3 className="w-6 h-6 text-indigo-400" />
               <div>
-                <h2 className="text-xl font-display font-bold text-white">System Performance Analysis</h2>
-                <p className="text-xs text-slate-400">Monitor CPU usage, memory levels, active Synapse threads, and network trends.</p>
+                <h2 className="text-xl font-display font-bold text-white">{t.analyticsTitle}</h2>
+                <p className="text-xs text-slate-400">{t.analyticsSub}</p>
               </div>
             </div>
 
@@ -592,14 +1004,14 @@ export default function ReportingPanel({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* CPU Trend Line Chart */}
                   <div className="p-5 rounded-2xl bg-black/25 border border-white/5">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <div className={`flex items-center justify-between mb-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <h4 className={`text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
                         <Cpu className="w-4 h-4 text-indigo-400" />
-                        CPU Usage Over Time (%)
+                        {t.cpuUsage}
                       </h4>
-                      <span className="text-xs font-semibold text-indigo-400">{stats.cpuUsage}% Live</span>
+                      <span className="text-xs font-semibold text-indigo-400">{stats.cpuUsage}% {t.live}</span>
                     </div>
-                    <div className="h-48 w-full font-mono text-[10px]">
+                    <div className="h-48 w-full font-mono text-[10px]" dir="ltr">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={stats.trends}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -614,14 +1026,14 @@ export default function ReportingPanel({
 
                   {/* Memory Area Chart */}
                   <div className="p-5 rounded-2xl bg-black/25 border border-white/5">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <div className={`flex items-center justify-between mb-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <h4 className={`text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
                         <History className="w-4 h-4 text-purple-400" />
-                        Memory Commited (GB)
+                        {t.memoryUsage}
                       </h4>
                       <span className="text-xs font-semibold text-purple-400">{(stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1)} GB / {stats.memoryTotal} GB</span>
                     </div>
-                    <div className="h-48 w-full font-mono text-[10px]">
+                    <div className="h-48 w-full font-mono text-[10px]" dir="ltr">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={stats.trends}>
                           <defs>
@@ -643,14 +1055,14 @@ export default function ReportingPanel({
 
                 {/* Active Users Area Chart */}
                 <div className="p-5 rounded-2xl bg-black/25 border border-white/5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <div className={`flex items-center justify-between mb-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <h4 className={`text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
                       <Users className="w-4 h-4 text-emerald-400" />
-                      Active Synapse Threads & Sessions
+                      {t.threadsTitle}
                     </h4>
-                    <span className="text-xs font-semibold text-emerald-400">{stats.activeUsers} Syncing</span>
+                    <span className="text-xs font-semibold text-emerald-400">{stats.activeUsers} {t.syncing}</span>
                   </div>
-                  <div className="h-48 w-full font-mono text-[10px]">
+                  <div className="h-48 w-full font-mono text-[10px]" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={stats.trends}>
                         <defs>
@@ -671,7 +1083,7 @@ export default function ReportingPanel({
               </div>
             ) : (
               <div className="text-center py-16 text-slate-500 font-mono text-xs">
-                Establishing WebSocket performance analysis stream...
+                {t.loadingStream}
               </div>
             )}
           </div>
@@ -680,25 +1092,25 @@ export default function ReportingPanel({
         {/* VIEW 2: ROLE-BASED ACCESS CONTROL (RBAC) */}
         {activeSubTab === 'rbac' && (
           <div className="space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-white/5">
+            <div className={`flex items-center gap-3 pb-4 border-b border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
               <ShieldCheck className="w-6 h-6 text-purple-400" />
               <div>
-                <h2 className="text-xl font-display font-bold text-white">Role-Based Access Control (RBAC)</h2>
-                <p className="text-xs text-slate-400">Configure management access levels for security. Assign fine access parameters.</p>
+                <h2 className="text-xl font-display font-bold text-white">{t.rbacTitle}</h2>
+                <p className="text-xs text-slate-400">{t.rbacSub}</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Left Form: Add Panel user */}
               <div className="spatial-glass rounded-2xl p-5 border border-white/5 h-fit">
-                <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <h4 className={`text-sm font-semibold text-white mb-4 flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                   <Plus className="w-4 h-4 text-purple-400" />
-                  Grant Panel Access
+                  {t.grantAccess}
                 </h4>
 
                 <form onSubmit={handleCreateUserSubmit} className="space-y-4">
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">Username</label>
+                  <div className={isRtl ? 'text-right' : 'text-left'}>
+                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">{t.username}</label>
                     <input
                       type="text"
                       value={newUsername}
@@ -709,8 +1121,8 @@ export default function ReportingPanel({
                     />
                   </div>
 
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">Email</label>
+                  <div className={isRtl ? 'text-right' : 'text-left'}>
+                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">{t.email}</label>
                     <input
                       type="email"
                       value={newEmail}
@@ -721,8 +1133,8 @@ export default function ReportingPanel({
                     />
                   </div>
 
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">Password</label>
+                  <div className={isRtl ? 'text-right' : 'text-left'}>
+                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">{t.password}</label>
                     <input
                       type="password"
                       value={newPass}
@@ -733,50 +1145,50 @@ export default function ReportingPanel({
                     />
                   </div>
 
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">Authorization Role</label>
+                  <div className={isRtl ? 'text-right' : 'text-left'}>
+                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">{t.authRole}</label>
                     <select
                       value={newRole}
                       onChange={(e) => setNewPassRole(e.target.value)}
                       disabled={isReadOnly || !isOwner}
                       className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
                     >
-                      <option value="Viewer">Viewer (Read-only status monitoring)</option>
-                      <option value="Moderator">Moderator (Manage users & DMs)</option>
-                      <option value="Super Admin">Super Admin (Change configurations)</option>
-                      <option value="Owner">Owner (Full system control)</option>
+                      <option value="Viewer">Viewer {lang === 'fa' ? '(مانیتورینگ فقط خواندنی)' : '(Read-only status monitoring)'}</option>
+                      <option value="Moderator">Moderator {lang === 'fa' ? '(مدیریت کاربران و چت‌ها)' : '(Manage users & DMs)'}</option>
+                      <option value="Super Admin">Super Admin {lang === 'fa' ? '(تغییر تنظیمات سیستم)' : '(Change configurations)'}</option>
+                      <option value="Owner">Owner {lang === 'fa' ? '(کنترل کامل سیستم)' : '(Full system control)'}</option>
                     </select>
                   </div>
 
                   <button
                     type="submit"
                     disabled={isReadOnly || !isOwner || !newUsername.trim() || !newEmail.trim() || !newPass.trim()}
-                    className="w-full py-2.5 rounded-xl bg-purple-500 text-white font-bold text-xs shadow-lg hover:scale-[1.02] transition-transform disabled:opacity-50"
+                    className="w-full py-2.5 rounded-xl bg-purple-500 text-white font-bold text-xs shadow-lg hover:scale-[1.02] transition-transform disabled:opacity-50 cursor-pointer"
                   >
-                    Authorize User
+                    {t.createBtn}
                   </button>
                 </form>
               </div>
 
               {/* Right Table: Administrators */}
               <div className="md:col-span-2 space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Authorized Administrators</h4>
+                <h4 className={`text-xs font-bold text-slate-400 uppercase tracking-wider px-1 ${isRtl ? 'text-right' : 'text-left'}`}>{t.activeOps}</h4>
 
                 {panelUsers.map((u) => {
                   const isMainAdmin = u.username === 'admin';
                   return (
                     <div 
                       key={u.id} 
-                      className="spatial-glass rounded-2xl p-4 border border-white/5 bg-white/5 hover:border-white/10 flex items-center justify-between"
+                      className={`spatial-glass rounded-2xl p-4 border border-white/5 bg-white/5 hover:border-white/10 flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className={`flex items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
                         <img 
                           src={u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.username}`} 
                           alt={u.username} 
                           className="w-10 h-10 rounded-xl bg-slate-800 p-0.5 border border-white/10" 
                         />
                         <div>
-                          <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                          <h4 className={`text-sm font-semibold text-white flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                             {u.username}
                             {isMainAdmin && <span className="text-[9px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Root</span>}
                           </h4>
@@ -784,7 +1196,7 @@ export default function ReportingPanel({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4">
+                      <div className={`flex items-center gap-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
                         {/* Role selector dropdown */}
                         <select
                           value={u.role}
@@ -801,8 +1213,8 @@ export default function ReportingPanel({
                         {!isMainAdmin && (isOwner || isSuperAdmin) && (
                           <button
                             onClick={() => onDeletePanelUser(u.id)}
-                            className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all"
-                            title="Revoke Access"
+                            className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all cursor-pointer"
+                            title={t.deleteBtn}
                           >
                             <UserX className="w-4 h-4" />
                           </button>
@@ -819,23 +1231,21 @@ export default function ReportingPanel({
         {/* VIEW 3: SECURITY AUDIT LOGS */}
         {activeSubTab === 'audit' && (
           <div className="space-y-6 flex-1 flex flex-col h-full overflow-hidden">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-white/5">
-              <div className="flex items-center gap-3">
+            <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+              <div className={`flex items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
                 <History className={`w-6 h-6 ${isLightMode ? 'text-emerald-600' : 'text-emerald-400'}`} />
                 <div>
                   <h2 className={`text-xl font-display font-bold ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
-                    {lang === 'fa' ? 'لاگ‌های امنیتی سیستم' : 'Security Audit Log'}
+                    {t.auditTitle}
                   </h2>
                   <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {lang === 'fa' 
-                      ? 'سوابق دقیق و به ترتیب زمانی از کلیه اقدامات و تراکنش‌های انجام شده در پنل مدیریت.' 
-                      : 'Strict chronological registry tracking all management panel transactions.'}
+                    {t.auditSub}
                   </p>
                 </div>
               </div>
 
               {/* Export Buttons */}
-              <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                 <button
                   onClick={exportToExcel}
                   id="btn-export-excel"
@@ -846,7 +1256,7 @@ export default function ReportingPanel({
                   }`}
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>{lang === 'fa' ? 'خروجی اکسل (Excel)' : 'Export to Excel'}</span>
+                  <span>{t.exportCsv}</span>
                 </button>
 
                 <button
@@ -859,7 +1269,7 @@ export default function ReportingPanel({
                   }`}
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>{lang === 'fa' ? 'خروجی HTML' : 'Export to HTML'}</span>
+                  <span>{t.exportHtml}</span>
                 </button>
               </div>
             </div>
@@ -869,18 +1279,18 @@ export default function ReportingPanel({
                 ? 'bg-slate-50 border-slate-200 shadow-inner' 
                 : 'bg-black/30 border-white/5'
             }`}>
-              <table className="w-full text-left border-collapse font-mono text-xs">
+              <table className={`w-full border-collapse font-mono text-xs ${isRtl ? 'text-right' : 'text-left'}`}>
                 <thead>
                   <tr className={`border-b text-[10px] tracking-wider uppercase font-semibold ${
                     isLightMode 
                       ? 'border-slate-200 text-slate-500 bg-slate-100/80' 
                       : 'border-white/10 text-slate-400 bg-black/20'
                   }`}>
-                    <th className="p-4">{lang === 'fa' ? 'زمان' : 'Timestamp'}</th>
-                    <th className="p-4">{lang === 'fa' ? 'کاربر' : 'User'}</th>
-                    <th className="p-4">{lang === 'fa' ? 'عملیات' : 'Action'}</th>
-                    <th className="p-4">{lang === 'fa' ? 'هدف' : 'Target'}</th>
-                    <th className="p-4">{lang === 'fa' ? 'وضعیت' : 'Status'}</th>
+                    <th className="p-4">{t.timeCol}</th>
+                    <th className="p-4">{t.userCol}</th>
+                    <th className="p-4">{t.actionTypeCol}</th>
+                    <th className="p-4">{t.targetCol}</th>
+                    <th className="p-4">{t.statusCol}</th>
                   </tr>
                 </thead>
                 <tbody className={`divide-y ${
@@ -888,33 +1298,52 @@ export default function ReportingPanel({
                     ? 'divide-slate-200 text-slate-700' 
                     : 'divide-white/5 text-slate-300'
                 }`}>
-                  {auditLogs.map((log) => (
-                    <tr key={log.id} className={`transition-colors ${
-                      isLightMode ? 'hover:bg-slate-100/50' : 'hover:bg-white/5'
-                    }`}>
-                      <td className={`p-4 whitespace-nowrap ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {new Date(log.timestamp).toLocaleString(lang === 'fa' ? 'fa-IR' : 'en-US')}
-                      </td>
-                      <td className={`p-4 font-semibold ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
-                        @{log.username}
-                      </td>
-                      <td className="p-4">
-                        {log.action}
-                      </td>
-                      <td className={`p-4 font-medium ${isLightMode ? 'text-sky-600' : 'text-cyan-400'}`}>
-                        {log.target || '-'}
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-sans uppercase ${
-                          log.status === 'success' 
-                            ? (isLightMode ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-500/10 text-emerald-400') 
-                            : (isLightMode ? 'bg-red-100 text-red-800' : 'bg-red-500/10 text-red-400')
-                        }`}>
-                          {lang === 'fa' ? (log.status === 'success' ? 'موفق' : 'ناموفق') : log.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {auditLogs.map((log) => {
+                    const getStatusText = (status: string) => {
+                      if (status === 'success') {
+                        if (lang === 'fa') return 'موفق';
+                        if (lang === 'ar') return 'ناجح';
+                        if (lang === 'es') return 'Éxito';
+                        if (lang === 'de') return 'Erfolgreich';
+                        if (lang === 'ru') return 'Успешно';
+                        return 'Success';
+                      } else {
+                        if (lang === 'fa') return 'ناموفق';
+                        if (lang === 'ar') return 'فشل';
+                        if (lang === 'es') return 'Fallido';
+                        if (lang === 'de') return 'Fehlgeschlagen';
+                        if (lang === 'ru') return 'Ошибка';
+                        return 'Failed';
+                      }
+                    };
+                    return (
+                      <tr key={log.id} className={`transition-colors ${
+                        isLightMode ? 'hover:bg-slate-100/50' : 'hover:bg-white/5'
+                      }`}>
+                        <td className={`p-4 whitespace-nowrap ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {new Date(log.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}
+                        </td>
+                        <td className={`p-4 font-semibold ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                          @{log.username}
+                        </td>
+                        <td className="p-4">
+                          {log.action}
+                        </td>
+                        <td className={`p-4 font-medium ${isLightMode ? 'text-sky-600' : 'text-cyan-400'}`}>
+                          {log.target || '-'}
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-sans uppercase ${
+                            log.status === 'success' 
+                              ? (isLightMode ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-500/10 text-emerald-400') 
+                              : (isLightMode ? 'bg-red-100 text-red-800' : 'bg-red-500/10 text-red-400')
+                          }`}>
+                            {getStatusText(log.status)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -923,17 +1352,17 @@ export default function ReportingPanel({
 
         {/* VIEW 4: BACKUPS & SNAPSHOT UNDO */}
         {activeSubTab === 'backups' && (
-          <div className="space-y-6 flex flex-col h-full" dir="ltr">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
-              <div className="flex items-center gap-3">
+          <div className="space-y-6 flex flex-col h-full" dir={isRtl ? "rtl" : "ltr"}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+              <div className={`flex items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
                 <History className="w-6 h-6 text-amber-400" />
-                <div className="text-left">
-                  <h2 className="text-xl font-display font-bold text-white">Advanced Backup & Restore</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Manage database backups, core configuration, schedules, and server restoration.</p>
+                <div>
+                  <h2 className="text-xl font-display font-bold text-white">{t.backupsTitle}</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">{t.backupsSub}</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5 self-start sm:self-auto">
+              <div className={`flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/5 self-start sm:self-auto ${isRtl ? 'flex-row-reverse' : ''}`}>
                 <button
                   onClick={() => setActiveBackupSubTab('list')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -942,7 +1371,7 @@ export default function ReportingPanel({
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  Backups & Restoration
+                  {t.backupListTab}
                 </button>
                 <button
                   onClick={() => setActiveBackupSubTab('settings')}
@@ -952,7 +1381,7 @@ export default function ReportingPanel({
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  Settings & Schedules
+                  {t.backupSettingsTab}
                 </button>
               </div>
             </div>
@@ -963,18 +1392,20 @@ export default function ReportingPanel({
                 {!isReadOnly && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Config Backup Box */}
-                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-left flex flex-col justify-between">
+                    <div className={`spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 flex flex-col justify-between ${isRtl ? 'text-right' : 'text-left'}`}>
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-start mb-1">
+                        <h4 className={`text-sm font-bold text-white flex items-center gap-2 mb-1 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-start'}`}>
                           <Settings className="w-4 h-4 text-amber-400" />
-                          <span>Configuration Backup (Config)</span>
+                          <span>{lang === 'fa' ? 'نسخه پشتیبان تنظیمات (Config)' : 'Configuration Backup (Config)'}</span>
                         </h4>
                         <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                          Creates a compressed backup archive of Synapse configs, Element web client profiles, Nginx proxies, and LDAP connection details.
+                          {lang === 'fa' 
+                            ? 'یک فایل فشرده بک‌آپ از تنظیمات اصلی ماتریکس سیناپس، پروفایل‌های المنت، پروکسی‌ها و تنظیمات امنیتی ایجاد می‌کند.' 
+                            : 'Creates a compressed backup archive of Synapse configs, Element web client profiles, Nginx proxies, and LDAP connection details.'}
                         </p>
                       </div>
-                      <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                        <div className="flex items-center gap-2">
+                      <div className={`flex items-center justify-between pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                           <input 
                             type="checkbox" 
                             id="inc-ssl-adv" 
@@ -982,7 +1413,7 @@ export default function ReportingPanel({
                             onChange={(e) => setIncludeSSL(e.target.checked)} 
                             className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
                           />
-                          <label htmlFor="inc-ssl-adv" className="text-xs font-semibold text-slate-300 cursor-pointer">Backup SSL Certificates</label>
+                          <label htmlFor="inc-ssl-adv" className="text-xs font-semibold text-slate-300 cursor-pointer">{t.includeSsl}</label>
                         </div>
                         <button
                           disabled={isTriggeringBackup}
@@ -990,43 +1421,47 @@ export default function ReportingPanel({
                           className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                           {isTriggeringBackup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                          <span>Create Config Backup</span>
+                          <span>{t.backupNow}</span>
                         </button>
                       </div>
                     </div>
 
                     {/* DB Backup Box */}
-                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-left flex flex-col justify-between">
+                    <div className={`spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 flex flex-col justify-between ${isRtl ? 'text-right' : 'text-left'}`}>
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-start mb-1">
+                        <h4 className={`text-sm font-bold text-white flex items-center gap-2 mb-1 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-start'}`}>
                           <FileJson className="w-4 h-4 text-cyan-400" />
-                          <span>Database Backup (Database)</span>
+                          <span>{lang === 'fa' ? 'نسخه پشتیبان پایگاه داده (Database)' : 'Database Backup (Database)'}</span>
                         </h4>
                         <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                          Exports a complete database snapshot containing registered users, groups, RBAC permissions, audit log history, and configuration details.
+                          {lang === 'fa' 
+                            ? 'یک نسخه پشتیبان کامل از دیتابیس شامل لیست کاربران، اتاق‌ها، مجوزهای دسترسی، چت‌ها و لاگ‌های سیستمی ماتریکس ایجاد می‌کند.' 
+                            : 'Exports a complete database snapshot containing registered users, groups, RBAC permissions, audit log history, and configuration details.'}
                         </p>
                       </div>
-                      <div className="flex justify-end pt-3 border-t border-white/5">
+                      <div className={`flex justify-end pt-3 border-t border-white/5 ${isRtl ? 'justify-start' : 'justify-end'}`}>
                         <button
                           disabled={isTriggeringBackup}
                           onClick={() => triggerAdvancedBackup('database')}
                           className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                           {isTriggeringBackup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                          <span>Create Database Backup</span>
+                          <span>{lang === 'fa' ? 'تهیه نسخه پشتیبان دیتابیس' : 'Create Database Backup'}</span>
                         </button>
                       </div>
                     </div>
 
                     {/* File Upload zone */}
-                    <div className="spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 text-left flex flex-col justify-between">
+                    <div className={`spatial-glass rounded-2xl p-5 border border-white/5 bg-white/5 flex flex-col justify-between ${isRtl ? 'text-right' : 'text-left'}`}>
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2 justify-start mb-1">
+                        <h4 className={`text-sm font-bold text-white flex items-center gap-2 mb-1 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-start'}`}>
                           <UploadCloud className="w-4 h-4 text-emerald-400" />
-                          <span>Upload Backup File</span>
+                          <span>{t.uploadBackup}</span>
                         </h4>
                         <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-                          Directly upload a previous JSON backup file into the server's dedicated backups catalog to prepare for restoration.
+                          {lang === 'fa' 
+                            ? 'فایل‌های پشتیبان با پسوند JSON را مستقیماً بارگذاری کنید تا در لیست ذخیره شده و آماده بازگردانی شوند.' 
+                            : 'Directly upload a previous JSON backup file into the server\'s dedicated backups catalog to prepare for restoration.'}
                         </p>
                       </div>
                       <div className="relative border border-dashed border-white/10 hover:border-emerald-500/50 rounded-xl p-3 text-center transition-all bg-black/20">
@@ -1038,7 +1473,7 @@ export default function ReportingPanel({
                         />
                         <div className="flex flex-col items-center gap-1">
                           <UploadCloud className="w-6 h-6 text-emerald-400 animate-pulse" />
-                          <span className="text-[10px] text-slate-400">Click or drag backup file here</span>
+                          <span className="text-[10px] text-slate-400">{lang === 'fa' ? 'کلیک کنید یا فایل بک‌آپ را به اینجا بکشید' : 'Click or drag backup file here'}</span>
                           <span className="text-[9px] text-slate-500 font-mono">Format allowed: JSON Backups</span>
                         </div>
                       </div>
@@ -1048,8 +1483,8 @@ export default function ReportingPanel({
 
                 {/* Backups List & Bulk Actions */}
                 <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/30 p-4 rounded-2xl border border-white/5">
-                    <div className="flex items-center gap-3">
+                  <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/30 p-4 rounded-2xl border border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                    <div className={`flex items-center gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
                       <button
                         onClick={handleToggleSelectAll}
                         className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
@@ -1059,7 +1494,7 @@ export default function ReportingPanel({
                         ) : (
                           <Square className="w-4.5 h-4.5 text-slate-500" />
                         )}
-                        <span>Select All ({backups.length})</span>
+                        <span>{lang === 'fa' ? `انتخاب همه (${backups.length})` : `Select All (${backups.length})`}</span>
                       </button>
 
                       {selectedBackupIds.length > 0 && (
@@ -1072,21 +1507,21 @@ export default function ReportingPanel({
                           className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
                         >
                           <Download className="w-3 h-3" />
-                          <span>Bulk Download ({selectedBackupIds.length})</span>
+                          <span>{lang === 'fa' ? `دانلود گروهی (${selectedBackupIds.length})` : `Bulk Download (${selectedBackupIds.length})`}</span>
                         </button>
                       )}
                     </div>
 
-                    <div className="text-left sm:text-right">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Archived Backups Catalog</h4>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{lang === 'fa' ? 'آرشیو نسخه‌های پشتیبان موجود' : 'Archived Backups Catalog'}</h4>
                     </div>
                   </div>
 
                   {backups.length === 0 ? (
                     <div className="text-center py-10 spatial-glass rounded-2xl border border-white/5">
                       <FolderOpen className="w-12 h-12 text-slate-600 mx-auto mb-2" />
-                      <p className="text-sm text-slate-400">No backup archives found on disk.</p>
-                      <p className="text-xs text-slate-500 mt-1">Trigger your first manual backup using the buttons above.</p>
+                      <p className="text-sm text-slate-400">{t.noBackups}</p>
+                      <p className="text-xs text-slate-500 mt-1">{lang === 'fa' ? 'با دکمه‌های بالا اولین نسخه پشتیبان خود را ایجاد کنید.' : 'Trigger your first manual backup using the buttons above.'}</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1097,9 +1532,9 @@ export default function ReportingPanel({
                             selectedBackupIds.includes(b.id) 
                               ? 'border-amber-500/40 bg-amber-500/[0.03]' 
                               : 'border-white/5 hover:border-white/10'
-                          }`}
+                          } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
                         >
-                          <div className="flex items-start gap-3">
+                          <div className={`flex items-start gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
                             <button
                               onClick={() => handleToggleSelectBackup(b.id)}
                               className="mt-0.5 text-slate-500 hover:text-white transition-colors cursor-pointer"
@@ -1110,25 +1545,25 @@ export default function ReportingPanel({
                                 <Square className="w-4.5 h-4.5" />
                               )}
                             </button>
-                            <div className="text-left">
+                            <div className={isRtl ? 'text-right' : 'text-left'}>
                               <h5 className="text-xs font-bold text-white font-mono break-all select-all">{b.filename}</h5>
-                              <div className="flex items-center gap-3 mt-2 font-mono text-[10px] text-slate-400 flex-wrap">
+                              <div className={`flex items-center gap-3 mt-2 font-mono text-[10px] text-slate-400 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase ${
                                   b.type === 'database' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-amber-500/10 text-amber-400'
                                 }`}>
-                                  {b.type === 'database' ? 'Database' : 'Config'}
+                                  {b.type === 'database' ? (lang === 'fa' ? 'دیتابیس' : 'Database') : (lang === 'fa' ? 'تنظیمات' : 'Config')}
                                 </span>
-                                <span>Size: <strong className="text-white">{b.size}</strong></span>
-                                <span>{new Date(b.timestamp).toLocaleString()}</span>
+                                <span>{lang === 'fa' ? 'حجم:' : 'Size:'} <strong className="text-white">{b.size}</strong></span>
+                                <span>{new Date(b.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5 ml-2">
+                          <div className={`flex items-center gap-1.5 ml-2 ${isRtl ? 'flex-row-reverse mr-2' : ''}`}>
                             <button
                               onClick={() => downloadSingleBackup(b)}
                               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition-all cursor-pointer"
-                              title="Download backup"
+                              title={t.downloadBtn}
                             >
                               <Download className="w-4 h-4" />
                             </button>
@@ -1137,15 +1572,15 @@ export default function ReportingPanel({
                                 <button
                                   onClick={() => setShowRestoreModal(b)}
                                   className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/10 transition-all cursor-pointer font-semibold text-xs flex items-center gap-1"
-                                  title="Restore and rollback server"
+                                  title={t.restoreBtn}
                                 >
                                   <RotateCcw className="w-4 h-4" />
-                                  <span className="hidden lg:inline text-[10px]">Restore</span>
+                                  <span className="hidden lg:inline text-[10px]">{lang === 'fa' ? 'بازنشانی' : 'Restore'}</span>
                                 </button>
                                 <button
                                   onClick={() => onDeleteBackup(b.id)}
                                   className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all cursor-pointer"
-                                  title="Delete backup"
+                                  title={t.deleteBtn}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -1164,13 +1599,13 @@ export default function ReportingPanel({
               <div className="space-y-6 flex-1 overflow-y-auto pr-1">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Left Column: Path & Retention */}
-                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-left space-y-5">
-                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">Disk Storage Settings</h4>
+                  <div className={`spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 space-y-5 ${isRtl ? 'text-right' : 'text-left'}`}>
+                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">{lang === 'fa' ? 'تنظیمات ذخیره‌سازی دیسک' : 'Disk Storage Settings'}</h4>
 
                     {/* Storage Path on server */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold text-slate-300">Server Backup Directory Path</label>
-                      <div className="flex gap-2">
+                      <label className="block text-xs font-semibold text-slate-300">{t.backupPath}</label>
+                      <div className={`flex gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                         <input
                           type="text"
                           value={backupSettings.backupPath}
@@ -1182,13 +1617,15 @@ export default function ReportingPanel({
                         <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/10 rounded-xl text-[10px] font-bold flex items-center">Writable</span>
                       </div>
                       <p className="text-[10px] text-slate-500 leading-relaxed">
-                        Absolute path on the host system where backup archives are persisted. The application creates this directory dynamically if it does not exist.
+                        {lang === 'fa' 
+                          ? 'مسیر مطلق روی سرور برای نگهداری آرشیوها. در صورت عدم وجود، برنامه آن را به صورت خودکار می‌سازد.' 
+                          : 'Absolute path on the host system where backup archives are persisted. The application creates this directory dynamically if it does not exist.'}
                       </p>
                     </div>
 
                     {/* Retention policy */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold text-slate-300">Backup Retention Policy (Days)</label>
+                      <label className="block text-xs font-semibold text-slate-300">{t.retention}</label>
                       <input
                         type="number"
                         min="1"
@@ -1196,23 +1633,25 @@ export default function ReportingPanel({
                         value={backupSettings.retentionDays}
                         onChange={(e) => setBackupSettings(prev => ({ ...prev, retentionDays: parseInt(e.target.value) || 30 }))}
                         disabled={isReadOnly}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                        className={`w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50 ${isRtl ? 'text-right' : 'text-left'}`}
                         placeholder="30"
                       />
                       <p className="text-[10px] text-slate-500 leading-relaxed">
-                        Retention window for backup archives. Items older than this duration will be automatically pruned by the server background worker.
+                        {lang === 'fa' 
+                          ? 'مدت زمان نگهداری فایل‌ها. نسخه‌های قدیمی‌تر به صورت خودکار توسط پردازش‌گر پس‌زمینه حذف خواهند شد.' 
+                          : 'Retention window for backup archives. Items older than this duration will be automatically pruned by the server background worker.'}
                       </p>
                     </div>
                   </div>
 
                   {/* Right Column: Schedulers */}
-                  <div className="spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 text-left space-y-6">
-                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">Automated Cron Job Schedules</h4>
+                  <div className={`spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 space-y-6 ${isRtl ? 'text-right' : 'text-left'}`}>
+                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5">{t.backupConfig}</h4>
 
                     {/* Database Cron */}
                     <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                      <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                           <input
                             type="checkbox"
                             id="db-sched-toggle"
@@ -1224,12 +1663,12 @@ export default function ReportingPanel({
                             disabled={isReadOnly}
                             className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
                           />
-                          <label htmlFor="db-sched-toggle" className="text-xs font-bold text-white cursor-pointer">Enable Scheduled Database Backup</label>
+                          <label htmlFor="db-sched-toggle" className="text-xs font-bold text-white cursor-pointer">{t.autoDbBackup}</label>
                         </div>
                         <Calendar className="w-4 h-4 text-cyan-400" />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="block text-[10px] text-slate-400">Linux Cron Expression</label>
+                        <label className="block text-[10px] text-slate-400">{t.cronExpr}</label>
                         <input
                           type="text"
                           value={backupSettings.dbSchedule?.cron || '0 2 * * *'}
@@ -1240,14 +1679,14 @@ export default function ReportingPanel({
                           disabled={isReadOnly || !backupSettings.dbSchedule?.enabled}
                           className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
                         />
-                        <span className="text-[9px] text-slate-500 block">Example: <code className="text-slate-400">0 2 * * *</code> (Every day at 2:00 AM)</span>
+                        <span className={`text-[9px] text-slate-500 block ${isRtl ? 'text-right' : 'text-left'}`}>{lang === 'fa' ? 'مثال: 0 2 * * * (هر روز ساعت ۲:۰۰ بامداد)' : 'Example: 0 2 * * * (Every day at 2:00 AM)'}</span>
                       </div>
                     </div>
 
                     {/* Config Cron */}
                     <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
+                      <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                           <input
                             type="checkbox"
                             id="cfg-sched-toggle"
@@ -1259,12 +1698,12 @@ export default function ReportingPanel({
                             disabled={isReadOnly}
                             className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
                           />
-                          <label htmlFor="cfg-sched-toggle" className="text-xs font-bold text-white cursor-pointer">Enable Scheduled Config Backup</label>
+                          <label htmlFor="cfg-sched-toggle" className="text-xs font-bold text-white cursor-pointer">{t.autoConfigBackup}</label>
                         </div>
                         <Calendar className="w-4 h-4 text-amber-400" />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="block text-[10px] text-slate-400">Linux Cron Expression</label>
+                        <label className="block text-[10px] text-slate-400">{t.cronExpr}</label>
                         <input
                           type="text"
                           value={backupSettings.configSchedule?.cron || '0 3 * * *'}
@@ -1275,20 +1714,20 @@ export default function ReportingPanel({
                           disabled={isReadOnly || !backupSettings.configSchedule?.enabled}
                           className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
                         />
-                        <span className="text-[9px] text-slate-500 block">Example: <code className="text-slate-400">0 3 * * *</code> (Every day at 3:00 AM)</span>
+                        <span className={`text-[9px] text-slate-500 block ${isRtl ? 'text-right' : 'text-left'}`}>{lang === 'fa' ? 'مثال: 0 3 * * * (هر روز ساعت ۳:۰۰ بامداد)' : 'Example: 0 3 * * * (Every day at 3:00 AM)'}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {!isReadOnly && (
-                  <div className="flex justify-end pt-4 border-t border-white/5">
+                  <div className={`flex pt-4 border-t border-white/5 ${isRtl ? 'justify-start' : 'justify-end'}`}>
                     <button
                       onClick={saveBackupSettings}
                       className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:shadow-amber-500/10"
                     >
                       <Save className="w-4 h-4" />
-                      <span>Save Policy & Configuration</span>
+                      <span>{t.saveSettings}</span>
                     </button>
                   </div>
                 )}
@@ -1297,22 +1736,26 @@ export default function ReportingPanel({
 
             {/* Restore Confirmation Modal Overlay */}
             {showRestoreModal && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir="ltr">
-                <div className={`max-w-lg w-full rounded-3xl p-6 text-left space-y-5 animate-scale-up transition-colors ${
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
                   isLightMode 
                     ? 'bg-white border border-red-100 text-slate-900 shadow-[0_10px_40px_rgba(0,0,0,0.1)]' 
                     : 'bg-slate-900 border border-red-500/20 text-white shadow-[0_0_50px_rgba(239,68,68,0.15)]'
                 }`}>
-                  <div className="flex items-center gap-3 text-red-500 pb-3 border-b border-white/5">
+                  <div className={`flex items-center gap-3 text-red-500 pb-3 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <AlertTriangle className="w-6 h-6" />
                     <div>
-                      <h3 className={`text-lg font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>Critical Warning: Restore System</h3>
-                      <p className={`text-[10px] ${isLightMode ? 'text-red-600/80' : 'text-red-400/80'}`}>Matrix Server Backup Recovery Operations</p>
+                      <h3 className={`text-lg font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{t.warningTitle}</h3>
+                      <p className={`text-[10px] ${isLightMode ? 'text-red-600/80' : 'text-red-400/80'}`}>{t.warningSub}</p>
                     </div>
                   </div>
 
                   <p className={`text-xs leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
-                    Are you absolutely sure you want to restore the server state to backup file <strong className="text-amber-500 font-mono select-all break-all">{showRestoreModal.filename}</strong>?
+                    {lang === 'fa' ? (
+                      <span>آیا از بازگردانی وضعیت سرور به فایل پشتیبان <strong className="text-amber-500 font-mono select-all break-all">{showRestoreModal.filename}</strong> اطمینان کامل دارید؟</span>
+                    ) : (
+                      <span>Are you absolutely sure you want to restore the server state to backup file <strong className="text-amber-500 font-mono select-all break-all">{showRestoreModal.filename}</strong>?</span>
+                    )}
                   </p>
 
                   <div className={`rounded-2xl p-4 text-[11px] space-y-2 border ${
@@ -1320,23 +1763,41 @@ export default function ReportingPanel({
                       ? 'bg-red-50/50 border-red-100 text-slate-700' 
                       : 'bg-red-500/5 border-red-500/10 text-slate-300'
                   }`}>
-                    <p className="font-bold text-red-500 flex items-center gap-1">
-                      <span>Irreversible side-effects of this rollback:</span>
+                    <p className={`font-bold text-red-500 flex items-center gap-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <span>{t.warningEffects}</span>
                     </p>
                     {showRestoreModal.type === 'database' ? (
-                      <ul className={`list-disc list-inside space-y-1 pl-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
-                        <li>The current database state including user rosters, active sessions, and access permissions will be entirely replaced.</li>
-                        <li>Any adjustments committed after the backup creation date ({new Date(showRestoreModal.timestamp).toLocaleString()}) will be permanently erased.</li>
+                      <ul className={`list-disc list-inside space-y-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'} ${isRtl ? 'pr-1 list-none' : 'pl-1'}`}>
+                        {lang === 'fa' ? (
+                          <>
+                            <li>• وضعیت فعلی پایگاه داده شامل لیست کل کاربران، نشست‌های فعال و مجوزهای دسترسی به طور کامل با نسخه پشتیبان جایگزین خواهد شد.</li>
+                            <li>• کلیه تغییرات ثبت شده بعد از تاریخ تهیه این نسخه پشتیبان ({new Date(showRestoreModal.timestamp).toLocaleString('fa-IR')}) به طور دائمی پاک می‌شوند.</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>The current database state including user rosters, active sessions, and access permissions will be entirely replaced.</li>
+                            <li>Any adjustments committed after the backup creation date ({new Date(showRestoreModal.timestamp).toLocaleString()}) will be permanently erased.</li>
+                          </>
+                        )}
                       </ul>
                     ) : (
-                      <ul className={`list-disc list-inside space-y-1 pl-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
-                        <li>Critical system configuration files, Element client options, and reverse proxy properties will be rewritten.</li>
-                        <li>Sync processes and server units will restart to reload newly written configurations.</li>
+                      <ul className={`list-disc list-inside space-y-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'} ${isRtl ? 'pr-1 list-none' : 'pl-1'}`}>
+                        {lang === 'fa' ? (
+                          <>
+                            <li>• فایل‌های تنظیمات سیستمی، تنظیمات پنل المنت و ویژگی‌های پروکسی معکوس بازنویسی خواهند شد.</li>
+                            <li>• فرآیندهای همگام‌سازی و واحدهای سرور برای بارگذاری اطلاعات جدید ریستارت خواهند شد.</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>Critical system configuration files, Element client options, and reverse proxy properties will be rewritten.</li>
+                            <li>Sync processes and server units will restart to reload newly written configurations.</li>
+                          </>
+                        )}
                       </ul>
                     )}
                   </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/5">
+                  <div className={`flex items-center justify-end gap-3 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <button
                       disabled={isRestoring}
                       onClick={() => setShowRestoreModal(null)}
@@ -1346,7 +1807,7 @@ export default function ReportingPanel({
                           : 'bg-white/5 hover:bg-white/10 text-slate-300'
                       }`}
                     >
-                      Cancel
+                      {t.cancel}
                     </button>
                     <button
                       disabled={isRestoring}
@@ -1354,7 +1815,7 @@ export default function ReportingPanel({
                       className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {isRestoring ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                      <span>Confirm Restoration</span>
+                      <span>{t.confirmRestore}</span>
                     </button>
                   </div>
                 </div>

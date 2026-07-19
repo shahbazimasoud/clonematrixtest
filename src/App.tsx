@@ -43,7 +43,7 @@ import KetesaAdmin from './components/KetesaAdmin';
 import ConnectionManager from './components/ConnectionManager';
 import { SystemStats, ServiceState, PanelUser, AuditLog, BackupItem, UndoItem, MatrixConfig, LDAPConfig, MatrixUser } from './types';
 
-// Translation Dictionary for Persian (Default) & English
+// Translation Dictionary for Persian (Default), English, Spanish, Arabic, German & Russian
 const translations = {
   fa: {
     title: "پنل مدیریت پیشرفته ماتریکس",
@@ -104,12 +104,142 @@ const translations = {
     backupCreated: "New full-archive backup created successfully.",
     undoSuccess: "Last configuration change reverted successfully.",
     themeToggle: "Toggle Theme (Light/Dark)"
+  },
+  es: {
+    title: "Gestor de Pila Matrix",
+    subtitle: "Diseño de Interfaz Espacial - Panel de Gestión en Tiempo Real para Matrix Synapse, Element y TURN",
+    loginTitle: "Gestor de Pila Matrix",
+    loginSubtitle: "Puerta de acceso segura para el núcleo Matrix Synapse, el cliente Element y el servidor TURN",
+    username: "Nombre de usuario",
+    password: "Contraseña",
+    loginBtn: "Iniciar Sesión",
+    logoutBtn: "Cerrar Sesión",
+    liveStatus: "Estado del Servidor: Conectado",
+    checkingStatus: "Sincronizando datos...",
+    cpuLoad: "Uso de CPU",
+    ramUsage: "Uso de Memoria",
+    diskUsage: "Disco Ocupado",
+    activeSessions: "Usuarios Activos",
+    servicesState: "Estado de Servicios Linux",
+    logsTitle: "Logs del Servidor en Vivo (WebSockets)",
+    terminalTitle: "Consola de Comandos Linux Segura",
+    saveSuccess: "Configuraciones guardadas y sincronizadas con Node.js en tiempo real.",
+    testLdapBtn: "Probar Conexión de Active Directory",
+    e2eeLock: "Bloquear y Desactivar Encriptación de Extremo a Extremo (E2EE) en la Organización",
+    e2eeUnlock: "Activar Encriptación de Extremo a Extremo (E2EE)",
+    autoReporting: "Análisis en Tiempo Real y Reportes Automatizados",
+    roleManage: "Sistema de Control de Acceso Basado en Roles (RBAC)",
+    unauthorized: "No autorizado: Su rol no tiene privilegios para esta acción.",
+    runningTask: "Ejecutando scripts en el servidor...",
+    backupCreated: "Nueva copia de seguridad completa creada con éxito.",
+    undoSuccess: "Último cambio de configuración revertido con éxito.",
+    themeToggle: "Alternar Tema (Claro/Oscuro)"
+  },
+  ar: {
+    title: "مدير حزمة ماتريكس",
+    subtitle: "تصميم واجهة مستخدم فضائية - لوحة تحكم فورية لـ Matrix Synapse و Element و TURN",
+    loginTitle: "مدير حزمة ماتريكس",
+    loginSubtitle: "بوابة وصول آمنة لنواة ماتريكس سينابس، وعميل المنت، وخادم TURN",
+    username: "اسم المستخدم",
+    password: "كلمة المرور",
+    loginBtn: "تسجيل الدخول",
+    logoutBtn: "تسجيل الخروج",
+    liveStatus: "حالة الخادم: متصل",
+    checkingStatus: "مزامنة البيانات...",
+    cpuLoad: "استخدام المعالج",
+    ramUsage: "استخدام الذاكرة",
+    diskUsage: "المساحة المستخدمة",
+    activeSessions: "المستخدمون النشطون",
+    servicesState: "حالة خدمات لينكس",
+    logsTitle: "سجلات الخادم المباشرة (WebSockets)",
+    terminalTitle: "وحدة التحكم الطرفية الآمنة لينكس",
+    saveSuccess: "تم حفظ التكوينات ومزامنتها مع Node.js في الوقت الفعلي.",
+    testLdapBtn: "اختبار اتصال الدليل النشط",
+    e2eeLock: "قفل وتعطيل التشفير بين الطرفين (E2EE) على مستوى المؤسسة",
+    e2eeUnlock: "تمكين التشفير بين الطرفين (E2EE)",
+    autoReporting: "التحليل الفوري والتقارير الآلية",
+    roleManage: "نظام التحكم في الوصول المستند إلى الأدوار (RBAC)",
+    unauthorized: "غير مصرح به: ليس لدورك الصلاحيات اللازمة لهذا الإجراء.",
+    runningTask: "تشغيل النصوص البرمجية على الخادم...",
+    backupCreated: "تم إنشاء نسخة احتياطية أرشيفية كاملة بنجاح.",
+    undoSuccess: "تم التراجع عن آخر تغيير في التكوين بنجاح.",
+    themeToggle: "تبديل المظهر (فاتح/داكن)"
+  },
+  de: {
+    title: "Matrix-Stack-Manager",
+    subtitle: "Spatial UI-Design - Echtzeit-Verwaltungspanel für Matrix Synapse, Element & TURN",
+    loginTitle: "Matrix-Stack-Manager",
+    loginSubtitle: "Sicheres Zugangs-Gateway für den Matrix Synapse Core, den Element Client und den TURN-Server",
+    username: "Benutzername",
+    password: "Passwort",
+    loginBtn: "Anmelden",
+    logoutBtn: "Abmelden",
+    liveStatus: "Server-Status: Verbunden",
+    checkingStatus: "Daten werden synchronisiert...",
+    cpuLoad: "CPU-Auslastung",
+    ramUsage: "Speicherauslastung",
+    diskUsage: "Belegter Festplattenplatz",
+    activeSessions: "Aktive Benutzer",
+    servicesState: "Linux-Dienststatus",
+    logsTitle: "Live-Server-Protokolle (WebSockets)",
+    terminalTitle: "Sichere Linux-Shell-Konsole",
+    saveSuccess: "Konfigurationen wurden in Echtzeit gespeichert und mit Node.js synchronisiert.",
+    testLdapBtn: "Active Directory Bindung testen",
+    e2eeLock: "Ende-zu-Ende-Verschlüsselung (E2EE) organisationsweit sperren & deaktivieren",
+    e2eeUnlock: "Ende-zu-Ende-Verschlüsselung (E2EE) aktivieren",
+    autoReporting: "Echtzeit-Analyse & automatisierte Berichterstattung",
+    roleManage: "Rollenbasierte Zugriffskontrolle (RBAC)",
+    unauthorized: "Nicht autorisiert: Ihre Rolle hat keine Berechtigungen für diese Aktion.",
+    runningTask: "Server-Skripte werden ausgeführt...",
+    backupCreated: "Neues Vollarchiv-Backup erfolgreich erstellt.",
+    undoSuccess: "Letzte Konfigurationsänderung erfolgreich rückgängig gemacht.",
+    themeToggle: "Design umschalten (Hell/Dunkel)"
+  },
+  ru: {
+    title: "Управление стеком Matrix",
+    subtitle: "Пространственный интерфейс (Spatial UI) — панель управления Matrix Synapse, Element и TURN в реальном времени",
+    loginTitle: "Управление стеком Matrix",
+    loginSubtitle: "Безопасный вход в панель управления ядром Matrix Synapse, клиентом Element и TURN-сервером",
+    username: "Имя пользователя",
+    password: "Пароль",
+    loginBtn: "Войти",
+    logoutBtn: "Выйти",
+    liveStatus: "Статус сервера: Подключен",
+    checkingStatus: "Синхронизация данных...",
+    cpuLoad: "Нагрузка на ЦП",
+    ramUsage: "Использование ОЗУ",
+    diskUsage: "Занято на диске",
+    activeSessions: "Активные пользователи",
+    servicesState: "Статус служб Linux",
+    logsTitle: "Живые логи сервера (WebSockets)",
+    terminalTitle: "Безопасная консоль Linux (SSH)",
+    saveSuccess: "Конфигурации сохранены и синхронизированы с Node.js в реальном времени.",
+    testLdapBtn: "Тестировать подключение к Active Directory",
+    e2eeLock: "Заблокировать и отключить сквозное шифрование (E2EE) в организации",
+    e2eeUnlock: "Включить сквозное шифрование (E2EE)",
+    autoReporting: "Анализ в реальном времени и автоотчеты",
+    roleManage: "Система управления доступом на основе ролей (RBAC)",
+    unauthorized: "Неавторизовано: у вашей роли недостаточно прав для этого действия.",
+    runningTask: "Выполнение скриптов на сервере...",
+    backupCreated: "Новая резервная копия успешно создана.",
+    undoSuccess: "Последнее изменение конфигурации успешно отменено.",
+    themeToggle: "Переключить тему (Светлая/Темная)"
   }
 };
 
+const LANGUAGES = [
+  { code: 'en', label: 'English', flag: '🇬🇧' },
+  { code: 'fa', label: 'فارسی', flag: '🇮🇷' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'ar', label: 'العربية', flag: '🇸🇦' },
+  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+  { code: 'ru', label: 'Русский', flag: '🇷🇺' }
+] as const;
+
 export default function App() {
-  const [lang, setLang] = useState<'fa' | 'en'>((localStorage.getItem('lang_pref') as 'fa' | 'en') || 'en');
-  const t = translations[lang];
+  const [lang, setLang] = useState<'fa' | 'en' | 'es' | 'ar' | 'de' | 'ru'>((localStorage.getItem('lang_pref') as any) || 'en');
+  const t = translations[lang] || translations.en;
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
 
   // Theme State
   const [isLightMode, setIsLightMode] = useState<boolean>(localStorage.getItem('theme_mode') === 'light');
@@ -661,7 +791,7 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen relative flex flex-col justify-between ${isLightMode ? 'theme-light' : ''} ${lang === 'fa' ? 'rtl font-sans' : 'ltr font-sans'}`}>
+    <div className={`min-h-screen relative flex flex-col justify-between ${isLightMode ? 'theme-light' : ''} ${['fa', 'ar'].includes(lang) ? 'rtl font-sans' : 'ltr font-sans'}`}>
       {/* Background neon visual noise */}
       <div className="ambient-glow-background" />
 
@@ -685,18 +815,46 @@ export default function App() {
           <div className="spatial-glass max-w-md w-full rounded-3xl p-8 border border-white/10 shadow-[0_30px_70px_rgba(0,0,0,0.6)] spatial-depth-card relative overflow-hidden">
             {/* Upper Right Quick Controls */}
             <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
-              <button
-                onClick={() => {
-                  const nextLang = lang === 'fa' ? 'en' : 'fa';
-                  setLang(nextLang);
-                  localStorage.setItem('lang_pref', nextLang);
-                }}
-                title={lang === 'fa' ? 'Change language to English' : 'تغییر زبان به فارسی'}
-                className="p-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-slate-400 hover:text-white flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
-              >
-                <Languages className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>{lang === 'fa' ? 'EN' : 'FA'}</span>
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
+                  className="p-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-slate-400 hover:text-white flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                >
+                  <Languages className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span>{LANGUAGES.find(l => l.code === lang)?.flag || '🇬🇧'}</span>
+                </button>
+                {isLangMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsLangMenuOpen(false)} />
+                    <div className={`absolute right-0 top-10 mt-1 w-32 rounded-xl p-1 shadow-2xl backdrop-blur-md z-50 border ${
+                      isLightMode 
+                        ? 'bg-white border-slate-200 text-slate-800' 
+                        : 'bg-slate-900 border-white/10 text-white'
+                    }`}>
+                      <div className="flex flex-col gap-0.5">
+                        {LANGUAGES.map((l) => (
+                          <button
+                            key={l.code}
+                            type="button"
+                            onClick={() => {
+                              setLang(l.code);
+                              localStorage.setItem('lang_pref', l.code);
+                              setIsLangMenuOpen(false);
+                            }}
+                            className={`flex items-center gap-2 px-2 py-1 rounded-lg text-xs font-semibold hover:bg-indigo-500 hover:text-white transition-all text-left w-full cursor-pointer ${
+                              lang === l.code ? 'bg-indigo-500/10 text-indigo-400' : ''
+                            }`}
+                          >
+                            <span>{l.flag}</span>
+                            <span>{l.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
               <button
                 onClick={toggleTheme}
                 title={t.themeToggle}
@@ -824,6 +982,48 @@ export default function App() {
 
             {/* Middle: Theme Switcher & User Indicator */}
             <div className="flex items-center gap-4">
+              {/* Language Switcher */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs transition-all cursor-pointer"
+                >
+                  <Languages className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <span className="font-semibold">{LANGUAGES.find(l => l.code === lang)?.flag || '🇬🇧'} {LANGUAGES.find(l => l.code === lang)?.label || 'English'}</span>
+                </button>
+                {isLangMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsLangMenuOpen(false)} />
+                    <div className={`absolute right-0 top-10 mt-1 w-36 rounded-xl p-1 shadow-2xl backdrop-blur-md z-50 border ${
+                      isLightMode 
+                        ? 'bg-white border-slate-200 text-slate-800' 
+                        : 'bg-slate-900 border-white/10 text-white'
+                    }`}>
+                      <div className="flex flex-col gap-0.5">
+                        {LANGUAGES.map((l) => (
+                          <button
+                            key={l.code}
+                            type="button"
+                            onClick={() => {
+                              setLang(l.code);
+                              localStorage.setItem('lang_pref', l.code);
+                              setIsLangMenuOpen(false);
+                            }}
+                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-indigo-500 hover:text-white transition-all text-left w-full cursor-pointer ${
+                              lang === l.code ? 'bg-indigo-500/10 text-indigo-400' : ''
+                            }`}
+                          >
+                            <span>{l.flag}</span>
+                            <span>{l.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
               {/* Theme Switcher */}
               <button
                 onClick={toggleTheme}
@@ -903,12 +1103,20 @@ export default function App() {
                           }`}>
                             <div className="flex items-center gap-1.5 font-bold animate-pulse">
                               <RefreshCw className="w-3.5 h-3.5 animate-spin animate-infinite" style={{ animationDuration: '4s' }} />
-                              <span>{lang === 'fa' ? 'بروزرسانی جدید موجود است!' : 'New Update Available!'}</span>
+                              <span>
+                                {lang === 'fa' ? 'بروزرسانی جدید موجود است!' :
+                                 lang === 'es' ? '¡Nueva actualización disponible!' :
+                                 lang === 'ar' ? 'يتوفر تحديث جديد!' :
+                                 lang === 'de' ? 'Neues Update verfügbar!' :
+                                 lang === 'ru' ? 'Доступно новое обновление!' : 'New Update Available!'}
+                              </span>
                             </div>
                             <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                              {lang === 'fa' 
-                                ? `نسخه شما ${commitsBehind} کامیت عقب‌تر است.` 
-                                : `Your version is ${commitsBehind} commits behind.`}
+                              {lang === 'fa' ? `نسخه شما ${commitsBehind} کامیت عقب‌تر است.` :
+                               lang === 'es' ? `Su versión está ${commitsBehind} commits atrasada.` :
+                               lang === 'ar' ? `إصدارك متأخر بـ ${commitsBehind} تغييرات.` :
+                               lang === 'de' ? `Ihre Version ist ${commitsBehind} Commits im Rückstand.` :
+                               lang === 'ru' ? `Ваша версия отстает на ${commitsBehind} коммитов.` : `Your version is ${commitsBehind} commits behind.`}
                             </p>
                             {latestCommitDesc && (
                               <div className={`p-2 rounded-lg text-[9px] font-mono text-left whitespace-pre-wrap border ${
@@ -917,7 +1125,11 @@ export default function App() {
                                   : 'bg-indigo-950/40 border-indigo-500/10 text-indigo-300'
                               }`}>
                                 <span className="font-sans font-bold block mb-0.5 text-[9px]">
-                                  {lang === 'fa' ? 'توضیحات آخرین تغییر:' : 'Latest Change Description:'}
+                                  {lang === 'fa' ? 'توضیحات آخرین تغییر:' :
+                                   lang === 'es' ? 'Descripción del último cambio:' :
+                                   lang === 'ar' ? 'وصف آخر تغيير:' :
+                                   lang === 'de' ? 'Beschreibung der letzten Änderung:' :
+                                   lang === 'ru' ? 'Описание последнего изменения:' : 'Latest Change Description:'}
                                 </span>
                                 {latestCommitDesc}
                               </div>
@@ -931,7 +1143,11 @@ export default function App() {
                               }}
                               className="w-full mt-1 py-1.5 px-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-[10px] transition-all cursor-pointer text-center"
                             >
-                              {lang === 'fa' ? 'مشاهده و نصب بروزرسانی' : 'View & Install Update'}
+                              {lang === 'fa' ? 'مشاهده و نصب بروزرسانی' :
+                               lang === 'es' ? 'Ver e instalar actualización' :
+                               lang === 'ar' ? 'عرض وتثبيت التحديث' :
+                               lang === 'de' ? 'Update anzeigen & installieren' :
+                               lang === 'ru' ? 'Посмотреть и установить обновление' : 'View & Install Update'}
                             </button>
                           </div>
                         ) : (
@@ -941,7 +1157,13 @@ export default function App() {
                               : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400/80'
                           }`}>
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span>{lang === 'fa' ? 'سیستم کاملاً بروز است' : 'System is fully up-to-date'}</span>
+                            <span>
+                              {lang === 'fa' ? 'سیستم کاملاً بروز است' :
+                               lang === 'es' ? 'El sistema está totalmente actualizado' :
+                               lang === 'ar' ? 'النظام محدث بالكامل' :
+                               lang === 'de' ? 'System ist auf dem neuesten Stand' :
+                               lang === 'ru' ? 'Система полностью обновлена' : 'System is fully up-to-date'}
+                            </span>
                           </div>
                         )}
 
@@ -959,7 +1181,13 @@ export default function App() {
                             }`}
                           >
                             <LogOut className="w-3.5 h-3.5" />
-                            <span>{lang === 'fa' ? 'خروج از حساب کاربری' : 'Sign Out'}</span>
+                            <span>
+                              {lang === 'fa' ? 'خروج از حساب کاربری' :
+                               lang === 'es' ? 'Cerrar sesión' :
+                               lang === 'ar' ? 'تسجيل الخروج' :
+                               lang === 'de' ? 'Abmelden' :
+                               lang === 'ru' ? 'Выйти' : 'Sign Out'}
+                            </span>
                           </button>
                         </div>
                       </div>
