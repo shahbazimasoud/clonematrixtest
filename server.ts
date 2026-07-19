@@ -3497,11 +3497,15 @@ app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, (req, res
 // Matrix Rooms Management (Ketesa features)
 // -------------------------------------------------------------
 app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
+  let roomsList: any[] = [];
+  let fetchedFromRemote = false;
+
+  // 1. Try Synapse Admin API
   try {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
     if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms)) {
       const db = readDb();
-      const mappedRooms = await Promise.all(apiRes.rooms.map(async (r: any) => {
+      roomsList = await Promise.all(apiRes.rooms.map(async (r: any) => {
         let joinedMembers: any[] = [];
         let bannedMembers: string[] = [];
 
@@ -3574,14 +3578,116 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
           createdAt: new Date().toISOString()
         };
       }));
-      return res.json(mappedRooms);
+      fetchedFromRemote = true;
     }
   } catch (apiErr: any) {
-    console.log("Synapse Admin API rooms fetch notice: falling back to local DB (" + apiErr.message + ")");
+    console.warn("Synapse Admin API rooms fetch failed:", apiErr.message);
   }
 
-  const db = readDb();
-  res.json(db.matrixRooms || []);
+  // 2. If Synapse Admin API didn't return any rooms, try Postgres directly!
+  if (!fetchedFromRemote || roomsList.length === 0) {
+    try {
+      console.log("Querying room details directly from Postgres database...");
+      let dbRooms: any[] = [];
+      try {
+        dbRooms = await queryPostgres(`
+          SELECT 
+            room_id, 
+            name, 
+            canonical_alias, 
+            topic, 
+            creator, 
+            joined_members, 
+            is_federatable, 
+            public, 
+            version
+          FROM room_stats_state
+        `);
+      } catch (err: any) {
+        console.warn("room_stats_state table query failed, trying rooms fallback:", err.message);
+        try {
+          dbRooms = await queryPostgres(`
+            SELECT 
+              room_id, 
+              creator, 
+              is_public, 
+              version
+            FROM rooms
+          `);
+        } catch (err2: any) {
+          console.error("Postgres rooms queries failed completely:", err2.message);
+        }
+      }
+
+      if (dbRooms && dbRooms.length > 0) {
+        const db = readDb();
+        roomsList = await Promise.all(dbRooms.map(async (r: any) => {
+          const roomId = r.room_id;
+          let joinedMembers: any[] = [];
+          let bannedMembers: string[] = [];
+
+          // Query members from Postgres
+          try {
+            const dbMembers = await queryPostgres(`
+              SELECT rm.user_id as mxid, rm.membership, p.displayname
+              FROM room_memberships rm
+              LEFT JOIN profiles p ON rm.user_id = p.user_id
+              WHERE rm.room_id = $1
+            `, [roomId]);
+
+            if (dbMembers && dbMembers.length > 0) {
+              dbMembers.forEach((m: any) => {
+                if (m.membership === 'join') {
+                  joinedMembers.push({
+                    mxid: m.mxid,
+                    displayName: m.displayname || "",
+                    role: m.mxid === r.creator ? "Admin" : "Member",
+                    powerLevel: m.mxid === r.creator ? 100 : 0
+                  });
+                } else if (m.membership === 'ban') {
+                  bannedMembers.push(m.mxid);
+                }
+              });
+            }
+          } catch (memErr) {
+            // ignore
+          }
+
+          const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
+          const adGroups = localRoom ? (localRoom.adGroups || []) : [];
+
+          return {
+            id: roomId,
+            name: r.name || roomId,
+            alias: r.canonical_alias || "",
+            topic: r.topic || "",
+            creator: r.creator || "",
+            membersCount: parseInt(r.joined_members) || joinedMembers.length || 0,
+            joinedMembers,
+            bannedMembers,
+            adGroups,
+            version: r.version || "1",
+            isFederated: r.is_federatable !== false,
+            isPublic: r.public === true || r.is_public === true,
+            createdAt: new Date().toISOString()
+          };
+        }));
+        fetchedFromRemote = true;
+        console.log(`Successfully retrieved ${roomsList.length} rooms from Postgres database directly.`);
+      }
+    } catch (dbErr: any) {
+      console.error("Direct Postgres rooms fetch failed:", dbErr.message);
+    }
+  }
+
+  // 3. Fallback to local DB from db.json if everything else failed
+  if (!fetchedFromRemote || roomsList.length === 0) {
+    console.log("Both Synapse Admin API and Postgres failed. Falling back to local matrixRooms file database.");
+    const db = readDb();
+    roomsList = db.matrixRooms || [];
+  }
+
+  res.json(roomsList);
 });
 
 app.post("/api/matrix/rooms/create", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
