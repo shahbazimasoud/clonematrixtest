@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Terminal, Play, ShieldAlert, Circle, RefreshCw, Trash2, ArrowUpRight, Download } from 'lucide-react';
+import { Terminal, Play, ShieldAlert, Circle, RefreshCw, Trash2, ArrowUpRight, Download, Eye, FileText } from 'lucide-react';
 
 interface TerminalPanelProps {
   logs: string[];
@@ -15,6 +15,8 @@ interface TerminalPanelProps {
   lang: 'fa' | 'en';
   isLightMode?: boolean;
   showToast: (type: 'success' | 'error', text: string) => void;
+  initialTab?: 'console' | 'install' | 'updates';
+  onTabChange?: (tab: 'console' | 'install' | 'updates') => void;
 }
 
 export default function TerminalPanel({ 
@@ -25,10 +27,25 @@ export default function TerminalPanel({
   authToken, 
   lang, 
   isLightMode = false,
-  showToast 
+  showToast,
+  initialTab,
+  onTabChange
 }: TerminalPanelProps) {
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'console' | 'install' | 'updates'>('console');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  const handleTabChange = (tab: 'console' | 'install' | 'updates') => {
+    setActiveTab(tab);
+    if (onTabChange) {
+      onTabChange(tab);
+    }
+  };
   const [customInput, setCustomInput] = useState('');
 
   // System Updates & Maintenance States
@@ -294,8 +311,9 @@ export default function TerminalPanel({
 
             {/* Update Matrix Panel */}
             <button
+              type="button"
               onClick={() => {
-                setActiveTab('updates');
+                handleTabChange('updates');
                 checkSystemUpdates();
               }}
               disabled={isCheckingUpdate || isApplyingUpdate}
@@ -317,6 +335,40 @@ export default function TerminalPanel({
                 </p>
               </div>
               <Play className="w-4 h-4 text-rose-400 transition-transform group-hover:scale-125" />
+            </button>
+
+            {/* Active SSH Terminal Navigation Shortcut */}
+            <button
+              type="button"
+              onClick={() => handleTabChange('console')}
+              className="w-full text-left p-3.5 rounded-2xl border border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200 transition-all flex items-center justify-between group"
+            >
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  {isRtl ? 'ترمینال تعاملی SSH' : 'Active SSH Terminal'}
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {isRtl ? 'تعامل زنده با خط فرمان سرور مجازی' : 'Interact with live service CLI terminal'}
+                </p>
+              </div>
+              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125" />
+            </button>
+
+            {/* Check Installation Logs Navigation Shortcut */}
+            <button
+              type="button"
+              onClick={() => handleTabChange('install')}
+              className="w-full text-left p-3.5 rounded-2xl border border-white/5 bg-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/20 text-slate-200 transition-all flex items-center justify-between group"
+            >
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  {isRtl ? 'گزارش‌های راه‌اندازی اولیه' : 'Check Installation Logs'}
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {isRtl ? 'مشاهده خروجی فرآیند نصب مخزن ماتریکس' : 'Read /var/log/matrix_stack_install.log'}
+                </p>
+              </div>
+              <Play className="w-4 h-4 text-emerald-400 transition-transform group-hover:scale-125" />
             </button>
           </div>
         </div>
@@ -359,21 +411,21 @@ export default function TerminalPanel({
           <div className="flex items-center gap-2">
             <button 
               type="button"
-              onClick={() => setActiveTab('console')} 
+              onClick={() => handleTabChange('console')} 
               className={`text-xs px-3 py-1 rounded-md font-mono ${activeTab === 'console' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               active-terminal
             </button>
             <button 
               type="button"
-              onClick={() => setActiveTab('install')} 
+              onClick={() => handleTabChange('install')} 
               className={`text-xs px-3 py-1 rounded-md font-mono ${activeTab === 'install' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               install.log
             </button>
             <button 
               type="button"
-              onClick={() => setActiveTab('updates')} 
+              onClick={() => handleTabChange('updates')} 
               className={`text-xs px-3 py-1 rounded-md font-mono flex items-center gap-1.5 ${activeTab === 'updates' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
               <RefreshCw className={`h-3 w-3 ${isCheckingUpdate ? 'animate-spin' : ''}`} />

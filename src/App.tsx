@@ -31,7 +31,8 @@ import {
   ShieldAlert,
   Sun,
   Moon,
-  ArrowRight
+  ArrowRight,
+  LogOut
 } from 'lucide-react';
 import SpatialDock from './components/SpatialDock';
 import MetricCard from './components/MetricCard';
@@ -182,6 +183,8 @@ export default function App() {
   // System Update state
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
   const [commitsBehind, setCommitsBehind] = useState<number>(0);
+  const [userDropdownOpen, setUserDropdownOpen] = useState<boolean>(false);
+  const [terminalInitialTab, setTerminalInitialTab] = useState<'console' | 'install' | 'updates'>('console');
 
   // Connection Profile states
   const [connections, setConnections] = useState<any[]>([]);
@@ -819,18 +822,6 @@ export default function App() {
 
             {/* Middle: Theme Switcher & User Indicator */}
             <div className="flex items-center gap-4">
-              {/* Update Indicator */}
-              {updateAvailable && (
-                <button
-                  onClick={() => setActiveView('terminal')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 font-bold hover:bg-rose-500/20 active:scale-95 transition-all cursor-pointer animate-pulse"
-                  title={lang === 'fa' ? `بروزرسانی جدید موجود است (${commitsBehind} کامیت عقب)` : `Update Available (${commitsBehind} commits behind)`}
-                >
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '4s' }} />
-                  <span>{lang === 'fa' ? 'بروزرسانی موجود است!' : 'Update Available!'}</span>
-                </button>
-              )}
-
               {/* Theme Switcher */}
               <button
                 onClick={toggleTheme}
@@ -850,18 +841,122 @@ export default function App() {
                 )}
               </button>
 
-              {/* User Avatar */}
+              {/* User Avatar & Dropdown */}
               {currentUser && (
-                <div className="flex items-center gap-3 border-l border-white/10 pl-4">
-                  <div className="text-right">
+                <div className="flex items-center gap-3 border-l border-white/10 pl-4 relative">
+                  <div className="text-right hidden sm:block">
                     <span className="text-xs font-semibold text-white block">@{currentUser.username}</span>
                     <span className="text-[10px] text-slate-400 block font-mono">{currentUser.role}</span>
                   </div>
-                  <img 
-                    src={currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.username}`} 
-                    alt={currentUser.username}
-                    className="w-9 h-9 rounded-xl bg-slate-800 border border-white/10 p-0.5"
-                  />
+                  
+                  <button
+                    type="button"
+                    onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                    className="relative focus:outline-none cursor-pointer group active:scale-95 transition-transform"
+                    id="user-avatar-btn"
+                  >
+                    <img 
+                      src={currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.username}`} 
+                      alt={currentUser.username}
+                      className="w-9 h-9 rounded-xl bg-slate-800 border border-white/10 p-0.5 group-hover:border-indigo-500/50 transition-all"
+                    />
+                    {updateAvailable && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border border-slate-900"></span>
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {userDropdownOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setUserDropdownOpen(false)} 
+                      />
+                      <div className="absolute right-0 top-12 mt-2 w-64 rounded-2xl bg-slate-950/95 border border-white/10 p-4 shadow-2xl backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-3 duration-200">
+                        <div className="flex items-center gap-3 border-b border-white/5 pb-3 mb-3">
+                          <img 
+                            src={currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.username}`} 
+                            alt={currentUser.username}
+                            className="w-10 h-10 rounded-xl bg-slate-800 border border-white/10 p-0.5"
+                          />
+                          <div>
+                            <span className="text-xs font-bold text-white block">@{currentUser.username}</span>
+                            <span className="text-[10px] text-slate-400 block font-mono uppercase">{currentUser.role}</span>
+                          </div>
+                        </div>
+
+                        {/* Update Indicator inside Dropdown */}
+                        {updateAvailable ? (
+                          <div className="mb-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 flex flex-col gap-2">
+                            <div className="flex items-center gap-1.5 font-bold animate-pulse">
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin animate-infinite" style={{ animationDuration: '4s' }} />
+                              <span>{lang === 'fa' ? 'بروزرسانی جدید موجود است!' : 'New Update Available!'}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                              {lang === 'fa' 
+                                ? `نسخه شما ${commitsBehind} کامیت عقب‌تر است.` 
+                                : `Your version is ${commitsBehind} commits behind.`}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserDropdownOpen(false);
+                                setTerminalInitialTab('updates');
+                                setActiveView('terminal');
+                              }}
+                              className="w-full mt-1 py-1.5 px-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-[10px] transition-all cursor-pointer text-center"
+                            >
+                              {lang === 'fa' ? 'مشاهده و نصب بروزرسانی' : 'View & Install Update'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mb-3 p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/10 text-[10px] text-emerald-400/80 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>{lang === 'fa' ? 'سیستم کاملاً بروز است' : 'System is fully up-to-date'}</span>
+                          </div>
+                        )}
+
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserDropdownOpen(false);
+                              setActiveView('reporting');
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:bg-white/5 hover:text-white transition-all cursor-pointer"
+                          >
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{lang === 'fa' ? 'مدیریت کاربران پنل' : 'Manage Panel Users'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserDropdownOpen(false);
+                              setActiveView('connections');
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:bg-white/5 hover:text-white transition-all cursor-pointer"
+                          >
+                            <Server className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{lang === 'fa' ? 'پروفایل‌های سرور' : 'Connection Profiles'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserDropdownOpen(false);
+                              handleLogout();
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer font-bold border-t border-white/5 mt-2 pt-2"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>{lang === 'fa' ? 'خروج از حساب کاربری' : 'Sign Out'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1170,6 +1265,8 @@ export default function App() {
                 lang={lang}
                 isLightMode={isLightMode}
                 showToast={showToast}
+                initialTab={terminalInitialTab}
+                onTabChange={(tab) => setTerminalInitialTab(tab)}
               />
             )}
 
