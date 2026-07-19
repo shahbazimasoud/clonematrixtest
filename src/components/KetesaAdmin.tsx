@@ -448,6 +448,16 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [addingMemberMxid, setAddingMemberMxid] = useState<string | null>(null);
 
+  const safeConfirm = (msg: string): boolean => {
+    try {
+      const isIframe = window.self !== window.top;
+      if (isIframe) return true;
+    } catch (e) {
+      return true;
+    }
+    return window.confirm(msg);
+  };
+
   // New States for Room Member Search and Active Directory Integration
   const [memberSearch, setMemberSearch] = useState('');
   const [addMemberSearch, setAddMemberSearch] = useState('');
@@ -740,7 +750,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       ? `آیا از خروج کاربر از این دستگاه (${deviceId}) اطمینان دارید؟`
       : `Are you sure you want to log out the user from this device (${deviceId})?`;
 
-    if (!window.confirm(confirmMsg)) return;
+    if (!safeConfirm(confirmMsg)) return;
 
     // Optimistically remove device from UI list
     setSelectedUserDetails((prev: any) => {
@@ -1233,7 +1243,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   const handleDeactivateUser = async (mxid: string) => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
-    if (!confirm(`Are you sure you want to deactivate ${mxid}?`)) return;
+    if (!safeConfirm(`Are you sure you want to deactivate ${mxid}?`)) return;
 
     try {
       const res = await fetch('/api/matrix/users/deactivate', {
@@ -1541,7 +1551,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   const handleRoomMemberAction = async (roomId: string, mxid: string, action: 'kick' | 'ban' | 'unban') => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
-    if (!confirm(`Are you sure you want to ${action} ${mxid}?`)) return;
+    if (!safeConfirm(`Are you sure you want to ${action} ${mxid}?`)) return;
 
     try {
       const res = await fetch(`/api/matrix/users/rooms/${action}`, {
@@ -1579,7 +1589,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   const handleKickMember = async (roomId: string, mxid: string) => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
-    if (!confirm(`Are you sure you want to kick ${mxid}?`)) return;
+    if (!safeConfirm(`Are you sure you want to kick ${mxid}?`)) return;
 
     try {
       const res = await fetch('/api/matrix/rooms/members/kick', {
@@ -1611,7 +1621,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   // Media Actions
   const handlePurgeMediaFile = async (mediaId: string) => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
-    if (!confirm(`Are you sure you want to permanently delete media ${mediaId}?`)) return;
+    if (!safeConfirm(`Are you sure you want to permanently delete media ${mediaId}?`)) return;
 
     try {
       const res = await fetch('/api/matrix/media/delete', {
@@ -1653,7 +1663,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       bodyData.domain = cleanupDomain;
     }
 
-    if (!confirm(confirmMsg)) return;
+    if (!safeConfirm(confirmMsg)) return;
 
     try {
       const res = await fetch('/api/matrix/media/cleanup', {
@@ -1719,7 +1729,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   const handleRevokeToken = async (tokenStr: string) => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
-    if (!confirm(`Are you sure you want to revoke token ${tokenStr}?`)) return;
+    if (!safeConfirm(`Are you sure you want to revoke token ${tokenStr}?`)) return;
 
     try {
       const res = await fetch('/api/matrix/tokens/delete', {

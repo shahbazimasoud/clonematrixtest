@@ -2931,12 +2931,14 @@ app.post("/api/matrix/users/rooms/kick", authenticateToken, checkPermission(["Ow
         reason: `Kicked via Admin Panel by ${req.user.username}`
       });
     } catch (err: any) {
-      console.error("Remote room kick error, falling back to database query:", err.message);
-      try {
-        await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
-      } catch (dbErr) {}
+      console.error("Remote room kick error:", err.message);
     }
   }
+
+  // Always attempt to delete from Postgres if connected
+  try {
+    await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
+  } catch (dbErr) {}
 
   const db = readDb();
   const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
@@ -2988,12 +2990,19 @@ app.post("/api/matrix/users/rooms/ban", authenticateToken, checkPermission(["Own
         reason: `Banned via Admin Panel by ${req.user.username}`
       });
     } catch (err: any) {
-      console.error("Remote room ban error, falling back to database query:", err.message);
-      try {
-        await queryPostgres("UPDATE room_memberships SET membership = 'ban' WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
-      } catch (dbErr) {}
+      console.error("Remote room ban error:", err.message);
     }
   }
+
+  // Always attempt to update/insert in Postgres if connected
+  try {
+    await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
+    try {
+      await queryPostgres("INSERT INTO room_memberships (room_id, user_id, membership, sender) VALUES ($1, $2, 'ban', $3)", [roomId, mxid, req.user.username]);
+    } catch (insErr) {
+      await queryPostgres("INSERT INTO room_memberships (room_id, user_id, membership) VALUES ($1, $2, 'ban')", [roomId, mxid]);
+    }
+  } catch (dbErr) {}
 
   const db = readDb();
   const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
@@ -3048,12 +3057,14 @@ app.post("/api/matrix/users/rooms/unban", authenticateToken, checkPermission(["O
         user_id: mxid
       });
     } catch (err: any) {
-      console.error("Remote room unban error, falling back to database query:", err.message);
-      try {
-        await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2 AND membership = 'ban'", [roomId, mxid]);
-      } catch (dbErr) {}
+      console.error("Remote room unban error:", err.message);
     }
   }
+
+  // Always attempt to delete ban record from Postgres if connected
+  try {
+    await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2 AND membership = 'ban'", [roomId, mxid]);
+  } catch (dbErr) {}
 
   const db = readDb();
   const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
