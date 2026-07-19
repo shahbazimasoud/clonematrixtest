@@ -132,7 +132,10 @@ export default function TerminalPanel({
         setUpdateAvailable(false);
         setCommitsBehind(0);
         setLatestCommits([]);
-        showToast('success', isRtl ? 'پنل با موفقیت بروزرسانی شد!' : 'Panel updated successfully!');
+        showToast('success', isRtl ? 'پنل با موفقیت بروزرسانی شد! در حال بارگذاری مجدد...' : 'Panel updated successfully! Reloading...');
+        setTimeout(() => {
+          window.location.reload();
+        }, 2500);
       } else {
         const errData = await res.json();
         setUpdateLogs((prev) => [...prev, `[ERR] update failed: ${errData.error || 'Server error'}`]);
@@ -320,21 +323,21 @@ export default function TerminalPanel({
               className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group ${
                 isCheckingUpdate || isApplyingUpdate
                   ? 'bg-white/5 border-white/5 text-gray-500' 
-                  : 'border-white/5 bg-white/5 hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-200'
+                  : 'border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200'
               }`}
             >
               <div>
                 <h4 className="text-sm font-semibold flex items-center gap-2">
                   {isRtl ? 'بروزرسانی پنل ماتریکس' : 'Update Matrix Panel'}
                   {updateAvailable && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
                   )}
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-1">
                   {isRtl ? 'بررسی وضعیت و دریافت جدیدترین کامیت‌ها از گیت' : 'Check status and pull latest commits from git'}
                 </p>
               </div>
-              <Play className="w-4 h-4 text-rose-400 transition-transform group-hover:scale-125" />
+              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125" />
             </button>
 
             {/* Active SSH Terminal Navigation Shortcut */}
@@ -431,7 +434,7 @@ export default function TerminalPanel({
               <RefreshCw className={`h-3 w-3 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
               <span>panel-updates</span>
               {updateAvailable && (
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
               )}
             </button>
           </div>
@@ -474,7 +477,7 @@ export default function TerminalPanel({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/5 border border-white/5">
                 <div>
                   <h3 className="font-bold text-sm text-gray-100 flex items-center gap-2">
-                    <RefreshCw className={`h-4 w-4 text-rose-400 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-4 w-4 text-indigo-400 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
                     <span>{isRtl ? 'مدیریت بروزرسانی‌های پنل' : 'Panel Update Control Center'}</span>
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">
@@ -508,7 +511,7 @@ export default function TerminalPanel({
                         : isViewer
                           ? 'border-red-500/10 text-red-400 bg-red-500/5 cursor-not-allowed'
                           : updateAvailable
-                            ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white border-transparent hover:brightness-110 active:scale-[0.99] shadow-lg shadow-rose-500/20 cursor-pointer'
+                            ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white border-transparent hover:brightness-110 active:scale-[0.99] shadow-lg shadow-indigo-500/20 cursor-pointer'
                             : 'border-white/5 bg-white/5 text-gray-500 cursor-not-allowed'
                     }`}
                   >

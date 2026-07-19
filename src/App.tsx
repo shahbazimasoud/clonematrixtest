@@ -862,8 +862,8 @@ export default function App() {
                     />
                     {updateAvailable && (
                       <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border border-slate-900"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500 border border-slate-900"></span>
                       </span>
                     )}
                   </button>
@@ -890,7 +890,7 @@ export default function App() {
 
                         {/* Update Indicator inside Dropdown */}
                         {updateAvailable ? (
-                          <div className="mb-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 flex flex-col gap-2">
+                          <div className="mb-3 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-400 flex flex-col gap-2">
                             <div className="flex items-center gap-1.5 font-bold animate-pulse">
                               <RefreshCw className="w-3.5 h-3.5 animate-spin animate-infinite" style={{ animationDuration: '4s' }} />
                               <span>{lang === 'fa' ? 'بروزرسانی جدید موجود است!' : 'New Update Available!'}</span>
@@ -907,7 +907,7 @@ export default function App() {
                                 setTerminalInitialTab('updates');
                                 setActiveView('terminal');
                               }}
-                              className="w-full mt-1 py-1.5 px-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-[10px] transition-all cursor-pointer text-center"
+                              className="w-full mt-1 py-1.5 px-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-[10px] transition-all cursor-pointer text-center"
                             >
                               {lang === 'fa' ? 'مشاهده و نصب بروزرسانی' : 'View & Install Update'}
                             </button>
@@ -924,31 +924,9 @@ export default function App() {
                             type="button"
                             onClick={() => {
                               setUserDropdownOpen(false);
-                              setActiveView('reporting');
-                            }}
-                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:bg-white/5 hover:text-white transition-all cursor-pointer"
-                          >
-                            <User className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{lang === 'fa' ? 'مدیریت کاربران پنل' : 'Manage Panel Users'}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setUserDropdownOpen(false);
-                              setActiveView('connections');
-                            }}
-                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:bg-white/5 hover:text-white transition-all cursor-pointer"
-                          >
-                            <Server className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{lang === 'fa' ? 'پروفایل‌های سرور' : 'Connection Profiles'}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setUserDropdownOpen(false);
                               handleLogout();
                             }}
-                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer font-bold border-t border-white/5 mt-2 pt-2"
+                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer font-bold mt-1"
                           >
                             <LogOut className="w-3.5 h-3.5" />
                             <span>{lang === 'fa' ? 'خروج از حساب کاربری' : 'Sign Out'}</span>
