@@ -3413,12 +3413,41 @@ app.post("/api/matrix/rooms/create", authenticateToken, checkPermission(["Owner"
 });
 
 app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
-  const { roomId, purge, sendMessage, messageText } = req.body;
+  const { roomId, purge, sendMessage, messageText, leave } = req.body;
   if (!roomId) return res.status(400).json({ error: "Room ID is required" });
 
   const db = readDb();
   const roomIndex = (db.matrixRooms || []).findIndex((r: any) => r.id === roomId);
   const room = roomIndex !== -1 ? db.matrixRooms[roomIndex] : null;
+
+  // Handle forcing members to leave if requested
+  if (leave) {
+    try {
+      console.log(`Getting members of room ${roomId} to force leave...`);
+      const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/members`);
+      if (membersRes && Array.isArray(membersRes.members)) {
+        console.log(`Found ${membersRes.members.length} members to kick from ${roomId}`);
+        for (const memberMxid of membersRes.members) {
+          try {
+            await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
+              user_id: memberMxid,
+              reason: "Room is being shut down and all members are forced to leave."
+            });
+          } catch (kickErr: any) {
+            console.warn(`Could not kick ${memberMxid} from room ${roomId}:`, kickErr.message);
+          }
+        }
+      }
+    } catch (membersErr: any) {
+      console.warn("Could not fetch room members to kick via Admin API:", membersErr.message);
+    }
+
+    try {
+      await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1", [roomId]);
+    } catch (dbErr: any) {
+      console.warn("Could not delete room memberships from postgres database:", dbErr.message);
+    }
+  }
 
   let apiSuccess = false;
   let apiError = null;

@@ -111,6 +111,7 @@ const faTranslations = {
   purgeRoomLabel: "پاکسازی کامل از دیتابیس (Purge)",
   sendMessageLabel: "ارسال پیام خداحافظی به اعضا قبل از حذف",
   sendMessagePlaceholder: "این اتاق به دلیل عدم رعایت قوانین سرور مسدود گردید.",
+  leaveRoomLabel: "خروج تمامی اعضا از اتاق (Leave)",
   
   // Media
   mediaStatsTitle: "آمار ذخیره‌سازی رسانه‌های ماتریکس",
@@ -219,6 +220,7 @@ const enTranslations = {
   purgeRoomLabel: "Permanently purge from server DB",
   sendMessageLabel: "Send farewell block message to room members first",
   sendMessagePlaceholder: "This room has been shut down due to violation of server policy.",
+  leaveRoomLabel: "Force all members to leave / kick them first (Leave)",
   
   // Media
   mediaStatsTitle: "Matrix Media Storage Analytics",
@@ -414,7 +416,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [showRoomMembersModal, setShowRoomMembersModal] = useState<MatrixRoom | null>(null);
 
   const [showShutdownRoomModal, setShowShutdownRoomModal] = useState<MatrixRoom | null>(null);
-  const [shutdownRoomConfig, setShutdownRoomConfig] = useState({ purge: true, sendMessage: true, messageText: '' });
+  const [shutdownRoomConfig, setShutdownRoomConfig] = useState({ purge: true, sendMessage: true, messageText: '', leave: false });
 
   const [showCreateTokenModal, setShowCreateTokenModal] = useState(false);
   const [newToken, setNewToken] = useState({ token: '', usesAllowed: '', expiryTime: '' });
@@ -1302,14 +1304,15 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           roomId: showShutdownRoomModal.id,
           purge: shutdownRoomConfig.purge,
           sendMessage: shutdownRoomConfig.sendMessage,
-          messageText: shutdownRoomConfig.messageText || t.sendMessagePlaceholder
+          messageText: shutdownRoomConfig.messageText || t.sendMessagePlaceholder,
+          leave: shutdownRoomConfig.leave
         })
       });
 
       if (res.ok) {
         showToast('success', t.successAction);
         setShowShutdownRoomModal(null);
-        setShutdownRoomConfig({ purge: true, sendMessage: true, messageText: '' });
+        setShutdownRoomConfig({ purge: true, sendMessage: true, messageText: '', leave: false });
         // Refresh rooms
         const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
         if (roomsRes.ok) setRooms(await roomsRes.json());
@@ -3277,6 +3280,25 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                       isLightMode ? 'text-slate-700' : 'text-gray-300'
                     }`}>
                       {t.sendMessageLabel}
+                    </label>
+                  </div>
+
+                  <div className={`flex items-center gap-3 border-t pt-2.5 ${
+                    isLightMode ? 'border-slate-200' : 'border-white/5'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      id="sd-leave-cb"
+                      checked={shutdownRoomConfig.leave}
+                      onChange={(e) => setShutdownRoomConfig(prev => ({ ...prev, leave: e.target.checked }))}
+                      className={`h-4 w-4 rounded focus:ring-0 ${
+                        isLightMode ? 'border-slate-300 bg-white text-red-600' : 'border-white/10 bg-slate-900 text-red-600'
+                      }`}
+                    />
+                    <label htmlFor="sd-leave-cb" className={`text-xs leading-tight select-none ${
+                      isLightMode ? 'text-slate-700' : 'text-gray-300'
+                    }`}>
+                      {t.leaveRoomLabel}
                     </label>
                   </div>
                 </div>
