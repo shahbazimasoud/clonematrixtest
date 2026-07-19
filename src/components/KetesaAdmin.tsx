@@ -25,6 +25,8 @@ import {
   FolderSync,
   X,
   Check,
+  Ban,
+  Server,
   CheckCircle,
   AlertCircle,
   Hash,
@@ -444,6 +446,16 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [showAddMemberModal, setShowAddMemberModal] = useState<MatrixRoom | null>(null);
   const [addMemberConfig, setAddMemberConfig] = useState({ mxid: '' });
   const [addMemberLoading, setAddMemberLoading] = useState(false);
+
+  // New States for Room Member Search and Active Directory Integration
+  const [memberSearch, setMemberSearch] = useState('');
+  const [addMemberSearch, setAddMemberSearch] = useState('');
+  const [addMemberTab, setAddMemberTab] = useState<'direct' | 'ad'>('direct');
+  const [adGroupInput, setAdGroupInput] = useState('');
+  const [simAdUsername, setSimAdUsername] = useState('');
+  const [simAdGroups, setSimAdGroups] = useState('');
+  const [simAdDisplayName, setSimAdDisplayName] = useState('');
+  const [simAdLoading, setSimAdLoading] = useState(false);
 
   const [showCreateTokenModal, setShowCreateTokenModal] = useState(false);
   const [newToken, setNewToken] = useState({ token: '', usesAllowed: '', expiryTime: '' });
@@ -1393,11 +1405,13 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     }
   };
 
-  const handleForceJoinMember = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleForceJoinMember = async (e?: React.FormEvent, customMxid?: string) => {
+    if (e) e.preventDefault();
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!showAddMemberModal) return;
-    if (!addMemberConfig.mxid) return showToast('error', isRtl ? 'لطفا شناسه ماتریکس را وارد کنید' : 'Please enter the Matrix ID');
+    
+    const targetMxid = customMxid || addMemberConfig.mxid;
+    if (!targetMxid) return showToast('error', isRtl ? 'لطفا شناسه ماتریکس را وارد کنید' : 'Please enter the Matrix ID');
 
     setAddMemberLoading(true);
     try {
@@ -1409,17 +1423,27 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
         },
         body: JSON.stringify({
           roomId: showAddMemberModal.id,
-          mxid: addMemberConfig.mxid
+          mxid: targetMxid
         })
       });
 
       if (res.ok) {
         showToast('success', t.successAction);
-        setShowAddMemberModal(null);
-        setAddMemberConfig({ mxid: '' });
+        if (!customMxid) {
+          setShowAddMemberModal(null);
+          setAddMemberConfig({ mxid: '' });
+        }
         // Refresh rooms
         const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
-        if (roomsRes.ok) setRooms(await roomsRes.json());
+        if (roomsRes.ok) {
+          const freshRooms = await roomsRes.json();
+          setRooms(freshRooms);
+          // Update modal room
+          const updatedRoom = freshRooms.find((r: any) => r.id === showAddMemberModal.id);
+          if (updatedRoom) {
+            setShowAddMemberModal(updatedRoom);
+          }
+        }
       } else {
         const err = await res.json();
         showToast('error', err.error || t.errorAction);
@@ -1428,6 +1452,123 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       showToast('error', t.errorAction);
     } finally {
       setAddMemberLoading(false);
+    }
+  };
+
+  const handleUpdateAdGroups = async (roomId: string, groups: string) => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    
+    try {
+      const res = await fetch(`/api/matrix/rooms/${roomId}/ad-groups`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ adGroups: groups })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        // Refresh rooms
+        const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (roomsRes.ok) {
+          const freshRooms = await roomsRes.json();
+          setRooms(freshRooms);
+          // Update modal room
+          const updatedRoom = freshRooms.find((r: any) => r.id === roomId);
+          if (updatedRoom) {
+            setShowAddMemberModal(updatedRoom);
+          }
+        }
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    }
+  };
+
+  const handleSimulateAdLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!simAdUsername) return showToast('error', 'Username is required');
+    
+    setSimAdLoading(true);
+    try {
+      const res = await fetch('/api/matrix/ldap/simulate-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          username: simAdUsername,
+          adGroups: simAdGroups,
+          displayName: simAdDisplayName
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', isRtl 
+          ? `لاگین موفق! کاربر در ${data.joinedCount} روم عضو شد.`
+          : `Success! User auto-joined ${data.joinedCount} room(s).`
+        );
+        
+        // Reset simulation fields
+        setSimAdUsername('');
+        setSimAdGroups('');
+        setSimAdDisplayName('');
+        
+        // Refresh rooms and users
+        const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (roomsRes.ok) setRooms(await roomsRes.json());
+        
+        const usersRes = await fetch('/api/matrix/users', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (usersRes.ok) setUsers(await usersRes.json());
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
+    } finally {
+      setSimAdLoading(false);
+    }
+  };
+
+  const handleRoomMemberAction = async (roomId: string, mxid: string, action: 'kick' | 'ban' | 'unban') => {
+    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
+    if (!confirm(`Are you sure you want to ${action} ${mxid}?`)) return;
+
+    try {
+      const res = await fetch(`/api/matrix/users/rooms/${action}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ mxid, roomId })
+      });
+      if (res.ok) {
+        showToast('success', t.successAction);
+        
+        // Refresh rooms
+        const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (roomsRes.ok) {
+          const freshRooms = await roomsRes.json();
+          setRooms(freshRooms);
+          
+          // If the View Members modal is open, update its state too!
+          if (showRoomMembersModal?.id === roomId) {
+            const updatedRoom = freshRooms.find((r: any) => r.id === roomId);
+            if (updatedRoom) {
+              setShowRoomMembersModal(updatedRoom);
+            }
+          }
+        }
+      } else {
+        showToast('error', t.errorAction);
+      }
+    } catch (e) {
+      showToast('error', t.errorAction);
     }
   };
 
@@ -1778,16 +1919,34 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
         </button>
       </div>
 
-      <div className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-xs font-semibold shrink-0 shadow-sm ${
-        isLightMode
-          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-          : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-300'
-      }`}>
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-        </span>
-        <span>{isRtl ? 'همگام‌سازی زنده فعال از طریق API های ماتریکس و Synapse' : 'Live Synchronization via Matrix & Synapse APIs'}</span>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => {
+            fetchAll();
+            showToast('success', isRtl ? 'اطلاعات با موفقیت بروزرسانی شد' : 'Data reloaded successfully');
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-2xl border text-xs font-semibold shadow-sm transition-all duration-300 ${
+            isLightMode
+              ? 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+              : 'bg-white/5 hover:bg-white/10 border-white/5 text-gray-300'
+          }`}
+          title={isRtl ? 'بروزرسانی مجدد' : 'Reload all data'}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span>{isRtl ? 'بروزرسانی صفحه' : 'Reload Panel'}</span>
+        </button>
+
+        <div className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-xs font-semibold shrink-0 shadow-sm ${
+          isLightMode
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-300'
+        }`}>
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </span>
+          <span>{isRtl ? 'همگام‌سازی زنده فعال از طریق API های ماتریکس و Synapse' : 'Live Synchronization via Matrix & Synapse APIs'}</span>
+        </div>
       </div>
     </div>
 
@@ -3263,7 +3422,10 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
               id="room-members-modal"
             >
               <button
-                onClick={() => setShowRoomMembersModal(null)}
+                onClick={() => {
+                  setShowRoomMembersModal(null);
+                  setMemberSearch('');
+                }}
                 className={`absolute top-4 right-4 transition-colors duration-200 ${
                   isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
                 }`}
@@ -3278,56 +3440,158 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                 <span>{t.memberList} ({showRoomMembersModal.joinedMembers.length})</span>
               </h3>
 
-              <p className={`text-xs font-mono ${isLightMode ? 'text-purple-600 font-semibold' : 'text-purple-400'}`}>
-                {showRoomMembersModal.name}
-              </p>
+              <div className="flex justify-between items-center">
+                <p className={`text-xs font-mono ${isLightMode ? 'text-purple-600 font-semibold' : 'text-purple-400'}`}>
+                  {showRoomMembersModal.name}
+                </p>
+                {showRoomMembersModal.bannedMembers && showRoomMembersModal.bannedMembers.length > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-full font-semibold">
+                    {showRoomMembersModal.bannedMembers.length} {isRtl ? 'مسدود شده' : 'Banned'}
+                  </span>
+                )}
+              </div>
 
-              <div className="max-h-64 overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                {showRoomMembersModal.joinedMembers.map((m) => (
-                  <div
-                    key={m.mxid}
-                    className={`flex justify-between items-center p-3 border rounded-lg text-sm ${
-                      isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-mono ${
-                        isLightMode ? 'bg-slate-200 text-slate-600' : 'bg-slate-800 text-gray-400'
-                      }`}>
-                        @
-                      </span>
-                      <div>
-                        <span className={`block font-mono text-xs truncate max-w-[180px] md:max-w-[240px] ${
-                          isLightMode ? 'text-slate-700' : 'text-gray-200'
-                        }`} title={m.mxid}>
-                          {m.mxid}
-                        </span>
-                        <span className="block text-[10px] text-gray-500 font-mono">
-                          PL: <span className={`font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>{m.powerLevel}</span> ({m.role})
-                        </span>
-                      </div>
-                    </div>
+              {/* Member Search input */}
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder={isRtl ? 'جستجوی عضو...' : 'Search member...'}
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  className={`w-full pl-9 pr-3 py-2 border rounded-lg text-xs outline-none transition-colors duration-200 ${
+                    isLightMode 
+                      ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                      : 'bg-black/40 border-white/5 text-gray-200 focus:border-indigo-500'
+                  }`}
+                />
+              </div>
 
-                    {hasWriteAccess && m.mxid !== showRoomMembersModal.creator ? (
-                      <button
-                        onClick={() => handleKickMember(showRoomMembersModal.id, m.mxid)}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] bg-red-600/15 hover:bg-red-600/25 text-red-400 border border-red-500/20 hover:border-red-500/40 rounded transition-colors duration-200"
-                      >
-                        <UserMinus className="h-3 w-3" />
-                        <span>{t.kickBtn.split(' ')[0]}</span>
-                      </button>
-                    ) : m.mxid === showRoomMembersModal.creator ? (
-                      <span className="text-[10px] font-mono font-medium uppercase px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/25 rounded">
-                        Creator
-                      </span>
-                    ) : null}
+              <div className="max-h-72 overflow-y-auto space-y-4 pr-1.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                {/* Active Members Section */}
+                <div className="space-y-2">
+                  <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-slate-400' : 'text-gray-500'}`}>
+                    {isRtl ? 'اعضای فعال' : 'Active Members'}
+                  </h4>
+                  {showRoomMembersModal.joinedMembers.filter(m => 
+                    m.mxid.toLowerCase().includes(memberSearch.toLowerCase())
+                  ).length === 0 ? (
+                    <p className="text-xs text-center text-gray-500 py-2">
+                      {isRtl ? 'هیچ عضوی یافت نشد' : 'No members found'}
+                    </p>
+                  ) : (
+                    showRoomMembersModal.joinedMembers
+                      .filter(m => m.mxid.toLowerCase().includes(memberSearch.toLowerCase()))
+                      .map((m) => (
+                        <div
+                          key={m.mxid}
+                          className={`flex justify-between items-center p-3 border rounded-lg text-sm ${
+                            isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                              isLightMode ? 'bg-slate-200 text-slate-600' : 'bg-slate-800 text-gray-400'
+                            }`}>
+                              @
+                            </span>
+                            <div>
+                              <span className={`block font-mono text-xs truncate max-w-[140px] md:max-w-[200px] ${
+                                isLightMode ? 'text-slate-700 font-medium' : 'text-gray-200'
+                              }`} title={m.mxid}>
+                                {m.mxid}
+                              </span>
+                              <span className="block text-[10px] text-gray-500 font-mono">
+                                PL: <span className={`font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>{m.powerLevel}</span> ({m.role})
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {m.mxid === showRoomMembersModal.creator ? (
+                              <span className="text-[10px] font-mono font-medium uppercase px-2 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/25 rounded">
+                                Creator
+                              </span>
+                            ) : hasWriteAccess ? (
+                              <>
+                                <button
+                                  onClick={() => handleRoomMemberAction(showRoomMembersModal.id, m.mxid, 'kick')}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-amber-600/15 hover:bg-amber-600/25 text-amber-500 hover:text-amber-400 border border-amber-500/20 hover:border-amber-500/40 rounded-lg transition-colors duration-200"
+                                  title={isRtl ? 'اخراج از روم' : 'Kick from room'}
+                                >
+                                  <UserMinus className="h-3 w-3" />
+                                  <span>{isRtl ? 'اخراج' : 'Kick'}</span>
+                                </button>
+                                <button
+                                  onClick={() => handleRoomMemberAction(showRoomMembersModal.id, m.mxid, 'ban')}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-red-600/15 hover:bg-red-600/25 text-red-500 hover:text-red-400 border border-red-500/20 hover:border-red-500/40 rounded-lg transition-colors duration-200"
+                                  title={isRtl ? 'مسدود کردن از روم' : 'Ban from room'}
+                                >
+                                  <Ban className="h-3 w-3" />
+                                  <span>{isRtl ? 'مسدود' : 'Ban'}</span>
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+
+                {/* Banned Members Section */}
+                {showRoomMembersModal.bannedMembers && showRoomMembersModal.bannedMembers.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-white/5">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-red-500">
+                      {isRtl ? 'کاربران مسدود شده' : 'Banned Members'}
+                    </h4>
+                    {showRoomMembersModal.bannedMembers.filter(mxid => 
+                      mxid.toLowerCase().includes(memberSearch.toLowerCase())
+                    ).length === 0 ? (
+                      <p className="text-xs text-center text-gray-500 py-1">
+                        {isRtl ? 'هیچ کاربر مسدودی یافت نشد' : 'No banned members found'}
+                      </p>
+                    ) : (
+                      showRoomMembersModal.bannedMembers
+                        .filter(mxid => mxid.toLowerCase().includes(memberSearch.toLowerCase()))
+                        .map((mxid) => (
+                          <div
+                            key={mxid}
+                            className={`flex justify-between items-center p-3 border rounded-lg text-sm ${
+                              isLightMode ? 'bg-red-50/30 border-red-100 shadow-sm' : 'bg-red-500/5 border-red-500/10'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-mono bg-red-500/10 text-red-400">
+                                @
+                              </span>
+                              <span className="block font-mono text-xs truncate max-w-[140px] md:max-w-[200px] text-red-400" title={mxid}>
+                                {mxid}
+                              </span>
+                            </div>
+
+                            {hasWriteAccess && (
+                              <button
+                                onClick={() => handleRoomMemberAction(showRoomMembersModal.id, mxid, 'unban')}
+                                className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-500 hover:text-emerald-400 border border-emerald-500/20 hover:border-emerald-500/40 rounded-lg transition-colors duration-200"
+                                title={isRtl ? 'رفع مسدودیت' : 'Unban from room'}
+                              >
+                                <Check className="h-3 w-3" />
+                                <span>{isRtl ? 'رفع مسدودیت' : 'Unban'}</span>
+                              </button>
+                            )}
+                          </div>
+                        ))
+                    )}
                   </div>
-                ))}
+                )}
               </div>
 
               <div className={`flex justify-end border-t pt-4 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
                 <button
-                  onClick={() => setShowRoomMembersModal(null)}
+                  onClick={() => {
+                    setShowRoomMembersModal(null);
+                    setMemberSearch('');
+                  }}
                   className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
                     isLightMode 
                       ? 'bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300' 
@@ -3533,7 +3797,30 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                 <div className="space-y-3">
                   <div>
                     <label className={`block text-xs mb-1.5 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
-                      {t.mxidLabel}
+                      {isRtl ? 'انتخاب از بین اعضای روم' : 'Select from Room Members'}
+                    </label>
+                    <select
+                      disabled={privilegedLoading}
+                      value={showAddPrivilegedModal.joinedMembers.some(m => m.mxid === privilegedUserConfig.mxid) ? privilegedUserConfig.mxid : ''}
+                      onChange={(e) => setPrivilegedUserConfig(prev => ({ ...prev, mxid: e.target.value }))}
+                      className={`w-full border rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-purple-500' 
+                          : 'bg-black/40 border-white/5 text-gray-200 focus:border-purple-500'
+                      }`}
+                    >
+                      <option value="">{isRtl ? '-- انتخاب کاربر عضو --' : '-- Select a Member --'}</option>
+                      {showAddPrivilegedModal.joinedMembers.map(m => (
+                        <option key={m.mxid} value={m.mxid}>
+                          {m.mxid} (Power: {m.powerLevel})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={`block text-xs mb-1.5 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
+                      {isRtl ? 'یا وارد کردن دستی شناسه ماتریکس (MXID)' : 'Or Enter Matrix ID (MXID) Manually'}
                     </label>
                     <input
                       type="text"
@@ -3618,11 +3905,14 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md p-6 rounded-2xl relative space-y-4 spatial-glass"
+              className="w-full max-w-xl p-6 rounded-2xl relative space-y-4 spatial-glass text-sm"
               id="add-member-modal"
             >
               <button
-                onClick={() => setShowAddMemberModal(null)}
+                onClick={() => {
+                  setShowAddMemberModal(null);
+                  setAddMemberSearch('');
+                }}
                 className={`absolute top-4 right-4 transition-colors duration-200 ${
                   isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-gray-400 hover:text-white'
                 }`}
@@ -3645,57 +3935,315 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                 <p className="font-mono text-[10px] truncate">ID: {showAddMemberModal.id}</p>
               </div>
 
-              <form onSubmit={handleForceJoinMember} className="space-y-4 text-sm font-medium">
-                <div>
-                  <label className={`block text-xs mb-1.5 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
-                    {t.mxidLabel}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    disabled={addMemberLoading}
-                    value={addMemberConfig.mxid}
-                    onChange={(e) => setAddMemberConfig(prev => ({ ...prev, mxid: e.target.value }))}
-                    placeholder="@username:example.com"
-                    className={`w-full border rounded-lg p-2.5 outline-none text-xs transition-colors duration-200 ${
-                      isLightMode 
-                        ? 'bg-white border-slate-300 text-slate-800 focus:border-emerald-500' 
-                        : 'bg-black/40 border-white/5 text-gray-200 focus:border-emerald-500'
-                    }`}
-                  />
-                </div>
+              {/* Tab Header inside Add Member Modal */}
+              <div className="flex border-b border-white/5 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setAddMemberTab('direct')}
+                  className={`flex-1 pb-2 text-xs font-semibold text-center border-b-2 transition-all duration-200 ${
+                    addMemberTab === 'direct'
+                      ? 'border-emerald-500 text-emerald-400 font-bold'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {isRtl ? 'افزودن مستقیم کاربر' : 'Direct User List'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddMemberTab('ad');
+                    setAdGroupInput((showAddMemberModal.adGroups || []).join(', '));
+                  }}
+                  className={`flex-1 pb-2 text-xs font-semibold text-center border-b-2 transition-all duration-200 ${
+                    addMemberTab === 'ad'
+                      ? 'border-emerald-500 text-emerald-400 font-bold'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {isRtl ? 'اتصال اکتیو دایرکتوری (AD)' : 'Active Directory Groups'}
+                </button>
+              </div>
 
-                <div className={`flex justify-end gap-2 border-t pt-4 ${
-                  isLightMode ? 'border-slate-200' : 'border-white/5'
-                }`}>
-                  <button
-                    type="button"
-                    disabled={addMemberLoading}
-                    onClick={() => setShowAddMemberModal(null)}
-                    className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
-                      isLightMode 
-                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
-                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
-                    }`}
-                  >
-                    {t.cancel}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={addMemberLoading}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    {addMemberLoading ? (
-                      <>
-                        <RefreshCw className="h-3 w-3 animate-spin" />
-                        <span>{isRtl ? 'در حال افزودن...' : 'Adding...'}</span>
-                      </>
-                    ) : (
-                      <span>{t.addBtn}</span>
-                    )}
-                  </button>
+              {/* Tab Content 1: Direct User List */}
+              {addMemberTab === 'direct' && (
+                <div className="space-y-4">
+                  {/* Search users input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder={isRtl ? 'جستجوی کاربر ماتریکس برای افزودن...' : 'Search Matrix user to add...'}
+                      value={addMemberSearch}
+                      onChange={(e) => setAddMemberSearch(e.target.value)}
+                      className={`w-full pl-9 pr-3 py-2 border rounded-lg text-xs outline-none transition-colors duration-200 ${
+                        isLightMode 
+                          ? 'bg-white border-slate-300 text-slate-800 focus:border-emerald-500' 
+                          : 'bg-black/40 border-white/5 text-gray-200 focus:border-emerald-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Users Scrollbox */}
+                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                    {users
+                      .filter(u => {
+                        // Not already in room
+                        const isAlreadyMember = showAddMemberModal.joinedMembers.some(
+                          m => m.mxid.toLowerCase() === u.mxid.toLowerCase()
+                        );
+                        // Matches search
+                        const matchesSearch = u.mxid.toLowerCase().includes(addMemberSearch.toLowerCase()) || 
+                          (u.displayName && u.displayName.toLowerCase().includes(addMemberSearch.toLowerCase()));
+                        
+                        return !isAlreadyMember && matchesSearch;
+                      })
+                      .length === 0 ? (
+                        <p className="text-xs text-center text-gray-500 py-4">
+                          {isRtl ? 'کاربر غیرعضو دیگری یافت نشد' : 'No other non-member users found'}
+                        </p>
+                      ) : (
+                        users
+                          .filter(u => {
+                            const isAlreadyMember = showAddMemberModal.joinedMembers.some(
+                              m => m.mxid.toLowerCase() === u.mxid.toLowerCase()
+                            );
+                            const matchesSearch = u.mxid.toLowerCase().includes(addMemberSearch.toLowerCase()) || 
+                              (u.displayName && u.displayName.toLowerCase().includes(addMemberSearch.toLowerCase()));
+                            return !isAlreadyMember && matchesSearch;
+                          })
+                          .slice(0, 15) // limit display for speed
+                          .map(u => (
+                            <div
+                              key={u.mxid}
+                              className={`flex justify-between items-center p-2.5 border rounded-lg text-xs ${
+                                isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/20 border-white/5'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                                  isLightMode ? 'bg-slate-200 text-slate-600' : 'bg-slate-800 text-gray-400'
+                                }`}>
+                                  @
+                                </span>
+                                <div className="truncate max-w-[180px] md:max-w-[280px]">
+                                  <span className={`block font-medium truncate ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>
+                                    {u.displayName || u.mxid.split(':')[0].substring(1)}
+                                  </span>
+                                  <span className="block text-[10px] text-gray-500 font-mono truncate">{u.mxid}</span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={addMemberLoading}
+                                onClick={() => handleForceJoinMember(undefined, u.mxid)}
+                                className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] rounded-lg transition-colors duration-200 shadow-sm font-semibold disabled:opacity-50"
+                              >
+                                {addMemberLoading ? (
+                                  <RefreshCw className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Plus className="h-3.5 w-3.5" />
+                                )}
+                                <span>{isRtl ? 'افزودن' : 'Add'}</span>
+                              </button>
+                            </div>
+                          ))
+                      )}
+                  </div>
+
+                  {/* Manual Input Fallback */}
+                  <div className="border-t border-white/5 pt-3">
+                    <form onSubmit={handleForceJoinMember} className="space-y-2">
+                      <label className={`block text-[11px] font-semibold uppercase tracking-wider ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                        {isRtl ? 'یا وارد کردن دستی شناسه ماتریکس (MXID)' : 'Or Enter Matrix ID (MXID) Manually'}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          disabled={addMemberLoading}
+                          value={addMemberConfig.mxid}
+                          onChange={(e) => setAddMemberConfig(prev => ({ ...prev, mxid: e.target.value }))}
+                          placeholder="@username:example.com"
+                          className={`flex-1 border rounded-lg p-2 outline-none text-xs transition-colors duration-200 ${
+                            isLightMode 
+                              ? 'bg-white border-slate-300 text-slate-800 focus:border-emerald-500' 
+                              : 'bg-black/40 border-white/5 text-gray-200 focus:border-emerald-500'
+                          }`}
+                        />
+                        <button
+                          type="submit"
+                          disabled={addMemberLoading}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md flex items-center gap-1.5 font-bold disabled:opacity-50"
+                        >
+                          {addMemberLoading ? (
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <span>{t.addBtn}</span>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
-              </form>
+              )}
+
+              {/* Tab Content 2: AD Groups Mapping & Simulation */}
+              {addMemberTab === 'ad' && (
+                <div className="space-y-4">
+                  {/* AD Group Configuration */}
+                  <div className="space-y-2">
+                    <label className={`block text-xs font-semibold ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>
+                      {isRtl ? 'گروه‌های اکتیو دایرکتوری مرتبط (جدا شده با کاما)' : 'Mapped Active Directory Groups (comma-separated)'}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={adGroupInput}
+                        onChange={(e) => setAdGroupInput(e.target.value)}
+                        placeholder="e.g. Engineering, SynapseAdmins"
+                        className={`flex-1 border rounded-lg p-2 outline-none text-xs transition-colors duration-200 ${
+                          isLightMode 
+                            ? 'bg-white border-slate-300 text-slate-800 focus:border-emerald-500' 
+                            : 'bg-black/40 border-white/5 text-gray-200 focus:border-emerald-500'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAdGroups(showAddMemberModal.id, adGroupInput)}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md font-bold"
+                      >
+                        {isRtl ? 'بروزرسانی' : 'Save'}
+                      </button>
+                    </div>
+
+                    {/* Current Group Tags display */}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {(showAddMemberModal.adGroups || []).length === 0 ? (
+                        <span className="text-[10px] text-gray-500 italic">
+                          {isRtl ? 'هیچ گروهی متصل نشده است' : 'No AD groups currently mapped to this room'}
+                        </span>
+                      ) : (
+                        (showAddMemberModal.adGroups || []).map(g => (
+                          <span
+                            key={g}
+                            className="text-[10px] font-mono font-semibold px-2 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded"
+                          >
+                            {g}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* AD Auto-Join Simulation Section */}
+                  <div className={`p-4 rounded-xl border ${
+                    isLightMode ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-black/40 border-white/5'
+                  }`}>
+                    <h4 className="text-xs font-bold flex items-center gap-1.5 text-purple-400 mb-2">
+                      <Server className="h-4 w-4" />
+                      <span>{isRtl ? 'تست و شبیه‌سازی لاگین کاربر AD' : 'Simulate AD User First Login'}</span>
+                    </h4>
+                    <p className="text-[10px] text-gray-400 leading-relaxed mb-3">
+                      {isRtl 
+                        ? 'این فرم اولین ورود یک کاربر از طریق اکتیو دایرکتوری را شبیه‌سازی می‌کند. در صورتی که گروه AD کاربر با این روم همخوانی داشته باشد، کاربر به طور خودکار به این روم اضافه خواهد شد.'
+                        : 'This form simulates an Active Directory user logging in for the first time. If the user\'s AD groups match this room\'s mapped groups, they will auto-join this room.'
+                      }
+                    </p>
+
+                    <form onSubmit={handleSimulateAdLogin} className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-gray-400 mb-1">
+                            {isRtl ? 'نام کاربری' : 'Username'}
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={simAdUsername}
+                            onChange={(e) => setSimAdUsername(e.target.value)}
+                            placeholder="e.g. john_doe"
+                            className={`w-full border rounded-lg p-2 outline-none text-[11px] transition-colors duration-200 ${
+                              isLightMode 
+                                ? 'bg-white border-slate-300 text-slate-800 focus:border-purple-500' 
+                                : 'bg-black/30 border-white/5 text-gray-200 focus:border-purple-500'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-400 mb-1">
+                            {isRtl ? 'نام نمایشی (اختیاری)' : 'Display Name (optional)'}
+                          </label>
+                          <input
+                            type="text"
+                            value={simAdDisplayName}
+                            onChange={(e) => setSimAdDisplayName(e.target.value)}
+                            placeholder="e.g. John Doe"
+                            className={`w-full border rounded-lg p-2 outline-none text-[11px] transition-colors duration-200 ${
+                              isLightMode 
+                                ? 'bg-white border-slate-300 text-slate-800 focus:border-purple-500' 
+                                : 'bg-black/30 border-white/5 text-gray-200 focus:border-purple-500'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-gray-400 mb-1">
+                          {isRtl ? 'گروه‌های کاربر (جدا شده با کاما)' : 'User\'s AD Groups (comma-separated)'}
+                        </label>
+                        <input
+                          type="text"
+                          value={simAdGroups}
+                          onChange={(e) => setSimAdGroups(e.target.value)}
+                          placeholder="e.g. SynapseAdmins, Engineering"
+                          className={`w-full border rounded-lg p-2 outline-none text-[11px] transition-colors duration-200 ${
+                            isLightMode 
+                              ? 'bg-white border-slate-300 text-slate-800 focus:border-purple-500' 
+                              : 'bg-black/30 border-white/5 text-gray-200 focus:border-purple-500'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="submit"
+                          disabled={simAdLoading}
+                          className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md flex items-center gap-1.5 font-bold disabled:opacity-50"
+                        >
+                          {simAdLoading ? (
+                            <>
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                              <span>{isRtl ? 'در حال شبیه‌سازی...' : 'Simulating...'}</span>
+                            </>
+                          ) : (
+                            <span>{isRtl ? 'شبیه‌سازی ورود' : 'Simulate Login'}</span>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* Close Footer Button */}
+              <div className={`flex justify-end border-t pt-4 ${
+                isLightMode ? 'border-slate-200' : 'border-white/5'
+              }`}>
+                <button
+                  type="button"
+                  disabled={addMemberLoading}
+                  onClick={() => {
+                    setShowAddMemberModal(null);
+                    setAddMemberSearch('');
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs transition-colors duration-200 ${
+                    isLightMode 
+                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                      : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                  }`}
+                >
+                  Close
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -4941,27 +5489,28 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                 )}
               </div>
 
-              {/* Chat bottom bar input form */}
-              <form onSubmit={handleSendChatMessage} className={`p-4 border-t flex gap-2 ${
-                isLightMode ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/20'
+              {/* Chat bottom bar (Read-Only Mode) */}
+              <div className={`p-4 border-t flex items-center justify-between text-xs font-medium ${
+                isLightMode ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-white/5 bg-black/20 text-gray-400'
               }`}>
-                <input
-                  type="text"
-                  value={newRoomChatMessageText}
-                  onChange={(e) => setNewRoomChatMessageText(e.target.value)}
-                  placeholder={isRtl ? 'پیامی بنویسید...' : 'Type a simulation response message...'}
-                  className={`flex-1 border rounded-xl p-3 outline-none text-xs focus:border-indigo-500 transition-colors ${
-                    isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-black/40 border-white/10 text-gray-200'
-                  }`}
-                />
+                <span className="flex items-center gap-1.5">
+                  <Shield className="h-4 w-4 text-emerald-500 animate-pulse" />
+                  <span>{isRtl ? 'حالت امنیتی پایش گفتگو (فقط خواندنی)' : 'Secure Inspection Mode (Read-Only)'}</span>
+                </span>
                 <button
-                  type="submit"
-                  disabled={!newRoomChatMessageText.trim()}
-                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5"
+                  onClick={() => {
+                    setActiveRoomChatId(null);
+                    setRoomChatMessages([]);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors duration-200 ${
+                    isLightMode 
+                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                      : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                  }`}
                 >
-                  <span>{isRtl ? 'ارسال' : 'Send'}</span>
+                  Close Panel
                 </button>
-              </form>
+              </div>
             </motion.div>
           </div>
         )}

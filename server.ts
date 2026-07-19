@@ -3578,6 +3578,148 @@ app.post("/api/matrix/rooms/members/join", authenticateToken, checkPermission(["
   res.json({ success: true, room });
 });
 
+app.post("/api/matrix/rooms/:roomId/ad-groups", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
+  const { roomId } = req.params;
+  const { adGroups } = req.body;
+  if (!roomId) return res.status(400).json({ error: "Room ID is required" });
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+
+  // adGroups can be a string (comma-separated) or an array
+  let groupsArray: string[] = [];
+  if (Array.isArray(adGroups)) {
+    groupsArray = adGroups.map(g => g.trim()).filter(Boolean);
+  } else if (typeof adGroups === "string") {
+    groupsArray = adGroups.split(",").map(g => g.trim()).filter(Boolean);
+  }
+
+  room.adGroups = groupsArray;
+  writeDb(db);
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Map AD Groups to Room",
+    target: room.name,
+    status: "success",
+    details: `Mapped AD Groups [${groupsArray.join(", ")}] to room: ${room.name}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, room });
+});
+
+app.post("/api/matrix/ldap/simulate-login", authenticateToken, async (req, res) => {
+  const { username, adGroups, displayName } = req.body;
+  if (!username) return res.status(400).json({ error: "Username is required" });
+
+  const db = readDb();
+  const confRaw = await readConfigContent("/etc/matrix-stack.conf", "HS_DOMAIN=matrix.company.local");
+  const hsDomainMatch = confRaw.match(/^HS_DOMAIN=(.+)$/m);
+  const hsDomain = hsDomainMatch ? hsDomainMatch[1].trim() : "matrix.company.local";
+  const mxid = `@${username}:${hsDomain}`;
+
+  // Parse AD Groups
+  let userGroups: string[] = [];
+  if (Array.isArray(adGroups)) {
+    userGroups = adGroups.map(g => g.trim()).filter(Boolean);
+  } else if (typeof adGroups === "string") {
+    userGroups = adGroups.split(",").map(g => g.trim()).filter(Boolean);
+  }
+
+  // Create or retrieve user
+  if (!db.matrixUsers) db.matrixUsers = [];
+  let user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
+  let isNewLogin = false;
+  
+  if (!user) {
+    isNewLogin = true;
+    user = {
+      mxid,
+      isAdmin: false,
+      isDeactivated: false,
+      displayName: displayName || username.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      provider: "LDAP Integration",
+      adGroups: userGroups,
+      createdAt: new Date().toISOString()
+    };
+    db.matrixUsers.push(user);
+  } else {
+    user.adGroups = userGroups;
+    if (displayName) user.displayName = displayName;
+  }
+  writeDb(db);
+
+  // Auto-join matching rooms
+  let joinedCount = 0;
+  const joinedRoomsList: string[] = [];
+  
+  if (db.matrixRooms) {
+    db.matrixRooms.forEach((room: any) => {
+      if (room.adGroups && Array.isArray(room.adGroups)) {
+        const hasMatch = room.adGroups.some((grp: string) => 
+          userGroups.some((uGrp: string) => uGrp.toLowerCase() === grp.toLowerCase())
+        );
+        
+        if (hasMatch) {
+          if (!room.joinedMembers) room.joinedMembers = [];
+          const alreadyInRoom = room.joinedMembers.some((m: any) => m.mxid.toLowerCase() === mxid.toLowerCase());
+          
+          if (!alreadyInRoom) {
+            room.joinedMembers.push({
+              mxid,
+              role: "Member",
+              powerLevel: 0
+            });
+            room.membersCount = room.joinedMembers.length;
+            joinedCount++;
+            joinedRoomsList.push(room.name);
+
+            // Audit log for auto-join
+            db.auditLogs.unshift({
+              id: `log-${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              username: "system",
+              action: "AD Auto-Join Room",
+              target: mxid,
+              status: "success",
+              details: `User ${mxid} automatically joined room ${room.name} due to matching AD Group`
+            });
+          }
+        }
+      }
+    });
+  }
+  
+  if (joinedCount > 0) {
+    writeDb(db);
+  }
+
+  // Append entry to homeserver.log
+  try {
+    const logPath = "/var/log/matrix-synapse/homeserver.log";
+    let logLines = `\n${new Date().toISOString()} - synapse.handlers.auth - INFO - Successful LDAP login for ${mxid} from groups [${userGroups.join(", ")}]`;
+    if (joinedCount > 0) {
+      logLines += `\n${new Date().toISOString()} - synapse.handlers.auth - INFO - LDAP user ${mxid} auto-joined rooms [${joinedRoomsList.join(", ")}]`;
+    }
+    const currentLog = await readConfigContent(logPath, "");
+    await writeConfigContent(logPath, currentLog + logLines);
+  } catch (e) {
+    // ignore
+  }
+
+  res.json({ 
+    success: true, 
+    user, 
+    joinedCount, 
+    joinedRooms: joinedRoomsList,
+    isNewLogin
+  });
+});
+
 app.post("/api/matrix/rooms/power_levels", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
   const { roomId, mxid, powerLevel } = req.body;
   if (!roomId || !mxid || powerLevel === undefined) {
