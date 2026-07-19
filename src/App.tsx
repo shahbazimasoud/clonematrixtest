@@ -875,27 +875,35 @@ export default function App() {
                         className="fixed inset-0 z-40" 
                         onClick={() => setUserDropdownOpen(false)} 
                       />
-                      <div className="absolute right-0 top-12 mt-2 w-64 rounded-2xl bg-slate-950/95 border border-white/10 p-4 shadow-2xl backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-3 duration-200">
-                        <div className="flex items-center gap-3 border-b border-white/5 pb-3 mb-3">
+                      <div className={`absolute right-0 top-12 mt-2 w-64 rounded-2xl p-4 shadow-2xl backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-3 duration-200 border ${
+                        isLightMode 
+                          ? 'bg-white border-slate-200 text-slate-800' 
+                          : 'bg-slate-950/95 border-white/10 text-white'
+                      }`}>
+                        <div className={`flex items-center gap-3 border-b pb-3 mb-3 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                           <img 
                             src={currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.username}`} 
                             alt={currentUser.username}
-                            className="w-10 h-10 rounded-xl bg-slate-800 border border-white/10 p-0.5"
+                            className={`w-10 h-10 rounded-xl p-0.5 border ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-800 border-white/10'}`}
                           />
                           <div>
-                            <span className="text-xs font-bold text-white block">@{currentUser.username}</span>
-                            <span className="text-[10px] text-slate-400 block font-mono uppercase">{currentUser.role}</span>
+                            <span className={`text-xs font-bold block ${isLightMode ? 'text-slate-800' : 'text-white'}`}>@{currentUser.username}</span>
+                            <span className={`text-[10px] block font-mono uppercase ${isLightMode ? 'text-slate-400' : 'text-slate-400'}`}>{currentUser.role}</span>
                           </div>
                         </div>
 
                         {/* Update Indicator inside Dropdown */}
                         {updateAvailable ? (
-                          <div className="mb-3 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-400 flex flex-col gap-2">
+                          <div className={`mb-3 p-3 rounded-xl text-xs flex flex-col gap-2 border ${
+                            isLightMode 
+                              ? 'bg-indigo-50 border-indigo-100 text-indigo-600' 
+                              : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400'
+                          }`}>
                             <div className="flex items-center gap-1.5 font-bold animate-pulse">
                               <RefreshCw className="w-3.5 h-3.5 animate-spin animate-infinite" style={{ animationDuration: '4s' }} />
                               <span>{lang === 'fa' ? 'بروزرسانی جدید موجود است!' : 'New Update Available!'}</span>
                             </div>
-                            <p className="text-[10px] text-slate-400">
+                            <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                               {lang === 'fa' 
                                 ? `نسخه شما ${commitsBehind} کامیت عقب‌تر است.` 
                                 : `Your version is ${commitsBehind} commits behind.`}
@@ -913,7 +921,11 @@ export default function App() {
                             </button>
                           </div>
                         ) : (
-                          <div className="mb-3 p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/10 text-[10px] text-emerald-400/80 flex items-center gap-1.5">
+                          <div className={`mb-3 p-2.5 rounded-xl text-[10px] flex items-center gap-1.5 border ${
+                            isLightMode
+                              ? 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                              : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400/80'
+                          }`}>
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                             <span>{lang === 'fa' ? 'سیستم کاملاً بروز است' : 'System is fully up-to-date'}</span>
                           </div>
@@ -926,7 +938,11 @@ export default function App() {
                               setUserDropdownOpen(false);
                               handleLogout();
                             }}
-                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer font-bold mt-1"
+                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs font-bold mt-1 transition-all cursor-pointer ${
+                              isLightMode 
+                                ? 'text-rose-600 hover:bg-rose-50' 
+                                : 'text-rose-400 hover:bg-rose-500/10'
+                            }`}
                           >
                             <LogOut className="w-3.5 h-3.5" />
                             <span>{lang === 'fa' ? 'خروج از حساب کاربری' : 'Sign Out'}</span>

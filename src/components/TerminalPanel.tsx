@@ -134,8 +134,12 @@ export default function TerminalPanel({
         setLatestCommits([]);
         showToast('success', isRtl ? 'پنل با موفقیت بروزرسانی شد! در حال بارگذاری مجدد...' : 'Panel updated successfully! Reloading...');
         setTimeout(() => {
-          window.location.reload();
-        }, 2500);
+          try {
+            window.location.reload();
+          } catch (e) {
+            window.location.href = window.location.origin + window.location.pathname + window.location.search;
+          }
+        }, 2000);
       } else {
         const errData = await res.json();
         setUpdateLogs((prev) => [...prev, `[ERR] update failed: ${errData.error || 'Server error'}`]);
