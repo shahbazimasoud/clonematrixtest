@@ -49,7 +49,8 @@ import {
   Cpu,
   Settings,
   Download,
-  Save
+  Save,
+  MoreVertical
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -450,6 +451,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [addingMemberMxid, setAddingMemberMxid] = useState<string | null>(null);
   const [memberActionLoading, setMemberActionLoading] = useState<string | null>(null);
+  const [activeRoomDropdown, setActiveRoomDropdown] = useState<string | null>(null);
 
   const safeConfirm = (msg: string): boolean => {
     try {
@@ -2290,122 +2292,205 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
             {/* Rooms Cards Grid / List */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {filteredRooms.length === 0 ? (
-                <div className="col-span-full bg-black/20 border border-white/5 rounded-xl py-12 text-center text-gray-500 font-mono">
+                <div className={`col-span-full border rounded-xl py-12 text-center font-mono text-sm ${
+                  isLightMode 
+                    ? 'bg-slate-50 border-slate-200 text-slate-500' 
+                    : 'bg-black/20 border-white/5 text-gray-500'
+                }`}>
                   No rooms matched your parameters.
                 </div>
               ) : (
                 filteredRooms.map(r => (
                   <div
                     key={r.id}
-                    className="relative flex flex-col justify-between p-5 bg-gradient-to-b from-slate-900/40 to-slate-950/40 border border-white/5 rounded-xl hover:border-purple-500/30 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-300 group"
+                    className={`relative flex flex-col justify-between p-5 border rounded-xl transition-all duration-300 group ${
+                      isLightMode 
+                        ? 'bg-white border-slate-200 shadow-sm hover:border-purple-500/40 hover:shadow-md hover:shadow-purple-500/5 text-slate-800' 
+                        : 'bg-gradient-to-b from-slate-900/40 to-slate-950/40 border-white/5 hover:border-purple-500/30 hover:shadow-lg hover:shadow-purple-500/5 text-gray-200'
+                    }`}
                   >
                     <div>
                       {/* Name & ID row */}
-                      <div className="flex justify-between items-start mb-2 gap-2">
-                        <div className="flex items-center gap-2">
-                          <Hash className="h-4 w-4 text-purple-400 flex-shrink-0" />
-                          <h4 className="font-semibold text-gray-200 leading-tight tracking-tight group-hover:text-purple-300 transition-colors duration-200">
+                      <div className="flex justify-between items-start mb-2 gap-2 relative">
+                        <div className="flex items-center gap-2 max-w-[60%]">
+                          <Hash className={`h-4 w-4 flex-shrink-0 ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`} />
+                          <h4 className={`font-semibold leading-tight tracking-tight transition-colors duration-200 truncate ${
+                            isLightMode 
+                              ? 'text-slate-800 group-hover:text-purple-600' 
+                              : 'text-gray-200 group-hover:text-purple-300'
+                          }`}>
                             {r.name}
                           </h4>
                         </div>
-                        <div className="flex gap-1 flex-wrap">
-                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase border ${
-                            r.isPublic 
-                              ? 'bg-emerald-500/5 text-emerald-400 border-emerald-500/10' 
-                              : 'bg-red-500/5 text-red-400 border-red-500/10'
-                          }`}>
-                            {r.isPublic ? t.publicRooms : t.privateRooms}
-                          </span>
-                          {r.isFederated && (
-                            <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-indigo-500/5 text-indigo-400 border border-indigo-500/10">
-                              {t.federatedRooms}
+                        
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-1 flex-wrap justify-end">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase border ${
+                              r.isPublic 
+                                ? 'bg-emerald-500/5 text-emerald-400 border-emerald-500/10' 
+                                : 'bg-red-500/5 text-red-400 border-red-500/10'
+                            }`}>
+                              {r.isPublic ? t.publicRooms : t.privateRooms}
                             </span>
-                          )}
+                            {r.isFederated && (
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-indigo-500/5 text-indigo-400 border border-indigo-500/10">
+                                {t.federatedRooms}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* 3-Dot Dropdown Trigger */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveRoomDropdown(activeRoomDropdown === r.id ? null : r.id);
+                              }}
+                              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                isLightMode 
+                                  ? 'hover:bg-slate-100 text-slate-500 hover:text-slate-800' 
+                                  : 'hover:bg-white/5 text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {activeRoomDropdown === r.id && (
+                              <>
+                                <div 
+                                  className="fixed inset-0 z-20" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveRoomDropdown(null);
+                                  }} 
+                                />
+                                <div className={`absolute right-0 mt-1 w-56 rounded-xl border p-1.5 shadow-xl z-30 animate-in fade-in slide-in-from-top-1 duration-150 ${
+                                  isLightMode 
+                                    ? 'bg-white border-slate-200 text-slate-700 shadow-slate-200/60' 
+                                    : 'bg-slate-950 border-white/10 text-gray-200 shadow-black/80'
+                                }`}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveRoomDropdown(null);
+                                      setShowRoomMembersModal(r);
+                                    }}
+                                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all cursor-pointer ${
+                                      isLightMode ? 'hover:bg-slate-50 text-slate-800' : 'hover:bg-white/5 text-white'
+                                    }`}
+                                  >
+                                    <Users className="h-3.5 w-3.5 text-slate-400" />
+                                    <span>{t.viewMembers}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveRoomDropdown(null);
+                                      handleOpenRoomChat(r.id, r.name);
+                                    }}
+                                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all cursor-pointer ${
+                                      isLightMode ? 'hover:bg-slate-50 text-slate-800' : 'hover:bg-white/5 text-white'
+                                    }`}
+                                  >
+                                    <MessageSquare className="h-3.5 w-3.5 text-indigo-400" />
+                                    <span>{isRtl ? 'پایش گفتگو' : 'Inspect Chat'}</span>
+                                  </button>
+
+                                  {hasWriteAccess && (
+                                    <>
+                                      <div className={`h-[1px] my-1 ${isLightMode ? 'bg-slate-100' : 'bg-white/5'}`} />
+                                      
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveRoomDropdown(null);
+                                          setShowAddPrivilegedModal(r);
+                                          setPrivilegedUserConfig({ mxid: '', powerLevel: '50' });
+                                        }}
+                                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all cursor-pointer ${
+                                          isLightMode ? 'hover:bg-slate-50 text-slate-800' : 'hover:bg-white/5 text-white'
+                                        }`}
+                                      >
+                                        <Shield className="h-3.5 w-3.5 text-purple-400" />
+                                        <span>{t.addPrivilegedUserBtn}</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveRoomDropdown(null);
+                                          setShowAddMemberModal(r);
+                                          setAddMemberConfig({ mxid: '' });
+                                        }}
+                                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all cursor-pointer ${
+                                          isLightMode ? 'hover:bg-slate-50 text-slate-800' : 'hover:bg-white/5 text-white'
+                                        }`}
+                                      >
+                                        <UserPlus className="h-3.5 w-3.5 text-emerald-400" />
+                                        <span>{t.addMemberBtn}</span>
+                                      </button>
+
+                                      <div className={`h-[1px] my-1 ${isLightMode ? 'bg-slate-100' : 'bg-white/5'}`} />
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveRoomDropdown(null);
+                                          setShowShutdownRoomModal(r);
+                                        }}
+                                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs font-semibold transition-all cursor-pointer text-red-500 ${
+                                          isLightMode ? 'hover:bg-red-50' : 'hover:bg-red-500/10'
+                                        }`}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        <span>{t.shutdownRoomBtn}</span>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
 
                       {/* Alias */}
                       {r.alias && (
-                        <p className="text-xs text-purple-400 font-mono select-all mb-2">{r.alias}</p>
+                        <p className={`text-xs font-mono select-all mb-2 ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>{r.alias}</p>
                       )}
 
                       {/* Topic */}
-                      <p className="text-xs text-gray-400 line-clamp-2 min-h-[32px] mb-4">
+                      <p className={`text-xs line-clamp-2 min-h-[32px] mb-4 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
                         {r.topic || <span className="italic opacity-60">No topic assigned for this room.</span>}
                       </p>
 
                       {/* Meta stats */}
-                      <div className="grid grid-cols-3 gap-2 border-t border-b border-white/5 py-2.5 mb-4 text-xs font-mono text-gray-400">
+                      <div className={`grid grid-cols-3 gap-2 border-t border-b py-2.5 mb-2 text-xs font-mono ${
+                        isLightMode 
+                          ? 'border-slate-100 text-slate-600 bg-slate-50/50 rounded-xl px-2' 
+                          : 'border-white/5 text-gray-400'
+                      }`}>
                         <div>
-                          <span className="block text-[10px] text-gray-500 uppercase">{t.roomCreator}</span>
-                          <span className="truncate block font-medium max-w-full text-gray-300 select-all">{r.creator}</span>
+                          <span className={`block text-[10px] uppercase ${isLightMode ? 'text-slate-400' : 'text-gray-500'}`}>{t.roomCreator}</span>
+                          <span className={`truncate block font-medium max-w-full select-all ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>{r.creator}</span>
                         </div>
-                        <div className="text-center border-l border-r border-white/5">
-                          <span className="block text-[10px] text-gray-500 uppercase">{t.roomMembers}</span>
-                          <span className="block text-indigo-300 font-bold">{r.membersCount}</span>
+                        <div className={`text-center border-l border-r ${isLightMode ? 'border-slate-200/60' : 'border-white/5'}`}>
+                          <span className={`block text-[10px] uppercase ${isLightMode ? 'text-slate-400' : 'text-gray-500'}`}>{t.roomMembers}</span>
+                          <span className="block text-indigo-600 dark:text-indigo-300 font-bold">{r.membersCount}</span>
                         </div>
                         <div className="text-right">
-                          <span className="block text-[10px] text-gray-500 uppercase">{t.roomVersion}</span>
-                          <span className="block text-gray-300 font-medium">{r.version}</span>
+                          <span className={`block text-[10px] uppercase ${isLightMode ? 'text-slate-400' : 'text-gray-500'}`}>{t.roomVersion}</span>
+                          <span className={`block font-medium ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>{r.version}</span>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Room actions footer */}
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 border-t border-white/5 pt-3.5 mt-2">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => setShowRoomMembersModal(r)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-slate-850 hover:bg-slate-800 text-gray-300 border border-white/5 rounded-lg transition-colors duration-200"
-                        >
-                          <Users className="h-3.5 w-3.5" />
-                          <span>{t.viewMembers}</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleOpenRoomChat(r.id, r.name)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-300 border border-indigo-500/20 rounded-lg transition-colors duration-200"
-                        >
-                          <MessageSquare className="h-3.5 w-3.5" />
-                          <span>{isRtl ? 'پایش گفتگو' : 'Inspect Chat'}</span>
-                        </button>
-
-                        {hasWriteAccess && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setShowAddPrivilegedModal(r);
-                                setPrivilegedUserConfig({ mxid: '', powerLevel: '50' });
-                              }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/20 rounded-lg transition-colors duration-200"
-                            >
-                              <Shield className="h-3.5 w-3.5" />
-                              <span>{t.addPrivilegedUserBtn}</span>
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                setShowAddMemberModal(r);
-                                setAddMemberConfig({ mxid: '' });
-                              }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/20 rounded-lg transition-colors duration-200"
-                            >
-                              <UserPlus className="h-3.5 w-3.5" />
-                              <span>{t.addMemberBtn}</span>
-                            </button>
-                          </>
-                        )}
-                      </div>
-
-                      {hasWriteAccess && (
-                        <button
-                          onClick={() => setShowShutdownRoomModal(r)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/25 rounded-lg transition-colors duration-200 self-start sm:self-auto"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span>{t.shutdownRoomBtn.split(' ')[0]}</span>
-                        </button>
-                      )}
                     </div>
                   </div>
                 ))
