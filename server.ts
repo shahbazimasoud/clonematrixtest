@@ -566,6 +566,121 @@ function checkPermission(requiredRoles: string[]) {
 // -------------------------------------------------------------
 app.use(express.json());
 
+// Global Security Audit Logging Interceptor
+app.use((req: any, res: any, next: any) => {
+  if (req.path.startsWith("/api/") && req.method !== "GET" && req.path !== "/api/agent/ping" && req.path !== "/api/agent/results") {
+    res.on("finish", () => {
+      const username = req.user?.username;
+      
+      // Special case for portal login attempts
+      if (req.path === "/api/auth/login") {
+        const db = readDb();
+        if (!db.auditLogs) db.auditLogs = [];
+        db.auditLogs.unshift({
+          id: "log-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+          timestamp: new Date().toISOString(),
+          username: req.body?.username || "unknown",
+          action: "Portal Login Attempt",
+          target: "Portal Security",
+          status: res.statusCode < 400 ? "success" : "failed",
+          details: res.statusCode < 400 ? "User logged in successfully." : `Failed login attempt (Status: ${res.statusCode}).`
+        });
+        writeDb(db);
+        return;
+      }
+
+      if (!username) return;
+
+      let action = `${req.method} ${req.path}`;
+      let target = "System";
+      let details = `Executed ${req.method} request on ${req.path}`;
+
+      const path = req.path;
+      if (path.includes("/api/matrix/users")) {
+        target = "Matrix Users";
+        if (path.includes("/register")) action = "Register Matrix User";
+        else if (path.includes("/deactivate")) action = "Deactivate Matrix User";
+        else if (path.includes("/reactivate")) action = "Reactivate Matrix User";
+        else if (path.includes("/password")) action = "Update Matrix Password";
+        else if (path.includes("/emails/add")) action = "Add Matrix User Email";
+        else if (path.includes("/emails/delete")) action = "Delete Matrix User Email";
+        else if (path.includes("/phones/add")) action = "Add Matrix User Phone";
+        else if (path.includes("/phones/delete")) action = "Delete Matrix User Phone";
+        else if (path.includes("/devices/delete")) action = "Delete Matrix User Device";
+        else if (path.includes("/rooms/kick")) action = "Kick User from Room";
+        else if (path.includes("/rooms/ban")) action = "Ban User from Room";
+        else if (path.includes("/rooms/unban")) action = "Unban User from Room";
+        else if (path.includes("/rate-limits")) action = "Update User Rate Limits";
+        else if (path.includes("/account-data")) action = "Update User Account Data";
+        else action = "Modify Matrix User";
+
+        details = req.body?.mxid ? `User: ${req.body.mxid}` : `Details: ${JSON.stringify(req.body)}`;
+      } else if (path.includes("/api/matrix/rooms")) {
+        target = "Matrix Rooms";
+        if (path.includes("/create")) action = "Create Matrix Room";
+        else if (path.includes("/delete")) action = "Shutdown Matrix Room";
+        else if (path.includes("/members/kick")) action = "Kick Member from Room";
+        else if (path.includes("/members/join")) action = "Join Member to Room";
+        else if (path.includes("/power_levels")) action = "Update Room Power Levels";
+        else if (path.includes("/messages/send")) action = "Send Room Admin Message";
+        else action = "Modify Matrix Room";
+
+        details = req.body?.name || req.body?.roomId || `Room ID: ${req.params?.roomId || ""}`;
+      } else if (path.includes("/api/connections")) {
+        target = "VPS Connections";
+        if (path.includes("/select")) action = "Select Active VPS Connection";
+        else if (path.includes("/test")) action = "Test VPS Connection";
+        else action = "Modify VPS Connection Profile";
+        details = req.body?.name || req.body?.host || "Connection settings";
+      } else if (path.includes("/api/backups")) {
+        target = "Backups";
+        if (path.includes("/settings")) action = "Update Backup Settings";
+        else if (path.includes("/create")) action = "Create Snapshot Backup";
+        else if (path.includes("/restore")) action = "Restore Snapshot Backup";
+        else if (path.includes("/upload")) action = "Upload Backup Archive";
+        else action = "Backup Action";
+        details = `Status code: ${res.statusCode}`;
+      } else if (path.includes("/api/services/action")) {
+        target = "System Services";
+        action = `Manage Service: ${req.body?.service}`;
+        details = `Action: ${req.body?.action} on service ${req.body?.service}`;
+      } else if (path.includes("/api/matrix/config")) {
+        target = "Homeserver Config";
+        action = "Save Synapse Config";
+        details = "Modified homeserver configuration parameters";
+      } else if (path.includes("/api/users")) {
+        target = "Portal Users";
+        action = "Modify Portal Admin User";
+        details = `User: ${req.body?.username || "unknown"}`;
+      }
+
+      // Check for duplicate logs within last 3 seconds of the same action/username to avoid duplicate logging
+      const db = readDb();
+      if (!db.auditLogs) db.auditLogs = [];
+      
+      const isDuplicate = db.auditLogs.slice(0, 3).some((l: any) => 
+        l.username === username && 
+        l.action === action && 
+        (Date.now() - new Date(l.timestamp).getTime() < 3000)
+      );
+
+      if (!isDuplicate) {
+        db.auditLogs.unshift({
+          id: "log-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+          timestamp: new Date().toISOString(),
+          username: username,
+          action: action,
+          target: target,
+          status: res.statusCode < 400 ? "success" : "failed",
+          details: details
+        });
+        writeDb(db);
+      }
+    });
+  }
+  next();
+});
+
 // Interceptors to block client-side modifications if configured
 async function getUserIdByAccessToken(req: any, activeConn: any): Promise<string | null> {
   let token = "";

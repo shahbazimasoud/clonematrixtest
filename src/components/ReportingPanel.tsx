@@ -57,6 +57,7 @@ interface ReportingPanelProps {
   authToken: string;
   showToast: (type: 'success' | 'error' | 'info', message: string) => void;
   isLightMode?: boolean;
+  lang?: 'fa' | 'en';
 }
 
 export default function ReportingPanel({
@@ -73,7 +74,8 @@ export default function ReportingPanel({
   userRole,
   authToken,
   showToast,
-  isLightMode = false
+  isLightMode = false,
+  lang = 'en'
 }: ReportingPanelProps) {
   const [activeSubTab, setActiveTab] = useState<'analytics' | 'rbac' | 'audit' | 'backups'>('analytics');
 
@@ -102,6 +104,221 @@ export default function ReportingPanel({
   const [showRestoreModal, setShowRestoreModal] = useState<BackupItem | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [activeBackupSubTab, setActiveBackupSubTab] = useState<'list' | 'settings'>('list');
+
+  const exportToExcel = () => {
+    if (!auditLogs || auditLogs.length === 0) {
+      showToast('error', lang === 'fa' ? 'هیچ لاگی برای خروجی گرفتن وجود ندارد' : 'No logs available to export');
+      return;
+    }
+
+    const headers = lang === 'fa' 
+      ? ['زمان', 'کاربر', 'عملیات', 'بخش هدف', 'وضعیت', 'جزئیات']
+      : ['Timestamp', 'User', 'Action', 'Target', 'Status', 'Details'];
+
+    const rows = auditLogs.map(log => [
+      new Date(log.timestamp).toLocaleString(lang === 'fa' ? 'fa-IR' : 'en-US'),
+      `@${log.username}`,
+      log.action,
+      log.target || '-',
+      log.status,
+      log.details || '-'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(val => {
+        const escaped = String(val).replace(/"/g, '""');
+        return `"${escaped}"`;
+      }).join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `security_audit_logs_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('success', lang === 'fa' ? 'خروجی اکسل با موفقیت دانلود شد' : 'Excel/CSV export downloaded successfully');
+  };
+
+  const exportToHtml = () => {
+    if (!auditLogs || auditLogs.length === 0) {
+      showToast('error', lang === 'fa' ? 'هیچ لاگی برای خروجی گرفتن وجود ندارد' : 'No logs available to export');
+      return;
+    }
+
+    const isFa = lang === 'fa';
+    const title = isFa ? 'گزارش لاگ‌های امنیتی سیستم' : 'System Security Audit Logs Report';
+    const generatedAt = isFa ? 'تاریخ تولید گزارش' : 'Report Generated At';
+    const totalLogsLabel = isFa ? 'تعداد کل لاگ‌ها' : 'Total Log Entries';
+    
+    const headers = isFa 
+      ? ['زمان ثبت', 'کاربر پرتال', 'نوع عملیات', 'هدف / ماژول', 'وضعیت', 'توضیحات و جزئیات']
+      : ['Timestamp', 'Portal User', 'Action Type', 'Target / Module', 'Status', 'Details & Context'];
+
+    const rowsHtml = auditLogs.map(log => {
+      const dateStr = new Date(log.timestamp).toLocaleString(isFa ? 'fa-IR' : 'en-US');
+      const statusClass = log.status === 'success' ? 'status-success' : 'status-failed';
+      const statusText = isFa 
+        ? (log.status === 'success' ? 'موفق' : 'ناموفق') 
+        : log.status;
+
+      return `
+        <tr>
+          <td style="white-space: nowrap; color: #888;">${dateStr}</td>
+          <td style="font-weight: bold; color: #fff;">@${log.username}</td>
+          <td>${log.action}</td>
+          <td style="color: #38bdf8;">${log.target || '-'}</td>
+          <td>
+            <span class="status-badge ${statusClass}">${statusText}</span>
+          </td>
+          <td style="max-width: 300px; word-break: break-all; color: #cbd5e1;">${log.details || '-'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="${isFa ? 'fa' : 'en'}" dir="${isFa ? 'rtl' : 'ltr'}">
+      <head>
+        <meta charset="UTF-8">
+        <title>${title}</title>
+        <style>
+          body {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            font-family: ${isFa ? 'Tahoma, Arial, sans-serif' : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'};
+            margin: 0;
+            padding: 40px 20px;
+            line-height: 1.6;
+          }
+          .container {
+            max-width: 1200px;
+            margin: 0 auto;
+          }
+          .header {
+            border-bottom: 2px solid #1e293b;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+          }
+          h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #38bdf8;
+          }
+          .meta {
+            font-size: 13px;
+            color: #94a3b8;
+            text-align: ${isFa ? 'left' : 'right'};
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            font-size: 13px;
+          }
+          th, td {
+            padding: 14px 16px;
+            text-align: ${isFa ? 'right' : 'left'};
+            border-bottom: 1px solid #1e293b;
+          }
+          th {
+            background-color: #0f172a;
+            color: #94a3b8;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+          }
+          tr:hover {
+            background-color: #131b2e;
+          }
+          .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: bold;
+          }
+          .status-success {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+          }
+          .status-failed {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+          }
+          @media print {
+            body {
+              background-color: #fff;
+              color: #000;
+              padding: 0;
+            }
+            th {
+              background-color: #f1f5f9;
+              color: #000;
+            }
+            tr:hover {
+              background-color: transparent;
+            }
+            td, th {
+              border-bottom: 1px solid #cbd5e1;
+            }
+            h1 {
+              color: #000;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div>
+              <h1>${title}</h1>
+              <p style="margin: 5px 0 0; color: #94a3b8; font-size: 14px;">
+                ${isFa ? 'کلون‌ماتریکس - پنل نظارت و مانیتورینگ امنیتی' : 'CloneMatrix - Security Auditing & Operations Panel'}
+              </p>
+            </div>
+            <div class="meta">
+              <div><strong>${generatedAt}:</strong> ${new Date().toLocaleString(isFa ? 'fa-IR' : 'en-US')}</div>
+              <div style="margin-top: 5px;"><strong>${totalLogsLabel}:</strong> ${auditLogs.length}</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                ${headers.map(h => `<th>${h}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `security_audit_logs_${new Date().toISOString().slice(0,10)}.html`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('success', lang === 'fa' ? 'گزارش HTML با موفقیت دانلود شد' : 'HTML log report downloaded successfully');
+  };
 
   const fetchBackupSettings = async () => {
     try {
@@ -602,45 +819,98 @@ export default function ReportingPanel({
         {/* VIEW 3: SECURITY AUDIT LOGS */}
         {activeSubTab === 'audit' && (
           <div className="space-y-6 flex-1 flex flex-col h-full overflow-hidden">
-            <div className="flex items-center gap-3 pb-4 border-b border-white/5">
-              <History className="w-6 h-6 text-emerald-400" />
-              <div>
-                <h2 className="text-xl font-display font-bold text-white">Security Audit Log</h2>
-                <p className="text-xs text-slate-400">Strict chronological registry tracking all management panel transactions.</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <History className={`w-6 h-6 ${isLightMode ? 'text-emerald-600' : 'text-emerald-400'}`} />
+                <div>
+                  <h2 className={`text-xl font-display font-bold ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                    {lang === 'fa' ? 'لاگ‌های امنیتی سیستم' : 'Security Audit Log'}
+                  </h2>
+                  <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {lang === 'fa' 
+                      ? 'سوابق دقیق و به ترتیب زمانی از کلیه اقدامات و تراکنش‌های انجام شده در پنل مدیریت.' 
+                      : 'Strict chronological registry tracking all management panel transactions.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Export Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={exportToExcel}
+                  id="btn-export-excel"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                    isLightMode 
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 shadow-sm' 
+                      : 'bg-emerald-600/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{lang === 'fa' ? 'خروجی اکسل (Excel)' : 'Export to Excel'}</span>
+                </button>
+
+                <button
+                  onClick={exportToHtml}
+                  id="btn-export-html"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                    isLightMode 
+                      ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 shadow-sm' 
+                      : 'bg-blue-600/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{lang === 'fa' ? 'خروجی HTML' : 'Export to HTML'}</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex-1 bg-black/30 rounded-2xl border border-white/5 overflow-y-auto pr-1">
+            <div className={`flex-1 rounded-2xl border overflow-y-auto pr-1 ${
+              isLightMode 
+                ? 'bg-slate-50 border-slate-200 shadow-inner' 
+                : 'bg-black/30 border-white/5'
+            }`}>
               <table className="w-full text-left border-collapse font-mono text-xs">
                 <thead>
-                  <tr className="border-b border-white/10 text-slate-400 bg-black/20 text-[10px] tracking-wider uppercase font-semibold">
-                    <th className="p-4">Timestamp</th>
-                    <th className="p-4">User</th>
-                    <th className="p-4">Action</th>
-                    <th className="p-4">Target</th>
-                    <th className="p-4">Status</th>
+                  <tr className={`border-b text-[10px] tracking-wider uppercase font-semibold ${
+                    isLightMode 
+                      ? 'border-slate-200 text-slate-500 bg-slate-100/80' 
+                      : 'border-white/10 text-slate-400 bg-black/20'
+                  }`}>
+                    <th className="p-4">{lang === 'fa' ? 'زمان' : 'Timestamp'}</th>
+                    <th className="p-4">{lang === 'fa' ? 'کاربر' : 'User'}</th>
+                    <th className="p-4">{lang === 'fa' ? 'عملیات' : 'Action'}</th>
+                    <th className="p-4">{lang === 'fa' ? 'هدف' : 'Target'}</th>
+                    <th className="p-4">{lang === 'fa' ? 'وضعیت' : 'Status'}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 text-slate-300">
+                <tbody className={`divide-y ${
+                  isLightMode 
+                    ? 'divide-slate-200 text-slate-700' 
+                    : 'divide-white/5 text-slate-300'
+                }`}>
                   {auditLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-white/5 transition-colors">
-                      <td className="p-4 text-slate-400 whitespace-nowrap">
-                        {new Date(log.timestamp).toLocaleString()}
+                    <tr key={log.id} className={`transition-colors ${
+                      isLightMode ? 'hover:bg-slate-100/50' : 'hover:bg-white/5'
+                    }`}>
+                      <td className={`p-4 whitespace-nowrap ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {new Date(log.timestamp).toLocaleString(lang === 'fa' ? 'fa-IR' : 'en-US')}
                       </td>
-                      <td className="p-4 font-semibold text-white">
+                      <td className={`p-4 font-semibold ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
                         @{log.username}
                       </td>
                       <td className="p-4">
                         {log.action}
                       </td>
-                      <td className="p-4 text-cyan-400">
+                      <td className={`p-4 font-medium ${isLightMode ? 'text-sky-600' : 'text-cyan-400'}`}>
                         {log.target || '-'}
                       </td>
                       <td className="p-4">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-sans uppercase ${
-                          log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                          log.status === 'success' 
+                            ? (isLightMode ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-500/10 text-emerald-400') 
+                            : (isLightMode ? 'bg-red-100 text-red-800' : 'bg-red-500/10 text-red-400')
                         }`}>
-                          {log.status}
+                          {lang === 'fa' ? (log.status === 'success' ? 'موفق' : 'ناموفق') : log.status}
                         </span>
                       </td>
                     </tr>

@@ -1281,6 +1281,7 @@ export default function App() {
                 authToken={authToken}
                 showToast={showToast}
                 isLightMode={isLightMode}
+                lang={lang}
               />
             )}
 
