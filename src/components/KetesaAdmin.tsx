@@ -438,6 +438,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const [userAccountDataText, setUserAccountDataText] = useState('{}');
   const [userPreferences, setUserPreferences] = useState<any>({});
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const [isSavingUserParams, setIsSavingUserParams] = useState(false);
 
   useEffect(() => {
     if (selectedUserDetails && selectedUserDetails.accountData) {
@@ -491,6 +492,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!selectedUserMxid) return;
 
+    setIsSavingUserParams(true);
     // Optimistically update the UI instantly
     setSelectedUserDetails((prev: any) => {
       if (!prev) return prev;
@@ -508,15 +510,17 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       });
       if (res.ok) {
         showToast('success', t.successAction);
-        fetchUserDetails(selectedUserMxid, false, true);
-        fetchAll(true);
+        await fetchUserDetails(selectedUserMxid, false, true);
+        await fetchAll(true);
       } else {
         showToast('error', t.errorAction);
-        fetchUserDetails(selectedUserMxid, false, true); // rollback
+        await fetchUserDetails(selectedUserMxid, false, true); // rollback
       }
     } catch (e) {
       showToast('error', t.errorAction);
-      fetchUserDetails(selectedUserMxid, false, true); // rollback
+      await fetchUserDetails(selectedUserMxid, false, true); // rollback
+    } finally {
+      setIsSavingUserParams(false);
     }
   };
 
@@ -3888,6 +3892,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                           {/* Save Button for status flags */}
                           <div className="flex justify-end pt-3">
                             <button
+                              disabled={isSavingUserParams}
                               onClick={() => {
                                 handleUpdateUserParams({
                                   isSuspended: !!selectedUserDetails.isSuspended,
@@ -3901,13 +3906,23 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                                 });
                               }}
                               className={`flex items-center gap-1.5 px-5 py-2.5 text-xs font-semibold rounded-lg shadow-sm transition-all duration-300 cursor-pointer ${
-                                isLightMode
-                                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow'
-                                  : 'bg-indigo-500 hover:bg-indigo-600 text-white hover:shadow-lg'
+                                isSavingUserParams
+                                  ? 'opacity-50 cursor-not-allowed bg-slate-500 text-white'
+                                  : isLightMode
+                                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow'
+                                    : 'bg-indigo-500 hover:bg-indigo-600 text-white hover:shadow-lg'
                               }`}
                             >
-                              <Save className="h-3.5 w-3.5" />
-                              <span>{isRtl ? 'ذخیره تغییرات وضعیت حساب' : 'Save Account Status Flags'}</span>
+                              {isSavingUserParams ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Save className="h-3.5 w-3.5" />
+                              )}
+                              <span>
+                                {isSavingUserParams
+                                  ? (isRtl ? 'در حال ذخیره‌سازی...' : 'Saving changes...')
+                                  : (isRtl ? 'ذخیره تغییرات وضعیت حساب' : 'Save Account Status Flags')}
+                              </span>
                             </button>
                           </div>
                         </div>

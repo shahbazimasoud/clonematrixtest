@@ -733,7 +733,7 @@ app.get([
     
     if (user_id) {
       const db = readDb();
-      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === user_id);
+      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === user_id.toLowerCase());
       if (localUser) {
         if (localUser.isLocked) {
           return res.status(403).json({
@@ -754,7 +754,7 @@ app.get([
     
     if (user_id) {
       const db = readDb();
-      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === user_id);
+      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === user_id.toLowerCase());
       if (localUser) {
         if (!caps.capabilities) {
           caps.capabilities = {};
@@ -852,7 +852,7 @@ app.all([
     
     if (user_id) {
       const db = readDb();
-      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === user_id);
+      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === user_id.toLowerCase());
       
       if (localUser) {
         if (localUser.isLocked) {
@@ -901,7 +901,7 @@ app.post([
     const user_id = await getUserIdByAccessToken(req, activeConn);
     if (user_id) {
       const db = readDb();
-      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === user_id);
+      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === user_id.toLowerCase());
       if (localUser) {
         if (localUser.isLocked) {
           return res.status(403).json({
@@ -939,7 +939,7 @@ app.post([
     const user_id = await getUserIdByAccessToken(req, activeConn);
     if (user_id) {
       const db = readDb();
-      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === user_id);
+      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === user_id.toLowerCase());
       if (localUser) {
         if (localUser.isLocked) {
           return res.status(403).json({
@@ -977,7 +977,7 @@ app.put([
     const user_id = await getUserIdByAccessToken(req, activeConn);
     if (user_id) {
       const db = readDb();
-      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === user_id);
+      const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === user_id.toLowerCase());
       if (localUser) {
         if (localUser.isLocked) {
           return res.status(403).json({
@@ -1334,7 +1334,7 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
       const db = readDb();
       const mappedUsers = apiRes.users.map((u: any) => {
         const username = u.name.split(":")[0].replace("@", "") || "unknown";
-        const localUser = (db.matrixUsers || []).find((lu: any) => lu.mxid === u.name);
+        const localUser = (db.matrixUsers || []).find((lu: any) => lu.mxid.toLowerCase() === u.name.toLowerCase());
         return {
           mxid: u.name,
           isAdmin: u.admin === 1 || u.admin === true,
@@ -1368,7 +1368,7 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
     const db = readDb();
     const matrixUsers = rows.map((r: any) => {
       const username = r.mxid.split(":")[0].replace("@", "") || "unknown";
-      const localUser = (db.matrixUsers || []).find((lu: any) => lu.mxid === r.mxid);
+      const localUser = (db.matrixUsers || []).find((lu: any) => lu.mxid.toLowerCase() === r.mxid.toLowerCase());
       return {
         mxid: r.mxid,
         isAdmin: !!r.admin,
@@ -1430,7 +1430,7 @@ app.post("/api/matrix/users/register", authenticateToken, checkPermission(["Owne
   }
 
   // Also maintain in local list as fallback/record
-  let userInDb = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  let userInDb = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (!userInDb) {
     userInDb = { mxid, isAdmin: !!isAdmin, isDeactivated: false };
     db.matrixUsers.push(userInDb);
@@ -1482,7 +1482,7 @@ app.post("/api/matrix/users/deactivate", authenticateToken, checkPermission(["Ow
     }
   }
 
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     user.isDeactivated = true;
     writeDb(db);
@@ -1521,7 +1521,7 @@ app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Ow
     }
   }
 
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     user.isDeactivated = false;
     if (isAdmin !== undefined) user.isAdmin = !!isAdmin;
@@ -1973,7 +1973,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
             }
           } catch (e) {}
 
-          const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
+          const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === mxid.toString().toLowerCase());
           if (localUser) {
             if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
             if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
@@ -2144,7 +2144,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
           if (isSuspended === undefined || extraFlagsRows.length === 0) {
             isSuspended = !!r.deactivated;
           }
-          const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
+          const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === mxid.toString().toLowerCase());
           if (localUser) {
             // Do not overwrite Synapse-native flags since this is a remote connection
             if (localUser.accountData) {
@@ -2261,7 +2261,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
           accountData = { "im.vector.web.settings": { "sidebarShowShortcuts": true, "theme": "dark" } };
         }
 
-        const localUser = (db.matrixUsers || []).find((u: any) => u.mxid === mxid);
+        const localUser = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === mxid.toString().toLowerCase());
         if (localUser) {
           if (localUser.isSuspended !== undefined) isSuspended = localUser.isSuspended;
           if (localUser.isShadowBanned !== undefined) isShadowBanned = localUser.isShadowBanned;
@@ -2287,6 +2287,8 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
         isBanned: rm.isBanned
       }));
 
+      const matchingLu = (db.matrixUsers || []).find((u: any) => u.mxid.toLowerCase() === r.mxid.toLowerCase());
+
       const realUser: any = {
         mxid: r.mxid,
         displayName: r.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
@@ -2297,9 +2299,9 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
         isShadowBanned,
         isLocked,
         isErased,
-        disableClientPasswordChange: (db.matrixUsers || []).find((u: any) => u.mxid === r.mxid)?.disableClientPasswordChange || false,
-        disableClientAccountDeactivation: (db.matrixUsers || []).find((u: any) => u.mxid === r.mxid)?.disableClientAccountDeactivation || false,
-        disableClientAvatarChange: (db.matrixUsers || []).find((u: any) => u.mxid === r.mxid)?.disableClientAvatarChange || false,
+        disableClientPasswordChange: matchingLu?.disableClientPasswordChange || false,
+        disableClientAccountDeactivation: matchingLu?.disableClientAccountDeactivation || false,
+        disableClientAvatarChange: matchingLu?.disableClientAvatarChange || false,
         createdAt: new Date(r.creation_ts * (r.creation_ts > 9999999999 ? 1 : 1000)).toISOString(),
         userType: r.user_type || (r.admin ? "admin" : "normal"),
         emails: emails.length > 0 ? emails : [`${username}@matrix.kheilisabz.local`],
@@ -2326,7 +2328,7 @@ app.get("/api/matrix/users/details", authenticateToken, async (req, res) => {
   }
 
   const db = readDb();
-  const userIndex = db.matrixUsers.findIndex((u: any) => u.mxid === mxid);
+  const userIndex = db.matrixUsers.findIndex((u: any) => u.mxid.toLowerCase() === mxid.toString().toLowerCase());
   if (userIndex === -1) return res.status(404).json({ error: "Matrix user not found" });
 
   const user = db.matrixUsers[userIndex];
@@ -2594,7 +2596,7 @@ app.post("/api/matrix/users/details/update", authenticateToken, checkPermission(
     const db = readDb();
     if (!db.matrixUsers) db.matrixUsers = [];
     
-    let user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+    let user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
     if (!user) {
       user = { mxid, isAdmin: false, isDeactivated: false };
       db.matrixUsers.push(user);
@@ -2662,7 +2664,7 @@ app.post("/api/matrix/users/password", authenticateToken, checkPermission(["Owne
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     user.devices = [];
     writeDb(db);
@@ -2702,7 +2704,7 @@ app.post("/api/matrix/users/emails/add", authenticateToken, checkPermission(["Ow
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     if (!user.emails) user.emails = [];
     if (!user.emails.includes(email)) user.emails.push(email);
@@ -2740,7 +2742,7 @@ app.post("/api/matrix/users/emails/delete", authenticateToken, checkPermission([
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user && user.emails) {
     user.emails = user.emails.filter((e: string) => e !== email);
     writeDb(db);
@@ -2779,7 +2781,7 @@ app.post("/api/matrix/users/phones/add", authenticateToken, checkPermission(["Ow
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     if (!user.phones) user.phones = [];
     if (!user.phones.includes(phone)) user.phones.push(phone);
@@ -2817,7 +2819,7 @@ app.post("/api/matrix/users/phones/delete", authenticateToken, checkPermission([
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user && user.phones) {
     user.phones = user.phones.filter((p: string) => p !== phone);
     writeDb(db);
@@ -2867,7 +2869,7 @@ app.post("/api/matrix/users/devices/delete", authenticateToken, checkPermission(
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user && user.devices) {
     user.devices = user.devices.filter((d: any) => d.id !== deviceId);
     writeDb(db);
@@ -2918,7 +2920,7 @@ app.post("/api/matrix/users/rooms/kick", authenticateToken, checkPermission(["Ow
     writeDb(db);
   }
 
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     if (!user.memberships) user.memberships = [];
     user.memberships.unshift({
@@ -2979,7 +2981,7 @@ app.post("/api/matrix/users/rooms/ban", authenticateToken, checkPermission(["Own
     writeDb(db);
   }
 
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     if (!user.memberships) user.memberships = [];
     user.memberships.unshift({
@@ -3031,7 +3033,7 @@ app.post("/api/matrix/users/rooms/unban", authenticateToken, checkPermission(["O
     writeDb(db);
   }
 
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     if (!user.memberships) user.memberships = [];
     user.memberships.unshift({
@@ -3121,7 +3123,7 @@ app.post("/api/matrix/users/rate-limits", authenticateToken, checkPermission(["O
   }
 
   const db = readDb();
-  const user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  const user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (user) {
     user.rateLimits = {
       perSecond: ps,
@@ -3170,7 +3172,7 @@ app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["
 
   const db = readDb();
   if (!db.matrixUsers) db.matrixUsers = [];
-  let user = db.matrixUsers.find((u: any) => u.mxid === mxid);
+  let user = db.matrixUsers.find((u: any) => u.mxid.toLowerCase() === mxid.toLowerCase());
   if (!user) {
     user = { mxid, accountData: {} };
     db.matrixUsers.push(user);
