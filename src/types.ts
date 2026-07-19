@@ -77,6 +77,8 @@ export interface MatrixRoom {
   creator: string;
   membersCount: number;
   joinedMembers: RoomMember[];
+  bannedMembers?: string[];
+  adGroups?: string[];
   version: string;
   isFederated: boolean;
   isPublic: boolean;

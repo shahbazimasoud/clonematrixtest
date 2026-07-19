@@ -3505,59 +3505,7 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
     if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms)) {
       const db = readDb();
-      roomsList = await Promise.all(apiRes.rooms.map(async (r: any) => {
-        let joinedMembers: any[] = [];
-        let bannedMembers: string[] = [];
-
-        try {
-          // Query Postgres for membership in this room
-          const dbMembers = await queryPostgres(`
-            SELECT rm.user_id as mxid, rm.membership, p.displayname
-            FROM room_memberships rm
-            LEFT JOIN profiles p ON rm.user_id = p.user_id
-            WHERE rm.room_id = $1
-          `, [r.room_id]);
-
-          if (dbMembers && dbMembers.length > 0) {
-            dbMembers.forEach((m: any) => {
-              if (m.membership === 'join') {
-                joinedMembers.push({
-                  mxid: m.mxid,
-                  displayName: m.displayname || "",
-                  role: m.mxid === r.creator ? "Admin" : "Member",
-                  powerLevel: m.mxid === r.creator ? 100 : 0
-                });
-              } else if (m.membership === 'ban') {
-                bannedMembers.push(m.mxid);
-              }
-            });
-          } else {
-            // Fallback to Synapse API if no records in Postgres
-            const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(r.room_id)}/members`);
-            if (membersRes && Array.isArray(membersRes.members)) {
-              joinedMembers = membersRes.members.map((m: string) => ({
-                mxid: m,
-                role: m === r.creator ? "Admin" : "Member",
-                powerLevel: m === r.creator ? 100 : 0
-              }));
-            }
-          }
-        } catch (dbErr) {
-          // Fallback to Synapse API
-          try {
-            const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(r.room_id)}/members`);
-            if (membersRes && Array.isArray(membersRes.members)) {
-              joinedMembers = membersRes.members.map((m: string) => ({
-                mxid: m,
-                role: m === r.creator ? "Admin" : "Member",
-                powerLevel: m === r.creator ? 100 : 0
-              }));
-            }
-          } catch (apiErr) {
-            console.warn("Could not fetch room members for:", r.room_id, apiErr);
-          }
-        }
-
+      roomsList = apiRes.rooms.map((r: any) => {
         // Merge with local DB configurations like AD groups
         const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === r.room_id);
         const adGroups = localRoom ? (localRoom.adGroups || []) : [];
@@ -3568,16 +3516,16 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
           alias: r.canonical_alias || "",
           topic: r.topic || "",
           creator: r.creator || "",
-          membersCount: r.joined_members || joinedMembers.length || 0,
-          joinedMembers,
-          bannedMembers,
+          membersCount: r.joined_members || 0,
+          joinedMembers: [], // empty initially, loaded on demand
+          bannedMembers: [], // empty initially, loaded on demand
           adGroups,
           version: r.version || "1",
           isFederated: r.federatable !== false,
           isPublic: r.public === true,
           createdAt: new Date().toISOString()
         };
-      }));
+      });
       fetchedFromRemote = true;
     }
   } catch (apiErr: any) {
@@ -3621,38 +3569,8 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
 
       if (dbRooms && dbRooms.length > 0) {
         const db = readDb();
-        roomsList = await Promise.all(dbRooms.map(async (r: any) => {
+        roomsList = dbRooms.map((r: any) => {
           const roomId = r.room_id;
-          let joinedMembers: any[] = [];
-          let bannedMembers: string[] = [];
-
-          // Query members from Postgres
-          try {
-            const dbMembers = await queryPostgres(`
-              SELECT rm.user_id as mxid, rm.membership, p.displayname
-              FROM room_memberships rm
-              LEFT JOIN profiles p ON rm.user_id = p.user_id
-              WHERE rm.room_id = $1
-            `, [roomId]);
-
-            if (dbMembers && dbMembers.length > 0) {
-              dbMembers.forEach((m: any) => {
-                if (m.membership === 'join') {
-                  joinedMembers.push({
-                    mxid: m.mxid,
-                    displayName: m.displayname || "",
-                    role: m.mxid === r.creator ? "Admin" : "Member",
-                    powerLevel: m.mxid === r.creator ? 100 : 0
-                  });
-                } else if (m.membership === 'ban') {
-                  bannedMembers.push(m.mxid);
-                }
-              });
-            }
-          } catch (memErr) {
-            // ignore
-          }
-
           const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
           const adGroups = localRoom ? (localRoom.adGroups || []) : [];
 
@@ -3662,16 +3580,16 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
             alias: r.canonical_alias || "",
             topic: r.topic || "",
             creator: r.creator || "",
-            membersCount: parseInt(r.joined_members) || joinedMembers.length || 0,
-            joinedMembers,
-            bannedMembers,
+            membersCount: parseInt(r.joined_members) || 0,
+            joinedMembers: [], // empty initially
+            bannedMembers: [], // empty initially
             adGroups,
             version: r.version || "1",
             isFederated: r.is_federatable !== false,
             isPublic: r.public === true || r.is_public === true,
             createdAt: new Date().toISOString()
           };
-        }));
+        });
         fetchedFromRemote = true;
         console.log(`Successfully retrieved ${roomsList.length} rooms from Postgres database directly.`);
       }
@@ -3688,6 +3606,74 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   }
 
   res.json(roomsList);
+});
+
+// Fetch room members on-demand to prevent high CPU / connection-pool usage
+app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res) => {
+  const { roomId } = req.params;
+  if (!roomId) return res.status(400).json({ error: "Room ID is required" });
+
+  let joinedMembers: any[] = [];
+  let bannedMembers: string[] = [];
+  let fetched = false;
+
+  // 1. Try Postgres
+  try {
+    const dbMembers = await queryPostgres(`
+      SELECT rm.user_id as mxid, rm.membership, p.displayname
+      FROM room_memberships rm
+      LEFT JOIN profiles p ON rm.user_id = p.user_id
+      WHERE rm.room_id = $1
+    `, [roomId]);
+
+    if (dbMembers && dbMembers.length > 0) {
+      dbMembers.forEach((m: any) => {
+        if (m.membership === 'join') {
+          joinedMembers.push({
+            mxid: m.mxid,
+            displayName: m.displayname || "",
+            role: "Member",
+            powerLevel: 0
+          });
+        } else if (m.membership === 'ban') {
+          bannedMembers.push(m.mxid);
+        }
+      });
+      fetched = true;
+    }
+  } catch (dbErr: any) {
+    console.warn(`Postgres room members fetch failed for ${roomId}:`, dbErr.message);
+  }
+
+  // 2. Fallback to Synapse Admin API
+  if (!fetched) {
+    try {
+      const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/members`);
+      if (membersRes && Array.isArray(membersRes.members)) {
+        joinedMembers = membersRes.members.map((m: string) => ({
+          mxid: m,
+          displayName: "",
+          role: "Member",
+          powerLevel: 0
+        }));
+        fetched = true;
+      }
+    } catch (apiErr: any) {
+      console.warn(`Synapse API room members fetch failed for ${roomId}:`, apiErr.message);
+    }
+  }
+
+  // 3. Fallback to local DB
+  if (!fetched) {
+    const db = readDb();
+    const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
+    if (localRoom) {
+      joinedMembers = localRoom.joinedMembers || [];
+      bannedMembers = localRoom.bannedMembers || [];
+    }
+  }
+
+  res.json({ joinedMembers, bannedMembers });
 });
 
 app.post("/api/matrix/rooms/create", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {

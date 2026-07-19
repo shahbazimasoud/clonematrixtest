@@ -505,6 +505,62 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     }
   }, [selectedUserDetails]);
 
+  // Load room members dynamically on-demand when any room-related modal is opened
+  useEffect(() => {
+    const activeModalRoom = showRoomMembersModal || showAddPrivilegedModal || showAddMemberModal;
+    if (!activeModalRoom) return;
+
+    // If members are already loaded (i.e. joinedMembers is not empty), don't fetch again
+    if (activeModalRoom.joinedMembers && activeModalRoom.joinedMembers.length > 0) return;
+
+    const fetchRoomMembers = async () => {
+      try {
+        const res = await fetch(`/api/matrix/rooms/${encodeURIComponent(activeModalRoom.id)}/members`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+          const membersData = await res.json(); // returns { joinedMembers, bannedMembers }
+          
+          // Helper to update the room object in state
+          setRooms((prevRooms: MatrixRoom[]) => {
+            return prevRooms.map(r => r.id === activeModalRoom.id ? {
+              ...r,
+              joinedMembers: membersData.joinedMembers || [],
+              bannedMembers: membersData.bannedMembers || []
+            } : r);
+          });
+
+          // Also update the active modal state object so the modal re-renders with members!
+          if (showRoomMembersModal && showRoomMembersModal.id === activeModalRoom.id) {
+            setShowRoomMembersModal(prev => prev ? {
+              ...prev,
+              joinedMembers: membersData.joinedMembers || [],
+              bannedMembers: membersData.bannedMembers || []
+            } : null);
+          }
+          if (showAddPrivilegedModal && showAddPrivilegedModal.id === activeModalRoom.id) {
+            setShowAddPrivilegedModal(prev => prev ? {
+              ...prev,
+              joinedMembers: membersData.joinedMembers || [],
+              bannedMembers: membersData.bannedMembers || []
+            } : null);
+          }
+          if (showAddMemberModal && showAddMemberModal.id === activeModalRoom.id) {
+            setShowAddMemberModal(prev => prev ? {
+              ...prev,
+              joinedMembers: membersData.joinedMembers || [],
+              bannedMembers: membersData.bannedMembers || []
+            } : null);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load room members:", err);
+      }
+    };
+
+    fetchRoomMembers();
+  }, [showRoomMembersModal?.id, showAddPrivilegedModal?.id, showAddMemberModal?.id, authToken]);
+
   // Chat/Messages states
   const [activeRoomChatId, setActiveRoomChatId] = useState<string | null>(null);
   const [activeRoomChatName, setActiveRoomChatName] = useState<string>('');
