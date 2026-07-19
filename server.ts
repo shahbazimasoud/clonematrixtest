@@ -2925,13 +2925,29 @@ app.post("/api/matrix/users/rooms/kick", authenticateToken, checkPermission(["Ow
 
   const activeConn = getActiveConnection();
   if (activeConn && activeConn.id !== "local") {
+    let kickedOnRemote = false;
+    // 1. Try Synapse Admin API room kick
     try {
-      await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
-        user_id: mxid,
-        reason: `Kicked via Admin Panel by ${req.user.username}`
+      await callSynapseAdminAPI("POST", `/_synapse/admin/v1/room/${encodeURIComponent(roomId)}/kick`, {
+        user_id: mxid
       });
+      kickedOnRemote = true;
+      console.log(`Successfully kicked ${mxid} from room ${roomId} via Synapse Admin API /room/kick`);
     } catch (err: any) {
-      console.error("Remote room kick error:", err.message);
+      console.warn("Synapse Admin API room kick failed, trying fallback client API kick:", err.message);
+    }
+
+    // 2. Fallback to Client API kick
+    if (!kickedOnRemote) {
+      try {
+        await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
+          user_id: mxid,
+          reason: `Kicked via Admin Panel by ${req.user.username}`
+        });
+        kickedOnRemote = true;
+      } catch (err: any) {
+        console.error("Fallback client API room kick failed:", err.message);
+      }
     }
   }
 
@@ -2984,13 +3000,29 @@ app.post("/api/matrix/users/rooms/ban", authenticateToken, checkPermission(["Own
 
   const activeConn = getActiveConnection();
   if (activeConn && activeConn.id !== "local") {
+    let bannedOnRemote = false;
+    // 1. Try Synapse Admin API room ban
     try {
-      await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/ban`, {
-        user_id: mxid,
-        reason: `Banned via Admin Panel by ${req.user.username}`
+      await callSynapseAdminAPI("POST", `/_synapse/admin/v1/room/${encodeURIComponent(roomId)}/ban`, {
+        user_id: mxid
       });
+      bannedOnRemote = true;
+      console.log(`Successfully banned ${mxid} from room ${roomId} via Synapse Admin API /room/ban`);
     } catch (err: any) {
-      console.error("Remote room ban error:", err.message);
+      console.warn("Synapse Admin API room ban failed, trying fallback client API ban:", err.message);
+    }
+
+    // 2. Fallback to Client API ban
+    if (!bannedOnRemote) {
+      try {
+        await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/ban`, {
+          user_id: mxid,
+          reason: `Banned via Admin Panel by ${req.user.username}`
+        });
+        bannedOnRemote = true;
+      } catch (err: any) {
+        console.error("Fallback client API room ban failed:", err.message);
+      }
     }
   }
 
@@ -4177,6 +4209,152 @@ function parseHomeserverYaml(yamlText: string): any {
 
   return hsConfig;
 }
+
+// System Update - Check
+app.get("/api/system/update/check", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  try {
+    // 1. Fetch from git origin
+    await new Promise((resolve, reject) => {
+      exec("git fetch origin master", (err, stdout, stderr) => {
+        if (err) {
+          // Try standard fetch as fallback
+          exec("git fetch", (err2) => {
+            if (err2) return reject(new Error("Unable to fetch updates from git origin. Check internet connection."));
+            resolve(true);
+          });
+        } else {
+          resolve(true);
+        }
+      });
+    });
+
+    // 2. Count commits behind
+    const commitsBehind: number = await new Promise((resolve) => {
+      exec("git rev-list --count HEAD..origin/master", (err, stdout) => {
+        if (err) {
+          exec("git rev-list --count HEAD..origin/main", (err2, stdout2) => {
+            if (err2) return resolve(0);
+            resolve(parseInt(stdout2.trim(), 10) || 0);
+          });
+        } else {
+          resolve(parseInt(stdout.trim(), 10) || 0);
+        }
+      });
+    });
+
+    // 3. Get latest 10 commit logs
+    const latestCommits: any[] = await new Promise((resolve) => {
+      exec('git log HEAD..origin/master --oneline -n 10 --format="%h - %s (%an, %ar)"', (err, stdout) => {
+        if (err) {
+          exec('git log HEAD..origin/main --oneline -n 10 --format="%h - %s (%an, %ar)"', (err2, stdout2) => {
+            if (err2) return resolve([]);
+            resolve(stdout2.trim().split("\n").filter(Boolean));
+          });
+        } else {
+          resolve(stdout.trim().split("\n").filter(Boolean));
+        }
+      });
+    });
+
+    // 4. Get current version/commit
+    const currentVersion: string = await new Promise((resolve) => {
+      exec('git log -1 --format="%h - %s (%ar)"', (err, stdout) => {
+        if (err) resolve("Unknown");
+        else resolve(stdout.trim());
+      });
+    });
+
+    res.json({
+      success: true,
+      updateAvailable: commitsBehind > 0,
+      commitsBehind,
+      latestCommits,
+      currentVersion
+    });
+  } catch (err: any) {
+    console.error("Check update error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to check system updates" });
+  }
+});
+
+// System Update - Apply
+app.post("/api/system/update/apply", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  try {
+    const logs: string[] = [];
+    logs.push("# Starting system update process...");
+
+    // 1. Stash any uncommitted changes
+    await new Promise((resolve) => {
+      logs.push("> git stash");
+      exec("git stash", (err, stdout, stderr) => {
+        if (stdout) logs.push(stdout.trim());
+        if (stderr) logs.push(stderr.trim());
+        resolve(true);
+      });
+    });
+
+    // 2. Perform git pull
+    const pullSuccess = await new Promise((resolve) => {
+      logs.push("> git pull origin master");
+      exec("git pull origin master", (err, stdout, stderr) => {
+        if (stdout) logs.push(stdout.trim());
+        if (stderr) logs.push(stderr.trim());
+        if (err) {
+          // Try pull from main branch as fallback
+          logs.push("> git pull origin main");
+          exec("git pull origin main", (err2, stdout2, stderr2) => {
+            if (stdout2) logs.push(stdout2.trim());
+            if (stderr2) logs.push(stderr2.trim());
+            if (err2) {
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          });
+        } else {
+          resolve(true);
+        }
+      });
+    });
+
+    // 3. Pop stashed changes back
+    await new Promise((resolve) => {
+      logs.push("> git stash pop");
+      exec("git stash pop", (err, stdout, stderr) => {
+        if (stdout) logs.push(stdout.trim());
+        if (stderr) logs.push(stderr.trim());
+        resolve(true);
+      });
+    });
+
+    if (!pullSuccess) {
+      throw new Error("Git pull failed. Check repository status or manual git fetch output.");
+    }
+
+    logs.push("# System update pulled successfully!");
+    logs.push("# Rebuilding application build assets...");
+
+    // 4. Run build to compile latest assets
+    await new Promise((resolve) => {
+      logs.push("> npm run build");
+      exec("npm run build", (err, stdout, stderr) => {
+        if (stdout) logs.push(stdout.trim());
+        if (stderr) logs.push(stderr.trim());
+        resolve(true);
+      });
+    });
+
+    logs.push("# Update process finished successfully! The application will pick up changes on next load.");
+
+    res.json({
+      success: true,
+      logs
+    });
+  } catch (err: any) {
+    console.error("Apply update error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to apply system updates" });
+  }
+});
 
 app.get("/api/matrix/config", authenticateToken, async (req, res) => {
   try {
