@@ -648,11 +648,65 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   const trimmedSql = interpolatedSql.trim();
   const isWriteQuery = /^\s*(insert|update|delete|create|drop|alter|truncate)\b/i.test(trimmedSql);
   
-  const dbUser = config.dbUser || "synapse_user";
-  const dbPass = config.dbPass || "";
-  const dbName = config.dbName || "synapse";
-  const dbHost = config.dbHost || "localhost";
-  const dbPort = config.dbPort || 5432;
+  let dbUser = config.dbUser;
+  let dbPass = config.dbPass;
+  let dbName = config.dbName;
+  let dbHost = config.dbHost;
+  let dbPort = config.dbPort;
+
+  // Dynamically load from /etc/matrix-stack.conf or homeserver.yaml if missing
+  if (!dbUser || !dbPass || !dbName) {
+    try {
+      const sudoPrefix = config.username === "root" ? "" : "sudo ";
+      const confRaw = await executeSSHCommand(config, `${sudoPrefix}cat /etc/matrix-stack.conf 2>/dev/null || true`);
+      if (confRaw && confRaw.trim()) {
+        const parsedConfig: any = {};
+        confRaw.split("\n").forEach((line) => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) return;
+          const parts = trimmed.split("=");
+          if (parts.length >= 2) {
+            parsedConfig[parts[0].trim()] = parts.slice(1).join("=").trim();
+          }
+        });
+        if (parsedConfig.PG_USER) dbUser = dbUser || parsedConfig.PG_USER;
+        if (parsedConfig.PG_PASS) dbPass = dbPass || parsedConfig.PG_PASS;
+        if (parsedConfig.PG_DB) dbName = dbName || parsedConfig.PG_DB;
+        if (parsedConfig.PG_HOST) dbHost = dbHost || parsedConfig.PG_HOST;
+        if (parsedConfig.PG_PORT) dbPort = dbPort || parseInt(parsedConfig.PG_PORT);
+      }
+    } catch (e) {
+      console.warn("Failed to dynamically read remote matrix-stack.conf:", e);
+    }
+
+    if (!dbUser || !dbPass || !dbName) {
+      try {
+        const sudoPrefix = config.username === "root" ? "" : "sudo ";
+        const homeserverRaw = await executeSSHCommand(config, `${sudoPrefix}cat /etc/matrix-synapse/homeserver.yaml 2>/dev/null || true`);
+        if (homeserverRaw && homeserverRaw.trim()) {
+          const dbUserMatch = homeserverRaw.match(/user:\s*["']?([^"'\s]+)["']?/);
+          const dbPassMatch = homeserverRaw.match(/password:\s*["']?([^"'\s]+)["']?/);
+          const dbNameMatch = homeserverRaw.match(/database:\s*["']?([^"'\s]+)["']?/);
+          const dbHostMatch = homeserverRaw.match(/host:\s*["']?([^"'\s]+)["']?/);
+          const dbPortMatch = homeserverRaw.match(/port:\s*(\d+)/);
+
+          if (dbUserMatch) dbUser = dbUser || dbUserMatch[1];
+          if (dbPassMatch) dbPass = dbPass || dbPassMatch[1];
+          if (dbNameMatch) dbName = dbName || dbNameMatch[1];
+          if (dbHostMatch) dbHost = dbHost || dbHostMatch[1];
+          if (dbPortMatch) dbPort = dbPort || parseInt(dbPortMatch[1]);
+        }
+      } catch (e) {
+        console.warn("Failed to dynamically read remote homeserver.yaml:", e);
+      }
+    }
+  }
+
+  dbUser = dbUser || "synapse_user";
+  dbPass = dbPass || "";
+  dbName = dbName || "synapse";
+  dbHost = dbHost || "localhost";
+  dbPort = dbPort || 5432;
   
   let cmd = "";
   if (isWriteQuery) {

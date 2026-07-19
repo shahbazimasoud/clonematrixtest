@@ -1532,7 +1532,13 @@ app.get("/api/matrix/users", authenticateToken, async (req, res) => {
       return res.json(matrixUsers);
     }
   } catch (e: any) {
-    console.log("Postgres user fetch notice: falling back to local DB (" + e.message + ")");
+    console.log("Postgres user fetch notice: falling back (" + e.message + ")");
+  }
+
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.id !== "local") {
+    console.log("Both Synapse Admin API and Postgres failed on remote node. Returning empty list instead of local fallback to avoid confusion.");
+    return res.json([]);
   }
 
   const db = readDb();
@@ -3600,9 +3606,15 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
 
   // 3. Fallback to local DB from db.json if everything else failed
   if (!fetchedFromRemote || roomsList.length === 0) {
-    console.log("Both Synapse Admin API and Postgres failed. Falling back to local matrixRooms file database.");
-    const db = readDb();
-    roomsList = db.matrixRooms || [];
+    const activeConn = getActiveConnection();
+    if (activeConn && activeConn.id !== "local") {
+      console.log("Both Synapse Admin API and Postgres failed on remote node. Returning empty list instead of local fallback to avoid confusion.");
+      roomsList = [];
+    } else {
+      console.log("Both Synapse Admin API and Postgres failed. Falling back to local matrixRooms file database.");
+      const db = readDb();
+      roomsList = db.matrixRooms || [];
+    }
   }
 
   res.json(roomsList);
@@ -3665,11 +3677,14 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
 
   // 3. Fallback to local DB
   if (!fetched) {
-    const db = readDb();
-    const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
-    if (localRoom) {
-      joinedMembers = localRoom.joinedMembers || [];
-      bannedMembers = localRoom.bannedMembers || [];
+    const activeConn = getActiveConnection();
+    if (activeConn && activeConn.id === "local") {
+      const db = readDb();
+      const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
+      if (localRoom) {
+        joinedMembers = localRoom.joinedMembers || [];
+        bannedMembers = localRoom.bannedMembers || [];
+      }
     }
   }
 
