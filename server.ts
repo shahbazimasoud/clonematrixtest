@@ -3412,30 +3412,59 @@ app.post("/api/matrix/rooms/create", authenticateToken, checkPermission(["Owner"
   res.status(201).json(newRoom);
 });
 
-app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { roomId, purge, sendMessage, messageText } = req.body;
   if (!roomId) return res.status(400).json({ error: "Room ID is required" });
 
   const db = readDb();
   const roomIndex = (db.matrixRooms || []).findIndex((r: any) => r.id === roomId);
-  if (roomIndex === -1) return res.status(404).json({ error: "Room not found" });
+  const room = roomIndex !== -1 ? db.matrixRooms[roomIndex] : null;
 
-  const room = db.matrixRooms[roomIndex];
-  db.matrixRooms.splice(roomIndex, 1);
-  writeDb(db);
+  let apiSuccess = false;
+  let apiError = null;
+
+  try {
+    const payload: any = {
+      purge: purge !== undefined ? !!purge : true,
+      block: !!sendMessage
+    };
+    if (sendMessage) {
+      payload.message = messageText || "This room has been shut down.";
+    }
+
+    console.log("Calling Synapse Admin API to delete room:", roomId, payload);
+    const apiRes = await callSynapseAdminAPI("DELETE", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}`, payload);
+    
+    if (apiRes && !apiRes.error && apiRes.errcode === undefined) {
+      apiSuccess = true;
+    } else {
+      apiError = apiRes ? (apiRes.error || apiRes.errcode) : "Unknown error";
+    }
+  } catch (err: any) {
+    apiError = err.message || err;
+    console.warn("Could not delete room via Synapse Admin API:", apiError);
+  }
+
+  // Always keep local DB synced
+  if (roomIndex !== -1) {
+    db.matrixRooms.splice(roomIndex, 1);
+  }
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
     timestamp: new Date().toISOString(),
     username: req.user.username,
     action: "Shutdown Matrix Room",
-    target: room.name,
-    status: "success",
-    details: `Shutdown room ${roomId}. Purged: ${!!purge}. Message sent: ${!!sendMessage}`
+    target: room ? room.name : roomId,
+    status: apiSuccess ? "success" : (apiError ? "failed" : "success"),
+    details: `Shutdown room ${roomId}. Purged: ${!!purge}. Message sent: ${!!sendMessage}. API Status: ${apiSuccess ? "Success" : "Failed (" + apiError + ")"}`
   });
   writeDb(db);
 
-  res.json({ message: "Room shutdown and deleted successfully" });
+  res.json({ 
+    message: apiSuccess ? "Room shutdown and deleted successfully" : `Room removed locally but Synapse Admin API returned: ${apiError}`,
+    success: true 
+  });
 });
 
 app.post("/api/matrix/rooms/members/kick", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
