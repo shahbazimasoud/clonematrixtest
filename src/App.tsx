@@ -179,6 +179,10 @@ export default function App() {
   const [backups, setBackups] = useState<BackupItem[]>([]);
   const [undoHistory, setUndoHistory] = useState<UndoItem[]>([]);
 
+  // System Update state
+  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
+  const [commitsBehind, setCommitsBehind] = useState<number>(0);
+
   // Connection Profile states
   const [connections, setConnections] = useState<any[]>([]);
   const [activeConnection, setActiveConnection] = useState<any>({ id: 'local', name: 'Local Server (This Machine)', host: 'localhost', isActive: true });
@@ -231,6 +235,7 @@ export default function App() {
         fetchBackups(authToken);
         setupWebSocket(authToken);
         fetchConnections(authToken);
+        checkUpdates(authToken);
       })
       .catch(() => {
         handleLogout();
@@ -352,6 +357,21 @@ export default function App() {
     fetch('/api/backups', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setBackups(data));
+  };
+
+  const checkUpdates = (token = authToken) => {
+    if (!token) return;
+    fetch('/api/system/update/check', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        setUpdateAvailable(data.updateAvailable);
+        setCommitsBehind(data.commitsBehind);
+      }
+    })
+    .catch(err => console.error("Error checking updates in App header:", err));
   };
 
   // Login handler
@@ -799,6 +819,18 @@ export default function App() {
 
             {/* Middle: Theme Switcher & User Indicator */}
             <div className="flex items-center gap-4">
+              {/* Update Indicator */}
+              {updateAvailable && (
+                <button
+                  onClick={() => setActiveView('terminal')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 font-bold hover:bg-rose-500/20 active:scale-95 transition-all cursor-pointer animate-pulse"
+                  title={lang === 'fa' ? `بروزرسانی جدید موجود است (${commitsBehind} کامیت عقب)` : `Update Available (${commitsBehind} commits behind)`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '4s' }} />
+                  <span>{lang === 'fa' ? 'بروزرسانی موجود است!' : 'Update Available!'}</span>
+                </button>
+              )}
+
               {/* Theme Switcher */}
               <button
                 onClick={toggleTheme}

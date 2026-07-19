@@ -416,6 +416,22 @@ export function readDb(): any {
     updated = true;
   }
 
+  // Load connections backup from connections.json if it exists (which is untracked by git and survives git reset/pull)
+  const backupPath = path.join(process.cwd(), "connections.json");
+  if (fs.existsSync(backupPath)) {
+    try {
+      const backupRaw = fs.readFileSync(backupPath, "utf8");
+      if (backupRaw && backupRaw.trim()) {
+        const backupConnections = JSON.parse(backupRaw);
+        if (Array.isArray(backupConnections) && backupConnections.length > 0) {
+          data.connections = backupConnections;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to read backup connections.json:", err);
+    }
+  }
+
   if (!data.connections || !Array.isArray(data.connections)) {
     data.connections = [
       {
@@ -494,6 +510,14 @@ export function readDb(): any {
 
 export function writeDb(data: any) {
   writeSandboxFile("/db/panel_data.json", JSON.stringify(data, null, 2));
+  if (data && data.connections) {
+    try {
+      const connectionsFilePath = path.join(process.cwd(), "connections.json");
+      fs.writeFileSync(connectionsFilePath, JSON.stringify(data.connections, null, 2), "utf8");
+    } catch (err) {
+      console.error("Failed to write backup connections.json:", err);
+    }
+  }
 }
 
 export function getActiveConnection(): ConnectionProfile {
