@@ -1134,6 +1134,10 @@ export default function App() {
                 isExecuting={isExecuting}
                 onExecuteCommand={handleExecuteCommand}
                 userRole={currentUser?.role || 'Viewer'}
+                authToken={authToken}
+                lang={lang}
+                isLightMode={isLightMode}
+                showToast={showToast}
               />
             )}
 

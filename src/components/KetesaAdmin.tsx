@@ -305,21 +305,9 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   const isRtl = lang === 'fa';
   const hasWriteAccess = currentUser?.role !== 'Viewer';
 
-  const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer' | 'updates'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer'>('users');
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
-
-  // System Updates & Maintenance States
-  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
-  const [commitsBehind, setCommitsBehind] = useState<number>(0);
-  const [latestCommits, setLatestCommits] = useState<any[]>([]);
-  const [currentVersion, setCurrentVersion] = useState<string>('');
-  const [updateLogs, setUpdateLogs] = useState<string[]>([
-    '# Update Manager ready.',
-    '# Click "Check for Updates" to query the repository status.'
-  ]);
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
-  const [isApplyingUpdate, setIsApplyingUpdate] = useState<boolean>(false);
 
   // Custom Installer & System Maintenance States
   const [installerConfig, setInstallerConfig] = useState<any>({
@@ -359,81 +347,6 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       }
     } catch (e) {
       console.error("Failed to fetch stack config", e);
-    }
-  };
-
-  const checkSystemUpdates = async () => {
-    setIsCheckingUpdate(true);
-    setUpdateLogs((prev) => [...prev, '# querying remote repository status...', '> git fetch origin master && git status']);
-    try {
-      const res = await fetch('/api/system/update/check', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUpdateAvailable(data.updateAvailable);
-        setCommitsBehind(data.commitsBehind);
-        setLatestCommits(data.latestCommits || []);
-        setCurrentVersion(data.currentVersion || '');
-        
-        const newLogs = [
-          `# Query completed successfully!`,
-          `# Current installed commit: ${data.currentVersion || 'Unknown'}`,
-          data.updateAvailable 
-            ? `[!] UPDATE AVAILABLE: You are behind by ${data.commitsBehind} commit(s).` 
-            : `[✓] UP TO DATE: Your admin panel is running the latest version.`
-        ];
-        if (data.latestCommits && data.latestCommits.length > 0) {
-          newLogs.push('# New commits available:');
-          data.latestCommits.forEach((c: string) => {
-            newLogs.push(`  * ${c}`);
-          });
-        }
-        setUpdateLogs((prev) => [...prev, ...newLogs]);
-      } else {
-        const errData = await res.json();
-        setUpdateLogs((prev) => [...prev, `[ERR] failed to check for updates: ${errData.error || 'Server error'}`]);
-      }
-    } catch (e: any) {
-      setUpdateLogs((prev) => [...prev, `[ERR] failed to check for updates: ${e.message || 'Network error'}`]);
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  };
-
-  const applySystemUpdates = async () => {
-    if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
-    if (!safeConfirm(isRtl ? 'آیا از بروزرسانی پنل به آخرین نسخه مطمئن هستید؟ این فرآیند ممکن است چند لحظه طول بکشد.' : 'Are you sure you want to update the panel to the latest version? This process may take a few moments.')) return;
-
-    setIsApplyingUpdate(true);
-    setUpdateLogs((prev) => [...prev, '# launching system update...', '> git pull && npm run build']);
-    try {
-      const res = await fetch('/api/system/update/apply', {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.logs && Array.isArray(data.logs)) {
-          setUpdateLogs((prev) => [...prev, ...data.logs]);
-        }
-        setUpdateAvailable(false);
-        setCommitsBehind(0);
-        setLatestCommits([]);
-        showToast('success', isRtl ? 'پنل با موفقیت بروزرسانی شد!' : 'Panel updated successfully!');
-      } else {
-        const errData = await res.json();
-        setUpdateLogs((prev) => [...prev, `[ERR] update failed: ${errData.error || 'Server error'}`]);
-        showToast('error', isRtl ? 'بروزرسانی با خطا مواجه شد' : 'Update failed');
-      }
-    } catch (e: any) {
-      setUpdateLogs((prev) => [...prev, `[ERR] update failed: ${e.message || 'Network error'}`]);
-      showToast('error', isRtl ? 'بروزرسانی با خطا مواجه شد' : 'Update failed');
-    } finally {
-      setIsApplyingUpdate(false);
     }
   };
 
@@ -2026,28 +1939,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           </span>
         </button>
 
-        <button
-          onClick={() => {
-            setActiveTab('updates');
-            checkSystemUpdates();
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
-            activeTab === 'updates'
-              ? isLightMode
-                ? 'bg-teal-50 border border-teal-200 text-teal-700 shadow-sm'
-                : 'bg-gradient-to-r from-teal-500/20 to-emerald-500/20 border border-teal-500/30 text-teal-200 shadow-md'
-              : isLightMode
-                ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 border border-transparent'
-                : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border border-transparent'
-          }`}
-          id="tab-updates-btn"
-        >
-          <RefreshCw className={`h-4 w-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-          <span>{t.tabUpdates}</span>
-          {updateAvailable && (
-            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-          )}
-        </button>
+
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -3186,174 +3078,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
           </motion.div>
         )}
 
-        {/* TAB 6: SYSTEM UPDATES */}
-        {activeTab === 'updates' && (
-          <motion.div
-            key="updates-tab"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.25 }}
-            className="grid grid-cols-1 xl:grid-cols-3 gap-6 text-xs"
-          >
-            {/* Left Column: Update Controls & Status */}
-            <div className="xl:col-span-1 space-y-6">
-              <div className={`p-5 rounded-2xl border ${
-                isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/50 border-white/5'
-              }`}>
-                <div className="flex items-center gap-2 mb-4 border-b pb-3">
-                  <RefreshCw className={`h-5 w-5 text-teal-400 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-                  <h3 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-gray-100'}`}>
-                    {isRtl ? 'مدیریت بروزرسانی‌های پنل' : 'Panel Update Control Center'}
-                  </h3>
-                </div>
 
-                <div className="space-y-4">
-                  {/* Current Version */}
-                  <div className={`p-4 rounded-xl border ${
-                    isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'
-                  }`}>
-                    <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">
-                      {isRtl ? 'نسخه فعلی نصب شده' : 'Currently Installed Version'}
-                    </span>
-                    <span className={`block font-mono text-xs font-semibold ${isLightMode ? 'text-slate-800' : 'text-indigo-400'}`}>
-                      {currentVersion || (isRtl ? 'در حال بررسی...' : 'Checking...')}
-                    </span>
-                  </div>
-
-                  {/* Update Status Banner */}
-                  {updateAvailable ? (
-                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                        </span>
-                        <span className="font-bold text-xs">
-                          {isRtl ? 'بروزرسانی جدید در دسترس است!' : 'New Update Available!'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] leading-relaxed">
-                        {isRtl 
-                          ? `نسخه شما به تعداد ${commitsBehind} کامیت از مخزن اصلی عقب‌تر است. لطفاً جهت دریافت جدیدترین امکانات دکمه بروزرسانی را بزنید.`
-                          : `You are currently ${commitsBehind} commits behind the main branch. Please update to get the latest features and security improvements.`}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                        <span className="font-bold text-xs">
-                          {isRtl ? 'سیستم بروز است' : 'System Up to Date'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] leading-relaxed mt-1">
-                        {isRtl 
-                          ? 'پنل ماتریکس شما در حال حاضر از آخرین نسخه مخزن استفاده می‌کند و نیازی به بروزرسانی ندارد.'
-                          : 'Your Matrix Admin panel is running the latest code from the remote repository.'}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="pt-2 flex flex-col gap-2">
-                    <button
-                      disabled={isCheckingUpdate || isApplyingUpdate}
-                      onClick={checkSystemUpdates}
-                      className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold border transition-all duration-200 ${
-                        isCheckingUpdate 
-                          ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent'
-                          : isLightMode
-                            ? 'border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 active:scale-[0.99]'
-                            : 'border-white/10 bg-white/5 hover:bg-white/10 text-gray-200 active:scale-[0.99]'
-                      }`}
-                    >
-                      <RefreshCw className={`h-4 w-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-                      <span>{isRtl ? 'بررسی وجود بروزرسانی' : 'Check for Updates'}</span>
-                    </button>
-
-                    <button
-                      disabled={isCheckingUpdate || isApplyingUpdate || !hasWriteAccess}
-                      onClick={applySystemUpdates}
-                      className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold border transition-all duration-200 ${
-                        isApplyingUpdate 
-                          ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent'
-                          : !hasWriteAccess
-                            ? 'border-red-500/10 text-red-400 bg-red-500/5 cursor-not-allowed'
-                            : updateAvailable
-                              ? 'bg-gradient-to-r from-teal-500 to-emerald-600 text-white border-transparent hover:brightness-110 active:scale-[0.99] shadow-lg shadow-emerald-500/20'
-                              : isLightMode
-                                ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                                : 'border-white/5 bg-white/5 text-gray-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {isApplyingUpdate ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                      <span>{isRtl ? 'نصب آخرین بروزرسانی' : 'Install Latest Update'}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Console Terminal output */}
-            <div className="xl:col-span-2 space-y-4">
-              <div className={`p-5 rounded-2xl border flex flex-col h-[400px] ${
-                isLightMode ? 'bg-slate-900 border-slate-950 text-slate-100 shadow-xl' : 'bg-black/80 border-white/5 text-slate-200'
-              }`}>
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                      <span className="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
-                      <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>
-                    </div>
-                    <span className="font-mono text-[10px] text-gray-400 font-bold ml-2">git-updater@matrix-panel:~</span>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setUpdateLogs([
-                        '# Console logs cleared.',
-                        '# Click "Check for Updates" to retrieve current status.'
-                      ]);
-                    }}
-                    className="text-[10px] text-gray-500 hover:text-gray-300 font-semibold uppercase px-2 py-0.5 rounded border border-white/5 hover:border-white/20 transition-all font-mono"
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                {/* Console Log Lines */}
-                <div className="flex-1 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 pr-2 select-text text-left ltr scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                  {updateLogs.map((log, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`${
-                        log.startsWith('[ERR]') 
-                          ? 'text-red-400 font-bold' 
-                          : log.startsWith('[✓]') 
-                            ? 'text-emerald-400 font-bold'
-                            : log.startsWith('[!]')
-                              ? 'text-amber-400 font-bold animate-pulse'
-                              : log.startsWith('#') 
-                                ? 'text-cyan-400 font-bold' 
-                                : log.startsWith('>') 
-                                  ? 'text-indigo-300 font-semibold' 
-                                  : 'text-gray-300'
-                      }`}
-                    >
-                      {log}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
       </AnimatePresence>
 
       {/* ========================================== */}

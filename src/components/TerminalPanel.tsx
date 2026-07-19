@@ -4,19 +4,136 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Terminal, Play, ShieldAlert, Circle, RefreshCw, Trash2, ArrowUpRight } from 'lucide-react';
+import { Terminal, Play, ShieldAlert, Circle, RefreshCw, Trash2, ArrowUpRight, Download } from 'lucide-react';
 
 interface TerminalPanelProps {
   logs: string[];
   isExecuting: boolean;
   onExecuteCommand: (command: string) => void;
   userRole: string;
+  authToken: string | null;
+  lang: 'fa' | 'en';
+  isLightMode?: boolean;
+  showToast: (type: 'success' | 'error', text: string) => void;
 }
 
-export default function TerminalPanel({ logs, isExecuting, onExecuteCommand, userRole }: TerminalPanelProps) {
+export default function TerminalPanel({ 
+  logs, 
+  isExecuting, 
+  onExecuteCommand, 
+  userRole, 
+  authToken, 
+  lang, 
+  isLightMode = false,
+  showToast 
+}: TerminalPanelProps) {
   const terminalEndRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<'console' | 'install' | 'homeserver'>('console');
+  const [activeTab, setActiveTab] = useState<'console' | 'install' | 'updates'>('console');
   const [customInput, setCustomInput] = useState('');
+
+  // System Updates & Maintenance States
+  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
+  const [commitsBehind, setCommitsBehind] = useState<number>(0);
+  const [latestCommits, setLatestCommits] = useState<any[]>([]);
+  const [currentVersion, setCurrentVersion] = useState<string>('');
+  const [updateLogs, setUpdateLogs] = useState<string[]>([
+    '# Update Manager ready.',
+    '# Click "Check for Updates" to query the repository status.'
+  ]);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState<boolean>(false);
+
+  const isRtl = lang === 'fa';
+  const hasWriteAccess = userRole !== 'Viewer';
+
+  const safeConfirm = (msg: string): boolean => {
+    try {
+      return window.confirm(msg);
+    } catch (_) {
+      return true;
+    }
+  };
+
+  const checkSystemUpdates = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateLogs((prev) => [...prev, '# querying remote repository status...', '> git fetch origin master && git status']);
+    try {
+      const res = await fetch('/api/system/update/check', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUpdateAvailable(data.updateAvailable);
+        setCommitsBehind(data.commitsBehind);
+        setLatestCommits(data.latestCommits || []);
+        setCurrentVersion(data.currentVersion || '');
+        
+        const newLogs = [
+          `# Query completed successfully!`,
+          `# Current installed commit: ${data.currentVersion || 'Unknown'}`,
+          data.updateAvailable 
+            ? `[!] UPDATE AVAILABLE: You are behind by ${data.commitsBehind} commit(s).` 
+            : `[✓] UP TO DATE: Your admin panel is running the latest version.`
+        ];
+        if (data.latestCommits && data.latestCommits.length > 0) {
+          newLogs.push('# New commits available:');
+          data.latestCommits.forEach((c: string) => {
+            newLogs.push(`  * ${c}`);
+          });
+        }
+        setUpdateLogs((prev) => [...prev, ...newLogs]);
+      } else {
+        const errData = await res.json();
+        setUpdateLogs((prev) => [...prev, `[ERR] failed to check for updates: ${errData.error || 'Server error'}`]);
+      }
+    } catch (e: any) {
+      setUpdateLogs((prev) => [...prev, `[ERR] failed to check for updates: ${e.message || 'Network error'}`]);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const applySystemUpdates = async () => {
+    if (!hasWriteAccess) return showToast('error', isRtl ? 'دسترسی غیرمجاز: نقش شما اجازه انجام این کار را نمی‌دهد.' : 'Unauthorized: Your role does not have privileges for this action.');
+    if (!safeConfirm(isRtl ? 'آیا از بروزرسانی پنل به آخرین نسخه مطمئن هستید؟ این فرآیند ممکن است چند لحظه طول بکشد.' : 'Are you sure you want to update the panel to the latest version? This process may take a few moments.')) return;
+
+    setIsApplyingUpdate(true);
+    setUpdateLogs((prev) => [...prev, '# launching system update...', '> git pull && npm run build']);
+    try {
+      const res = await fetch('/api/system/update/apply', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.logs && Array.isArray(data.logs)) {
+          setUpdateLogs((prev) => [...prev, ...data.logs]);
+        }
+        setUpdateAvailable(false);
+        setCommitsBehind(0);
+        setLatestCommits([]);
+        showToast('success', isRtl ? 'پنل با موفقیت بروزرسانی شد!' : 'Panel updated successfully!');
+      } else {
+        const errData = await res.json();
+        setUpdateLogs((prev) => [...prev, `[ERR] update failed: ${errData.error || 'Server error'}`]);
+        showToast('error', isRtl ? 'بروزرسانی با خطا مواجه شد' : 'Update failed');
+      }
+    } catch (e: any) {
+      setUpdateLogs((prev) => [...prev, `[ERR] update failed: ${e.message || 'Network error'}`]);
+      showToast('error', isRtl ? 'بروزرسانی با خطا مواجه شد' : 'Update failed');
+    } finally {
+      setIsApplyingUpdate(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'updates' && !currentVersion) {
+      checkSystemUpdates();
+    }
+  }, [activeTab]);
 
   const scrollToBottom = () => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -225,6 +342,16 @@ export default function TerminalPanel({ logs, isExecuting, onExecuteCommand, use
             >
               install.log
             </button>
+            <button 
+              onClick={() => setActiveTab('updates')} 
+              className={`text-xs px-3 py-1 rounded-md font-mono flex items-center gap-1.5 ${activeTab === 'updates' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              <RefreshCw className={`h-3 w-3 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+              <span>panel-updates</span>
+              {updateAvailable && (
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+              )}
+            </button>
           </div>
         </div>
 
@@ -251,13 +378,140 @@ export default function TerminalPanel({ logs, isExecuting, onExecuteCommand, use
 
               <div ref={terminalEndRef} />
             </div>
-          ) : (
+          ) : activeTab === 'install' ? (
             <div className="space-y-1 text-slate-400">
               <p className="text-slate-500 mb-2"># Reading /var/log/matrix_stack_install.log (Last 50 entries)</p>
               <p className="text-slate-300">Initial preflight checks successfully completed.</p>
               <p className="text-slate-300">Database setup finalized with Postgres user role.</p>
               <p className="text-emerald-400">✅ Synapse package v1.98.0 initialized and launched on port 8008.</p>
               <p className="text-emerald-400">✅ Element Web client configured with self-signed TLS profiles.</p>
+            </div>
+          ) : (
+            <div className="space-y-4 font-sans text-xs">
+              {/* Header inside console */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/5 border border-white/5">
+                <div>
+                  <h3 className="font-bold text-sm text-gray-100 flex items-center gap-2">
+                    <RefreshCw className={`h-4 w-4 text-teal-400 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                    <span>{isRtl ? 'مدیریت بروزرسانی‌های پنل' : 'Panel Update Control Center'}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {isRtl ? 'نسخه فعلی نصب شده:' : 'Currently Installed Version:'}{' '}
+                    <span className="font-mono text-indigo-400 font-semibold">{currentVersion || (isRtl ? 'در حال بررسی...' : 'Checking...')}</span>
+                  </p>
+                </div>
+
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    disabled={isCheckingUpdate || isApplyingUpdate}
+                    onClick={checkSystemUpdates}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                      isCheckingUpdate 
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10 text-gray-200 active:scale-[0.99] cursor-pointer'
+                    }`}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                    <span>{isRtl ? 'بررسی بروزرسانی' : 'Check Updates'}</span>
+                  </button>
+
+                  <button
+                    disabled={isCheckingUpdate || isApplyingUpdate || isViewer}
+                    onClick={applySystemUpdates}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                      isApplyingUpdate 
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-transparent'
+                        : isViewer
+                          ? 'border-red-500/10 text-red-400 bg-red-500/5 cursor-not-allowed'
+                          : updateAvailable
+                            ? 'bg-gradient-to-r from-teal-500 to-emerald-600 text-white border-transparent hover:brightness-110 active:scale-[0.99] shadow-lg shadow-emerald-500/20 cursor-pointer'
+                            : 'border-white/5 bg-white/5 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {isApplyingUpdate ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    <span>{isRtl ? 'نصب بروزرسانی' : 'Install Update'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Banner */}
+              {updateAvailable ? (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-start gap-2.5">
+                  <span className="relative flex h-2 w-2 mt-1 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </span>
+                  <div>
+                    <span className="font-bold text-xs block">
+                      {isRtl ? 'بروزرسانی جدید در دسترس است!' : 'New Update Available!'}
+                    </span>
+                    <p className="text-[11px] leading-relaxed mt-0.5 text-slate-400">
+                      {isRtl 
+                        ? `نسخه شما به تعداد ${commitsBehind} کامیت از مخزن اصلی عقب‌تر است. لطفاً جهت دریافت جدیدترین امکانات دکمه بروزرسانی را بزنید.`
+                        : `You are currently ${commitsBehind} commits behind the main branch. Please update to get the latest features.`}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-start gap-2.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 mt-1 shrink-0"></span>
+                  <div>
+                    <span className="font-bold text-xs block">
+                      {isRtl ? 'سیستم بروز است' : 'System Up to Date'}
+                    </span>
+                    <p className="text-[11px] leading-relaxed mt-0.5 text-slate-400">
+                      {isRtl 
+                        ? 'پنل ماتریکس شما در حال حاضر از آخرین نسخه مخزن استفاده می‌کند و نیازی به بروزرسانی ندارد.'
+                        : 'Your Matrix Admin panel is running the latest code from the remote repository.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Console log box */}
+              <div className="flex flex-col h-[260px] rounded-xl border border-white/5 bg-black/40 overflow-hidden">
+                <div className="flex items-center justify-between border-b border-white/5 px-4 py-2 bg-black/20">
+                  <span className="font-mono text-[10px] text-gray-400 font-bold">git-updater@matrix-panel:~</span>
+                  <button 
+                    onClick={() => {
+                      setUpdateLogs([
+                        '# Console logs cleared.',
+                        '# Click "Check for Updates" to retrieve current status.'
+                      ]);
+                    }}
+                    className="text-[9px] text-gray-500 hover:text-gray-300 font-semibold uppercase px-1.5 py-0.5 rounded border border-white/5 hover:border-white/10 transition-all font-mono"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div className="flex-1 p-4 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 select-text text-left ltr scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                  {updateLogs.map((log, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`${
+                        log.startsWith('[ERR]') 
+                          ? 'text-red-400 font-bold' 
+                          : log.startsWith('[✓]') 
+                            ? 'text-emerald-400 font-bold'
+                            : log.startsWith('[!]')
+                              ? 'text-amber-400 font-bold animate-pulse'
+                              : log.startsWith('#') 
+                                ? 'text-cyan-400 font-bold' 
+                                : log.startsWith('>') 
+                                  ? 'text-indigo-300 font-semibold' 
+                                  : 'text-gray-300'
+                      }`}
+                    >
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
