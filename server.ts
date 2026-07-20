@@ -6577,6 +6577,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         const command = String(data.command || "").trim();
         const args = data.args;
 
+        console.log(`[WS EXECUTE_COMMAND] Received message - command: "${command}", args:`, JSON.stringify(args));
+
         // Perform RBAC validation
         if (role === "Viewer") {
           ws.send(JSON.stringify({ type: "cmd_err", text: "Permission Denied: Viewer role cannot execute console tasks." }));
@@ -6640,6 +6642,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                 
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: "📤 Uploading Matrix installation script to remote server..." }));
                 
+                console.log(`[SSH INSTALL] Uploading installer script to remote via writeCmd: "${writeCmd}"`);
                 conn.exec(writeCmd, (err, stream) => {
                   if (err) {
                     ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to upload installer script: ${err.message}` }));
@@ -6647,6 +6650,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                     return;
                   }
                   stream.on("close", () => {
+                    console.log(`[SSH INSTALL] Making script executable via: "${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh"`);
                     conn.exec(`${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh`, (err2, stream2) => {
                       if (err2) {
                         ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to chmod installer script: ${err2.message}` }));
@@ -6657,6 +6661,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                         // Trigger execution of the newly uploaded installer
                         ws.send(JSON.stringify({ type: "cmd_stdout", text: "🚀 Execution starting on remote host..." }));
                         const finalCmd = `${sudoPrefix}bash /tmp/install-matrix-stack.sh`;
+                        console.log(`[SSH INSTALL] Executing installer script via finalCmd: "${finalCmd}"`);
                         conn.exec(finalCmd, { pty: true }, (err3, finalStream) => {
                           if (err3) {
                             ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to execute command: ${err3.message}` }));
@@ -7058,13 +7063,14 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
               fullCmd = `echo "${b64}" | base64 -d | sudo bash`;
             }
             
-            if (command === "install" || command === "custom_install") {
+            if ((command === "install" || command === "custom_install") && !args?.config) {
               ws.send(JSON.stringify({ type: "cmd_stdout", text: "❌ Error: Direct raw execution of install command is blocked." }));
               ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
               conn.end();
               return;
             }
 
+            console.log(`[SSH EXECUTE_COMMAND] Executing command on SSH stream - fullCmd: "${fullCmd}"`);
             conn.exec(fullCmd, (err, stream) => {
               if (err) {
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ [SSH EXEC ERROR] ${err.message}` }));
