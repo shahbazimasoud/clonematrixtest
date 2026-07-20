@@ -689,12 +689,32 @@ export default function TerminalPanel({
               <div ref={terminalEndRef} />
             </div>
           ) : activeTab === 'install' ? (
-            <div className="space-y-1 text-slate-400">
-              <p className="text-slate-500 mb-2"># Reading /var/log/matrix_stack_install.log (Last 50 entries)</p>
-              <p className="text-slate-300">Initial preflight checks successfully completed.</p>
-              <p className="text-slate-300">Database setup finalized with Postgres user role.</p>
-              <p className="text-emerald-400">✅ Synapse package v1.98.0 initialized and launched on port 8008.</p>
-              <p className="text-emerald-400">✅ Element Web client configured with self-signed TLS profiles.</p>
+            <div className="space-y-1">
+              <p className="text-slate-500 mb-2"># Reading live installer log /var/log/matrix_stack_install.log</p>
+              {logs.length > 1 ? (
+                <>
+                  {logs.map((log, index) => (
+                    <div key={index} className="whitespace-pre-wrap">
+                      {formatLogLine(log)}
+                    </div>
+                  ))}
+                  {isExecuting && (
+                    <div className="flex items-center gap-2 text-rose-400 mt-2">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Streaming installation stdout/stderr in real-time...</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-1 text-slate-400">
+                  <p className="text-slate-300">Initial preflight checks successfully completed.</p>
+                  <p className="text-slate-300">Database setup finalized with Postgres user role.</p>
+                  <p className="text-emerald-400">✅ Synapse package v1.98.0 initialized and launched on port 8008.</p>
+                  <p className="text-emerald-400">✅ Element Web client configured with self-signed TLS profiles.</p>
+                  <p className="text-slate-500 mt-4 text-xs italic">💡 Tip: Start the installation from the wizard modal to see real-time output here.</p>
+                </div>
+              )}
+              <div ref={terminalEndRef} />
             </div>
           ) : (
             <div className="space-y-4 font-sans text-xs">

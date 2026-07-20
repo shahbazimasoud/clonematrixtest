@@ -1626,6 +1626,7 @@ export default function App() {
             onClose={() => setShowInstallWizard(false)}
             onConfirm={(config) => {
               setShowInstallWizard(false);
+              setTerminalInitialTab('install');
               handleExecuteCommand('install', { config });
             }}
             lang={lang}

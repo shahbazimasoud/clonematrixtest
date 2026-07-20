@@ -1171,8 +1171,8 @@ export function InstallWizardModal({
               onClick={handleNext}
               className={`px-6 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer flex items-center gap-2 shadow-lg ${
                 isLightMode 
-                  ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200/50' 
-                  : 'bg-white/5 hover:bg-white/10 border border-white/10 text-white'
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-200/50 hover:scale-[1.01]' 
+                  : 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-950/30 hover:scale-[1.01]'
               }`}
             >
               {t.next}
