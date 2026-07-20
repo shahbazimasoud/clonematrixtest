@@ -7058,6 +7058,13 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
               fullCmd = `echo "${b64}" | base64 -d | sudo bash`;
             }
             
+            if (command === "install" || command === "custom_install") {
+              ws.send(JSON.stringify({ type: "cmd_stdout", text: "❌ Error: Direct raw execution of install command is blocked." }));
+              ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+              conn.end();
+              return;
+            }
+
             conn.exec(fullCmd, (err, stream) => {
               if (err) {
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ [SSH EXEC ERROR] ${err.message}` }));
