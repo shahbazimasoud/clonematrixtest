@@ -1619,6 +1619,7 @@ export default function App() {
             onViewChange={setActiveView} 
             onLogout={handleLogout}
             userRole={currentUser?.role || 'Viewer'}
+            lang={lang}
           />
 
           <InstallWizardModal

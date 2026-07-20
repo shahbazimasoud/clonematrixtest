@@ -22,16 +22,76 @@ interface SpatialDockProps {
   onViewChange: (view: string) => void;
   onLogout: () => void;
   userRole: string;
+  lang: string;
 }
 
-export default function SpatialDock({ activeView, onViewChange, onLogout, userRole }: SpatialDockProps) {
+const dockTranslations: Record<string, Record<string, string>> = {
+  fa: {
+    dashboard: 'داشبورد',
+    config: 'تنظیمات سرور',
+    admin: 'مدیریت ماتریکس',
+    terminal: 'کنسول خط فرمان',
+    reporting: 'تحلیل و آمار',
+    connections: 'مدیریت اتصالات',
+    logout: 'خروج از حساب'
+  },
+  en: {
+    dashboard: 'Dashboard',
+    config: 'Homeserver',
+    admin: 'Matrix Admin',
+    terminal: 'Web Console',
+    reporting: 'Analytics',
+    connections: 'Connections',
+    logout: 'Sign Out'
+  },
+  es: {
+    dashboard: 'Dashboard',
+    config: 'Homeserver',
+    admin: 'Admin Matrix',
+    terminal: 'Consola Web',
+    reporting: 'Analítica',
+    connections: 'Conexiones',
+    logout: 'Cerrar Sesión'
+  },
+  ar: {
+    dashboard: 'لوحة التحكم',
+    config: 'إعدادات الخادم',
+    admin: 'إدارة ماتریکس',
+    terminal: 'كواجهة وب',
+    reporting: 'التحليلات',
+    connections: 'الاتصالات',
+    logout: 'تسجيل الخروج'
+  },
+  de: {
+    dashboard: 'Dashboard',
+    config: 'Homeserver',
+    admin: 'Matrix Admin',
+    terminal: 'Web-Konsole',
+    reporting: 'Analysen',
+    connections: 'Verbindungen',
+    logout: 'Abmelden'
+  },
+  ru: {
+    dashboard: 'Панель',
+    config: 'Конфигурация',
+    admin: 'Админ Matrix',
+    terminal: 'Веб-консоль',
+    reporting: 'Аналитика',
+    connections: 'Подключения',
+    logout: 'Выйти'
+  }
+};
+
+export default function SpatialDock({ activeView, onViewChange, onLogout, userRole, lang }: SpatialDockProps) {
+  const t = dockTranslations[lang] || dockTranslations.en;
+  
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-indigo-400' },
-    { id: 'config', label: 'Homeserver', icon: Settings, color: 'text-purple-400' },
-    { id: 'admin', label: 'Matrix Admin', icon: Users, color: 'text-pink-400' },
-    { id: 'terminal', label: 'Web Console', icon: Terminal, color: 'text-rose-400' },
-    { id: 'reporting', label: 'Analytics', icon: BarChart3, color: 'text-indigo-400' },
-    { id: 'connections', label: 'Connections', icon: Globe, color: 'text-teal-400' },
+    { id: 'dashboard', label: t.dashboard, icon: LayoutDashboard, color: 'text-indigo-400' },
+    { id: 'config', label: t.config, icon: Settings, color: 'text-purple-400' },
+    { id: 'admin', label: t.admin, icon: Users, color: 'text-pink-400' },
+    { id: 'terminal', label: t.terminal, icon: Terminal, color: 'text-rose-400' },
+    { id: 'reporting', label: t.reporting, icon: BarChart3, color: 'text-indigo-400' },
+    { id: 'connections', label: t.connections, icon: Globe, color: 'text-teal-400' },
   ];
 
   return (
@@ -80,7 +140,7 @@ export default function SpatialDock({ activeView, onViewChange, onLogout, userRo
         >
           <LogOut className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-0.5" />
           <span className="absolute bottom-14 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none bg-slate-950/90 text-white text-xs px-2.5 py-1 rounded-md border border-white/10 whitespace-nowrap shadow-xl">
-            Logout ({userRole})
+            {t.logout} ({userRole})
           </span>
         </button>
       </div>
