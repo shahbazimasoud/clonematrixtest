@@ -374,36 +374,50 @@ export function InstallWizardModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto transition-colors duration-300 ${isLightMode ? 'bg-slate-900/40' : 'bg-slate-950/80'}`}>
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ type: 'spring', duration: 0.5 }}
-        className="relative w-full max-w-4xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl shadow-rose-950/20 flex flex-col max-h-[90vh] overflow-hidden"
+        className={`relative w-full max-w-4xl border rounded-3xl flex flex-col max-h-[90vh] overflow-hidden transition-all duration-300 ${
+          isLightMode 
+            ? 'bg-white border-slate-200 shadow-2xl shadow-slate-300/60' 
+            : 'bg-slate-900 border-white/10 shadow-2xl shadow-rose-950/20'
+        }`}
         dir={isRtl ? "rtl" : "ltr"}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-slate-950/40">
+        <div className={`flex items-center justify-between p-6 border-b transition-colors duration-300 ${isLightMode ? 'border-slate-100 bg-slate-50' : 'border-white/5 bg-slate-950/40'}`}>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-rose-500/20 to-amber-500/20 border border-rose-500/20 text-rose-400">
+            <div className={`p-2.5 rounded-xl border transition-all ${
+              isLightMode 
+                ? 'bg-gradient-to-br from-rose-50 to-amber-50 border-rose-200 text-rose-500' 
+                : 'bg-gradient-to-br from-rose-500/20 to-amber-500/20 border-rose-500/20 text-rose-400'
+            }`}>
               <Activity className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <h2 className="text-xl font-display font-extrabold text-white">{t.title}</h2>
-              <p className="text-xs text-slate-400 mt-0.5">{t.subtitle}</p>
+              <h2 className={`text-xl font-display font-extrabold transition-colors duration-300 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{t.title}</h2>
+              <p className={`text-xs mt-0.5 transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.subtitle}</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+            className={`p-2 rounded-xl transition-all cursor-pointer ${
+              isLightMode 
+                ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-800' 
+                : 'hover:bg-white/5 text-slate-400 hover:text-white'
+            }`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Stepper progress indicator */}
-        <div className="px-6 py-4 border-b border-white/5 bg-slate-950/20 flex items-center justify-between overflow-x-auto gap-4 scrollbar-none">
+        <div className={`px-6 py-4 border-b flex items-center justify-between overflow-x-auto gap-4 scrollbar-none transition-colors duration-300 ${
+          isLightMode ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-slate-950/20'
+        }`}>
           {stepsList.map((step) => {
             const isActive = step.id === currentStep;
             const isCompleted = step.id < currentStep;
@@ -411,20 +425,34 @@ export function InstallWizardModal({
               <div key={step.id} className="flex items-center gap-2 shrink-0">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold font-mono border transition-all ${
                   isActive 
-                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 ring-4 ring-rose-500/5 shadow-md shadow-rose-500/10'
+                    ? isLightMode 
+                      ? 'bg-rose-50 text-rose-600 border-rose-200 ring-4 ring-rose-100 shadow-sm shadow-rose-100' 
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/30 ring-4 ring-rose-500/5 shadow-md shadow-rose-500/10'
                     : isCompleted
-                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                      : 'bg-slate-950/40 text-slate-500 border-white/5'
+                      ? isLightMode
+                        ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : isLightMode
+                        ? 'bg-slate-100 text-slate-400 border-slate-200'
+                        : 'bg-slate-950/40 text-slate-500 border-white/5'
                 }`}>
                   {isCompleted ? <Check className="w-4 h-4" /> : step.id}
                 </div>
                 <span className={`text-xs font-semibold transition-all ${
-                  isActive ? 'text-white font-bold' : isCompleted ? 'text-slate-300' : 'text-slate-500'
+                  isActive 
+                    ? isLightMode ? 'text-slate-900 font-bold' : 'text-white font-bold' 
+                    : isCompleted 
+                      ? isLightMode ? 'text-slate-600' : 'text-slate-300' 
+                      : isLightMode ? 'text-slate-400' : 'text-slate-500'
                 }`}>
                   {step.name}
                 </span>
                 {step.id < 6 && (
-                  <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${isRtl ? 'rotate-180' : ''} ${step.id < currentStep ? 'text-emerald-500/50' : 'text-slate-700'}`} />
+                  <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${isRtl ? 'rotate-180' : ''} ${
+                    step.id < currentStep 
+                      ? 'text-emerald-500' 
+                      : isLightMode ? 'text-slate-300' : 'text-slate-700'
+                  }`} />
                 )}
               </div>
             );
@@ -432,7 +460,7 @@ export function InstallWizardModal({
         </div>
 
         {/* Body content */}
-        <div className="flex-1 p-6 overflow-y-auto min-h-[350px] bg-slate-900/40">
+        <div className={`flex-1 p-6 overflow-y-auto min-h-[350px] transition-colors duration-300 ${isLightMode ? 'bg-slate-50/20' : 'bg-slate-900/40'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStep}
@@ -445,11 +473,11 @@ export function InstallWizardModal({
               {currentStep === 1 && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
                       <Folder className="w-5 h-5 text-rose-400" />
                       {t.sourceTitle}
                     </h3>
-                    <p className="text-sm text-slate-400">{t.sourceDesc}</p>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sourceDesc}</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -458,23 +486,29 @@ export function InstallWizardModal({
                       onClick={() => setInstallSource('online')}
                       className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-44 ${
                         installSource === 'online' 
-                          ? 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
-                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 ring-2 ring-rose-500/10 shadow-sm shadow-rose-100'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
                       }`}
                     >
                       <div className="flex items-start justify-between">
-                        <div className="p-3 rounded-xl bg-slate-900 border border-white/10 text-rose-400">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-rose-500' : 'bg-slate-900 border-white/10 text-rose-400'
+                        }`}>
                           <CloudDownload className="w-6 h-6" />
                         </div>
                         {installSource === 'online' && (
-                          <span className="p-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/20">
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
                             <Check className="w-3.5 h-3.5" />
                           </span>
                         )}
                       </div>
                       <div className="mt-4">
-                        <h4 className="font-bold text-white text-md">{t.sourceOnline}</h4>
-                        <p className="text-xs text-slate-400 mt-1">{t.sourceOnlineDesc}</p>
+                        <h4 className={`font-bold text-md transition-colors ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sourceOnline}</h4>
+                        <p className={`text-xs mt-1 transition-colors ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sourceOnlineDesc}</p>
                       </div>
                     </div>
 
@@ -483,23 +517,29 @@ export function InstallWizardModal({
                       onClick={() => setInstallSource('offline')}
                       className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-44 ${
                         installSource === 'offline' 
-                          ? 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
-                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 ring-2 ring-rose-500/10 shadow-sm shadow-rose-100'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
                       }`}
                     >
                       <div className="flex items-start justify-between">
-                        <div className="p-3 rounded-xl bg-slate-900 border border-white/10 text-amber-400">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-amber-500' : 'bg-slate-900 border-white/10 text-amber-400'
+                        }`}>
                           <FileText className="w-6 h-6" />
                         </div>
                         {installSource === 'offline' && (
-                          <span className="p-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/20">
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
                             <Check className="w-3.5 h-3.5" />
                           </span>
                         )}
                       </div>
                       <div className="mt-4">
-                        <h4 className="font-bold text-white text-md">{t.sourceOffline}</h4>
-                        <p className="text-xs text-slate-400 mt-1">{t.sourceOfflineDesc}</p>
+                        <h4 className={`font-bold text-md transition-colors ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sourceOffline}</h4>
+                        <p className={`text-xs mt-1 transition-colors ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sourceOfflineDesc}</p>
                       </div>
                     </div>
                   </div>
@@ -509,40 +549,52 @@ export function InstallWizardModal({
                     <motion.div 
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-5 rounded-2xl bg-slate-950/40 border border-white/5 space-y-4"
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.offlineConfigLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.offlineConfigLabel}</label>
                           <input 
                             type="text"
                             value={offlineConfigPath}
                             onChange={(e) => setOfflineConfigPath(e.target.value)}
                             placeholder={t.offlineConfigPlaceholder}
-                            className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono"
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode 
+                                ? 'bg-white border-slate-200 text-slate-800' 
+                                : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
                           />
-                          <p className="text-[10px] text-slate-500 mt-1">{t.offlineConfigHelp}</p>
+                          <p className={`text-[10px] mt-1 transition-colors ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.offlineConfigHelp}</p>
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.offlineElementLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.offlineElementLabel}</label>
                           <input 
                             type="text"
                             value={offlineElementPath}
                             onChange={(e) => setOfflineElementPath(e.target.value)}
                             placeholder={t.offlineElementPlaceholder}
-                            className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono"
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode 
+                                ? 'bg-white border-slate-200 text-slate-800' 
+                                : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
                           />
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.offlineSynapseDebLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.offlineSynapseDebLabel}</label>
                           <input 
                             type="text"
                             value={offlineSynapseDebDir}
                             onChange={(e) => setOfflineSynapseDebDir(e.target.value)}
                             placeholder={t.offlineSynapseDebPlaceholder}
-                            className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono"
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode 
+                                ? 'bg-white border-slate-200 text-slate-800' 
+                                : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
                           />
                         </div>
                       </div>
@@ -555,89 +607,103 @@ export function InstallWizardModal({
               {currentStep === 2 && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
                       <Server className="w-5 h-5 text-rose-400" />
                       {t.serverTitle}
                     </h3>
-                    <p className="text-sm text-slate-400">{t.serverDesc}</p>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.serverDesc}</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.hsDomainLabel}</label>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.hsDomainLabel}</label>
                       <input 
                         type="text"
                         value={hsDomain}
                         onChange={(e) => setHsDomain(e.target.value)}
                         placeholder={t.hsDomainPlaceholder}
-                        className={`w-full bg-slate-950/40 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                          formErrors.hsDomain ? 'border-red-500/50 focus:border-red-500' : 'border-white/10'
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.hsDomain 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
                         }`}
                       />
-                      {formErrors.hsDomain && <p className="text-xs text-red-400 mt-1">{formErrors.hsDomain}</p>}
+                      {formErrors.hsDomain && <p className="text-xs text-red-500 mt-1">{formErrors.hsDomain}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.elementDomainLabel}</label>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementDomainLabel}</label>
                       <input 
                         type="text"
                         value={elementDomain}
                         onChange={(e) => setElementDomain(e.target.value)}
                         placeholder={t.elementDomainPlaceholder}
-                        className={`w-full bg-slate-950/40 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                          formErrors.elementDomain ? 'border-red-500/50 focus:border-red-500' : 'border-white/10'
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.elementDomain 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
                         }`}
                       />
-                      {formErrors.elementDomain && <p className="text-xs text-red-400 mt-1">{formErrors.elementDomain}</p>}
+                      {formErrors.elementDomain && <p className="text-xs text-red-500 mt-1">{formErrors.elementDomain}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.baseDomainLabel}</label>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.baseDomainLabel}</label>
                       <input 
                         type="text"
                         value={baseDomain}
                         onChange={(e) => setBaseDomain(e.target.value)}
                         placeholder={t.baseDomainPlaceholder}
-                        className={`w-full bg-slate-950/40 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                          formErrors.baseDomain ? 'border-red-500/50 focus:border-red-500' : 'border-white/10'
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.baseDomain 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
                         }`}
                       />
-                      {formErrors.baseDomain && <p className="text-xs text-red-400 mt-1">{formErrors.baseDomain}</p>}
+                      {formErrors.baseDomain && <p className="text-xs text-red-500 mt-1">{formErrors.baseDomain}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.publicIpLabel}</label>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.publicIpLabel}</label>
                       <input 
                         type="text"
                         value={publicIp}
                         onChange={(e) => setPublicIp(e.target.value)}
                         placeholder={t.publicIpPlaceholder}
-                        className={`w-full bg-slate-950/40 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                          formErrors.publicIp ? 'border-red-500/50 focus:border-red-500' : 'border-white/10'
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.publicIp 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
                         }`}
                       />
-                      {formErrors.publicIp && <p className="text-xs text-red-400 mt-1">{formErrors.publicIp}</p>}
+                      {formErrors.publicIp && <p className="text-xs text-red-500 mt-1">{formErrors.publicIp}</p>}
                     </div>
 
                     <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.leEmailLabel}</label>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.leEmailLabel}</label>
                       <input 
                         type="text"
                         value={leEmail}
                         onChange={(e) => setLeEmail(e.target.value)}
                         placeholder={t.leEmailPlaceholder}
-                        className={`w-full bg-slate-950/40 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                          formErrors.leEmail ? 'border-red-500/50 focus:border-red-500' : 'border-white/10'
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.leEmail 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
                         }`}
                       />
-                      {formErrors.leEmail && <p className="text-xs text-red-400 mt-1">{formErrors.leEmail}</p>}
+                      {formErrors.leEmail && <p className="text-xs text-red-500 mt-1">{formErrors.leEmail}</p>}
                     </div>
                   </div>
 
                   {/* Database Notice Box */}
-                  <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 flex gap-3">
-                    <AlertCircle className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-slate-400 leading-relaxed">{t.dbNotice}</p>
+                  <div className={`p-4 rounded-2xl border flex gap-3 transition-colors ${
+                    isLightMode 
+                      ? 'bg-indigo-50/50 border-indigo-100 text-slate-600 shadow-sm' 
+                      : 'bg-indigo-500/5 border-indigo-500/10 text-slate-400'
+                  }`}>
+                    <AlertCircle className={`w-5 h-5 shrink-0 mt-0.5 ${isLightMode ? 'text-indigo-500' : 'text-indigo-400'}`} />
+                    <p className="text-xs leading-relaxed">{t.dbNotice}</p>
                   </div>
                 </div>
               )}
@@ -646,11 +712,11 @@ export function InstallWizardModal({
               {currentStep === 3 && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
                       <Globe className="w-5 h-5 text-rose-400" />
                       {t.sslTitle}
                     </h3>
-                    <p className="text-sm text-slate-400">{t.sslDesc}</p>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslDesc}</p>
                   </div>
 
                   <div className="space-y-3">
@@ -659,18 +725,22 @@ export function InstallWizardModal({
                       onClick={() => setSslMode('auto')}
                       className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${
                         sslMode === 'auto' 
-                          ? 'bg-rose-500/5 border-rose-500/40 text-white' 
-                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
                       }`}
                     >
                       <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
-                        sslMode === 'auto' ? 'border-rose-500 text-rose-400' : 'border-slate-600'
+                        sslMode === 'auto' ? 'border-rose-500 text-rose-500' : 'border-slate-400'
                       }`}>
                         {sslMode === 'auto' && <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />}
                       </span>
                       <div>
-                        <h4 className="font-bold text-white text-sm">{t.sslAuto}</h4>
-                        <p className="text-xs text-slate-400 mt-0.5">{t.sslAutoDesc}</p>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sslAuto}</h4>
+                        <p className={`text-xs mt-0.5 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslAutoDesc}</p>
                       </div>
                     </div>
 
@@ -679,18 +749,22 @@ export function InstallWizardModal({
                       onClick={() => setSslMode('selfsigned')}
                       className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${
                         sslMode === 'selfsigned' 
-                          ? 'bg-rose-500/5 border-rose-500/40 text-white' 
-                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
                       }`}
                     >
                       <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
-                        sslMode === 'selfsigned' ? 'border-rose-500 text-rose-400' : 'border-slate-600'
+                        sslMode === 'selfsigned' ? 'border-rose-500 text-rose-500' : 'border-slate-400'
                       }`}>
                         {sslMode === 'selfsigned' && <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />}
                       </span>
                       <div>
-                        <h4 className="font-bold text-white text-sm">{t.sslSelfSigned}</h4>
-                        <p className="text-xs text-slate-400 mt-0.5">{t.sslSelfSignedDesc}</p>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sslSelfSigned}</h4>
+                        <p className={`text-xs mt-0.5 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslSelfSignedDesc}</p>
                       </div>
                     </div>
 
@@ -699,18 +773,22 @@ export function InstallWizardModal({
                       onClick={() => setSslMode('custom')}
                       className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${
                         sslMode === 'custom' 
-                          ? 'bg-rose-500/5 border-rose-500/40 text-white' 
-                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
                       }`}
                     >
                       <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
-                        sslMode === 'custom' ? 'border-rose-500 text-rose-400' : 'border-slate-600'
+                        sslMode === 'custom' ? 'border-rose-500 text-rose-500' : 'border-slate-400'
                       }`}>
                         {sslMode === 'custom' && <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />}
                       </span>
                       <div>
-                        <h4 className="font-bold text-white text-sm">{t.sslCustom}</h4>
-                        <p className="text-xs text-slate-400 mt-0.5">{t.sslCustomDesc}</p>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sslCustom}</h4>
+                        <p className={`text-xs mt-0.5 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslCustomDesc}</p>
                       </div>
                     </div>
                   </div>
@@ -720,45 +798,51 @@ export function InstallWizardModal({
                     <motion.div 
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-5 rounded-2xl bg-slate-950/40 border border-white/5 space-y-4"
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
                     >
                       <div className="grid grid-cols-1 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.customCertLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.customCertLabel}</label>
                           <input 
                             type="text"
                             value={customCertPem}
                             onChange={(e) => setCustomCertPem(e.target.value)}
                             placeholder={t.customCertPlaceholder}
-                            className={`w-full bg-slate-950/60 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                              formErrors.customCertPem ? 'border-red-500/50' : 'border-white/10'
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.customCertPem 
+                                ? 'border-red-500 bg-red-50/15' 
+                                : isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
                             }`}
                           />
-                          {formErrors.customCertPem && <p className="text-xs text-red-400 mt-1">{formErrors.customCertPem}</p>}
+                          {formErrors.customCertPem && <p className="text-xs text-red-500 mt-1">{formErrors.customCertPem}</p>}
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.customKeyLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.customKeyLabel}</label>
                           <input 
                             type="text"
                             value={customKeyPem}
                             onChange={(e) => setCustomKeyPem(e.target.value)}
                             placeholder={t.customKeyPlaceholder}
-                            className={`w-full bg-slate-950/60 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                              formErrors.customKeyPem ? 'border-red-500/50' : 'border-white/10'
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.customKeyPem 
+                                ? 'border-red-500 bg-red-50/15' 
+                                : isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
                             }`}
                           />
-                          {formErrors.customKeyPem && <p className="text-xs text-red-400 mt-1">{formErrors.customKeyPem}</p>}
+                          {formErrors.customKeyPem && <p className="text-xs text-red-500 mt-1">{formErrors.customKeyPem}</p>}
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.customChainLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.customChainLabel}</label>
                           <input 
                             type="text"
                             value={customChainPem}
                             onChange={(e) => setCustomChainPem(e.target.value)}
                             placeholder={t.customChainPlaceholder}
-                            className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono"
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
                           />
                         </div>
                       </div>
@@ -771,11 +855,11 @@ export function InstallWizardModal({
               {currentStep === 4 && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
                       <Settings className="w-5 h-5 text-rose-400" />
                       {t.elementTitle}
                     </h3>
-                    <p className="text-sm text-slate-400">{t.elementDesc}</p>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.elementDesc}</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -784,23 +868,29 @@ export function InstallWizardModal({
                       onClick={() => setElementInstallMode('online')}
                       className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-40 ${
                         elementInstallMode === 'online' 
-                          ? 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
-                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
                       }`}
                     >
                       <div className="flex items-start justify-between">
-                        <div className="p-3 rounded-xl bg-slate-900 border border-white/10 text-rose-400">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-rose-500' : 'bg-slate-900 border-white/10 text-rose-400'
+                        }`}>
                           <CloudDownload className="w-5 h-5" />
                         </div>
                         {elementInstallMode === 'online' && (
-                          <span className="p-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/20">
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
                             <Check className="w-3.5 h-3.5" />
                           </span>
                         )}
                       </div>
                       <div>
-                        <h4 className="font-bold text-white text-sm">{t.elementOnline}</h4>
-                        <p className="text-xs text-slate-400 mt-1">{t.elementOnlineDesc}</p>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.elementOnline}</h4>
+                        <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.elementOnlineDesc}</p>
                       </div>
                     </div>
 
@@ -809,23 +899,29 @@ export function InstallWizardModal({
                       onClick={() => setElementInstallMode('offline')}
                       className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-40 ${
                         elementInstallMode === 'offline' 
-                          ? 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
-                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
                       }`}
                     >
                       <div className="flex items-start justify-between">
-                        <div className="p-3 rounded-xl bg-slate-900 border border-white/10 text-amber-400">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-amber-500' : 'bg-slate-900 border-white/10 text-amber-400'
+                        }`}>
                           <FileText className="w-5 h-5" />
                         </div>
                         {elementInstallMode === 'offline' && (
-                          <span className="p-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/20">
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
                             <Check className="w-3.5 h-3.5" />
                           </span>
                         )}
                       </div>
                       <div>
-                        <h4 className="font-bold text-white text-sm">{t.elementOffline}</h4>
-                        <p className="text-xs text-slate-400 mt-1">{t.elementOfflineDesc}</p>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.elementOffline}</h4>
+                        <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.elementOfflineDesc}</p>
                       </div>
                     </div>
                   </div>
@@ -835,16 +931,18 @@ export function InstallWizardModal({
                     <motion.div 
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-5 rounded-2xl bg-slate-950/40 border border-white/5"
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
                     >
                       <div>
-                        <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.elementVersionLabel}</label>
+                        <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementVersionLabel}</label>
                         <input 
                           type="text"
                           value={elementOnlineVersion}
                           onChange={(e) => setElementOnlineVersion(e.target.value)}
                           placeholder={t.elementVersionPlaceholder}
-                          className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono"
+                          className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                            isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                          }`}
                         />
                       </div>
                     </motion.div>
@@ -855,31 +953,35 @@ export function InstallWizardModal({
                     <motion.div 
                       initial={{ opacity: 0, y: -5 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="p-5 rounded-2xl bg-slate-950/40 border border-white/5 space-y-4"
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.elementOfflinePathLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementOfflinePathLabel}</label>
                           <input 
                             type="text"
                             value={elementOfflinePath}
                             onChange={(e) => setElementOfflinePath(e.target.value)}
                             placeholder={t.elementOfflinePathPlaceholder}
-                            className={`w-full bg-slate-950/60 border rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
-                              formErrors.elementOfflinePath ? 'border-red-500/50' : 'border-white/10'
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.elementOfflinePath 
+                                ? 'border-red-500 bg-red-50/15' 
+                                : isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
                             }`}
                           />
-                          {formErrors.elementOfflinePath && <p className="text-xs text-red-400 mt-1">{formErrors.elementOfflinePath}</p>}
+                          {formErrors.elementOfflinePath && <p className="text-xs text-red-500 mt-1">{formErrors.elementOfflinePath}</p>}
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">{t.elementOfflineLabelLabel}</label>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementOfflineLabelLabel}</label>
                           <input 
                             type="text"
                             value={elementOfflineVersionLabel}
                             onChange={(e) => setElementOfflineVersionLabel(e.target.value)}
                             placeholder={t.elementOfflineLabelPlaceholder}
-                            className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono"
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
                           />
                         </div>
                       </div>
@@ -892,31 +994,37 @@ export function InstallWizardModal({
               {currentStep === 5 && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
                       <Key className="w-5 h-5 text-rose-400" />
                       {t.ldapTitle}
                     </h3>
-                    <p className="text-sm text-slate-400">{t.ldapDesc}</p>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.ldapDesc}</p>
                   </div>
 
                   <div 
                     onClick={() => setLdapConfigureNow(prev => !prev)}
                     className={`p-6 rounded-2xl border transition-all cursor-pointer flex gap-4 items-start ${
                       ldapConfigureNow 
-                        ? 'bg-rose-500/5 border-rose-500/40 text-white' 
-                        : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
+                        ? isLightMode
+                          ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 ring-2 ring-rose-500/10 shadow-sm shadow-rose-100'
+                          : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10'
+                        : isLightMode
+                          ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
                     }`}
                   >
                     <div className="pt-0.5">
                       <span className={`w-5.5 h-5.5 rounded border flex items-center justify-center shrink-0 transition-all ${
-                        ldapConfigureNow ? 'bg-rose-500 border-rose-500 text-white' : 'border-slate-600'
+                        ldapConfigureNow 
+                          ? 'bg-rose-500 border-rose-500 text-white' 
+                          : isLightMode ? 'border-slate-300 bg-white' : 'border-slate-600 bg-transparent'
                       }`}>
                         {ldapConfigureNow && <Check className="w-4 h-4 stroke-[3px]" />}
                       </span>
                     </div>
                     <div>
-                      <h4 className="font-bold text-white text-md">{t.ldapCheckbox}</h4>
-                      <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{t.ldapNotice}</p>
+                      <h4 className={`font-bold text-md ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.ldapCheckbox}</h4>
+                      <p className={`text-xs mt-1.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.ldapNotice}</p>
                     </div>
                   </div>
                 </div>
@@ -926,24 +1034,24 @@ export function InstallWizardModal({
               {currentStep === 6 && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5 text-emerald-400" />
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                      <CheckCircle className="w-5 h-5 text-emerald-500" />
                       {t.summaryTitle}
                     </h3>
-                    <p className="text-sm text-slate-400">{t.summaryDesc}</p>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.summaryDesc}</p>
                   </div>
 
                   {/* Summary Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Source Info */}
-                    <div className="p-4 rounded-2xl bg-slate-950/40 border border-white/5">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">{t.source}</span>
-                      <div className="flex items-center gap-2 text-sm text-slate-200">
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.source}</span>
+                      <div className={`flex items-center gap-2 text-sm ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
                         <span className={`w-2 h-2 rounded-full ${installSource === 'online' ? 'bg-rose-500' : 'bg-amber-500'}`} />
                         <span className="font-semibold">{installSource === 'online' ? t.online : t.offline}</span>
                       </div>
                       {installSource === 'offline' && (
-                        <div className="mt-2 text-xs font-mono text-slate-400 space-y-1">
+                        <div className={`mt-2 text-xs font-mono space-y-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                           {offlineConfigPath && <div>Config: {offlineConfigPath}</div>}
                           {offlineElementPath && <div>Element: {offlineElementPath}</div>}
                           {offlineSynapseDebDir && <div>Synapse deb: {offlineSynapseDebDir}</div>}
@@ -952,13 +1060,13 @@ export function InstallWizardModal({
                     </div>
 
                     {/* SSL Info */}
-                    <div className="p-4 rounded-2xl bg-slate-950/40 border border-white/5">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">{t.ssl}</span>
-                      <div className="flex items-center gap-2 text-sm text-slate-200">
-                        <span className="font-semibold text-rose-400 capitalize">{sslMode.toUpperCase()}</span>
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.ssl}</span>
+                      <div className={`flex items-center gap-2 text-sm ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
+                        <span className="font-semibold text-rose-500 uppercase">{sslMode}</span>
                       </div>
                       {sslMode === 'custom' && (
-                        <div className="mt-2 text-xs font-mono text-slate-400 space-y-1">
+                        <div className={`mt-2 text-xs font-mono space-y-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                           <div className="truncate">Cert: {customCertPem}</div>
                           <div className="truncate">Key: {customKeyPem}</div>
                         </div>
@@ -966,48 +1074,48 @@ export function InstallWizardModal({
                     </div>
 
                     {/* Domain Matrix Details */}
-                    <div className="p-4 rounded-2xl bg-slate-950/40 border border-white/5 md:col-span-2 space-y-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">{t.domains}</span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs font-mono text-slate-300">
-                        <div className="flex justify-between border-b border-white/5 pb-1">
-                          <span className="text-slate-500">Homeserver:</span>
-                          <span className="text-indigo-400 font-bold">https://{hsDomain}</span>
+                    <div className={`p-4 rounded-2xl border transition-colors md:col-span-2 space-y-2 ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-1 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.domains}</span>
+                      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Homeserver:</span>
+                          <span className={`${isLightMode ? 'text-indigo-600' : 'text-indigo-400'} font-bold`}>https://{hsDomain}</span>
                         </div>
-                        <div className="flex justify-between border-b border-white/5 pb-1">
-                          <span className="text-slate-500">Element:</span>
-                          <span className="text-purple-400 font-bold">https://{elementDomain}</span>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Element:</span>
+                          <span className={`${isLightMode ? 'text-purple-600' : 'text-purple-400'} font-bold`}>https://{elementDomain}</span>
                         </div>
-                        <div className="flex justify-between border-b border-white/5 pb-1">
-                          <span className="text-slate-500">Base Domain:</span>
-                          <span className="text-slate-400">{baseDomain}</span>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Base Domain:</span>
+                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{baseDomain}</span>
                         </div>
-                        <div className="flex justify-between border-b border-white/5 pb-1">
-                          <span className="text-slate-500">Public IP:</span>
-                          <span className="text-emerald-400 font-bold">{publicIp}</span>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Public IP:</span>
+                          <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} font-bold`}>{publicIp}</span>
                         </div>
-                        <div className="flex justify-between sm:col-span-2 border-b border-white/5 pb-1">
-                          <span className="text-slate-500">Email:</span>
-                          <span className="text-slate-400">{leEmail}</span>
+                        <div className={`flex justify-between sm:col-span-2 border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Email:</span>
+                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{leEmail}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Element App Deployment Info */}
-                    <div className="p-4 rounded-2xl bg-slate-950/40 border border-white/5">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">{t.element}</span>
-                      <div className="text-xs font-mono text-slate-300">
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.element}</span>
+                      <div className={`text-xs font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Source:</span>
-                          <span className="font-semibold text-slate-200 capitalize">{elementInstallMode}</span>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Source:</span>
+                          <span className={`font-semibold capitalize ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>{elementInstallMode}</span>
                         </div>
                         {elementInstallMode === 'online' && elementOnlineVersion && (
                           <div className="flex justify-between mt-1">
-                            <span className="text-slate-500">Version:</span>
-                            <span className="text-rose-400">{elementOnlineVersion}</span>
+                            <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Version:</span>
+                            <span className="text-rose-500">{elementOnlineVersion}</span>
                           </div>
                         )}
                         {elementInstallMode === 'offline' && (
-                          <div className="mt-1 text-[11px] text-slate-400 truncate">
+                          <div className={`mt-1 text-[11px] truncate ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>
                             Path: {elementOfflinePath}
                           </div>
                         )}
@@ -1015,21 +1123,25 @@ export function InstallWizardModal({
                     </div>
 
                     {/* LDAP Info */}
-                    <div className="p-4 rounded-2xl bg-slate-950/40 border border-white/5">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">{t.ldap}</span>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className={`w-2 h-2 rounded-full ${ldapConfigureNow ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
-                        <span className="font-semibold text-slate-200">{ldapConfigureNow ? t.yes : t.no}</span>
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.ldap}</span>
+                      <div className={`flex items-center gap-2 text-sm ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
+                        <span className={`w-2 h-2 rounded-full ${ldapConfigureNow ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                        <span className="font-semibold">{ldapConfigureNow ? t.yes : t.no}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Ready Message */}
-                  <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 flex gap-3">
-                    <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                  <div className={`p-4 rounded-2xl border flex gap-3 transition-colors ${
+                    isLightMode 
+                      ? 'bg-emerald-50/50 border-emerald-100 text-slate-600 shadow-sm' 
+                      : 'bg-emerald-500/5 border-emerald-500/10 text-slate-400'
+                  }`}>
+                    <CheckCircle className={`w-5 h-5 shrink-0 mt-0.5 ${isLightMode ? 'text-emerald-500' : 'text-emerald-400'}`} />
                     <div>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">{t.confirmReady}</h4>
-                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">{t.confirmReadyDesc}</p>
+                      <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.confirmReady}</h4>
+                      <p className={`text-xs mt-1 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.confirmReadyDesc}</p>
                     </div>
                   </div>
                 </div>
@@ -1039,10 +1151,16 @@ export function InstallWizardModal({
         </div>
 
         {/* Footer controls */}
-        <div className="p-6 border-t border-white/5 bg-slate-950/40 flex items-center justify-between gap-4">
+        <div className={`p-6 border-t flex items-center justify-between gap-4 transition-colors duration-300 ${
+          isLightMode ? 'border-slate-100 bg-slate-50' : 'border-white/5 bg-slate-950/40'
+        }`}>
           <button 
             onClick={currentStep === 1 ? onClose : handleBack}
-            className="px-5 py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-slate-300 hover:text-white text-sm font-semibold transition-all cursor-pointer flex items-center gap-2"
+            className={`px-5 py-2.5 rounded-xl border text-sm font-semibold transition-all cursor-pointer flex items-center gap-2 ${
+              isLightMode 
+                ? 'border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-800' 
+                : 'border-white/10 hover:bg-white/5 text-slate-300 hover:text-white'
+            }`}
           >
             {currentStep > 1 && <ChevronLeft className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />}
             {currentStep === 1 ? t.cancel : t.back}
@@ -1051,7 +1169,11 @@ export function InstallWizardModal({
           {currentStep < 6 ? (
             <button 
               onClick={handleNext}
-              className="px-6 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-semibold transition-all cursor-pointer flex items-center gap-2 shadow-lg"
+              className={`px-6 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer flex items-center gap-2 shadow-lg ${
+                isLightMode 
+                  ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200/50' 
+                  : 'bg-white/5 hover:bg-white/10 border border-white/10 text-white'
+              }`}
             >
               {t.next}
               <ChevronRight className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />
