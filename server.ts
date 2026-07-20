@@ -6673,12 +6673,16 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                   envStr += `FED_SENDER_ENABLED='${enableFed}' `;
                 }
 
-                // Read our local /install-matrix-stack.sh script content from workspace
-                const scriptPath = path.join(process.cwd(), "install-matrix-stack.sh");
+                // Read our local installer script content from workspace
+                let scriptPath = path.join(process.cwd(), "matrix-installer.sh");
+                if (!fs.existsSync(scriptPath)) {
+                  scriptPath = path.join(process.cwd(), "install-matrix-stack.sh");
+                }
                 const scriptContent = fs.readFileSync(scriptPath, "utf8");
                 
                 const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-                const writeCmd = `${sudoPrefix}tee "/tmp/install-matrix-stack.sh" << 'EOF' >/dev/null\n${scriptContent}\nEOF`;
+                const remoteDestPath = "/tmp/matrix-installer.sh";
+                const writeCmd = `${sudoPrefix}tee "${remoteDestPath}" << 'EOF' >/dev/null\n${scriptContent}\nEOF`;
                 
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: `📤 Uploading Matrix installation script to remote server for action: ${action}...` }));
                 
@@ -6702,7 +6706,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                   }
                   
                   const scriptBuffer = fs.readFileSync(scriptPath);
-                  sftp.writeFile('/tmp/install-matrix-stack.sh', scriptBuffer, { mode: 0o755 }, (errWrite) => {
+                  sftp.writeFile(remoteDestPath, scriptBuffer, { mode: 0o755 }, (errWrite) => {
                     if (errWrite) {
                       console.warn("[SSH INSTALL] SFTP writeFile failed, falling back to tee command:", errWrite.message);
                       ws.send(JSON.stringify({ type: "cmd_stdout", text: `⚠️ SFTP file write failed. Falling back to inline shell transfer...` }));
@@ -6727,8 +6731,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                 });
 
                 function proceedToChmod() {
-                  console.log(`[SSH INSTALL] Making script executable via: "${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh"`);
-                  conn.exec(`${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh`, (err2, stream2) => {
+                  console.log(`[SSH INSTALL] Making script executable via: "${sudoPrefix}chmod +x ${remoteDestPath}"`);
+                  conn.exec(`${sudoPrefix}chmod +x ${remoteDestPath}`, (err2, stream2) => {
                     if (err2) {
                       ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to chmod installer script: ${err2.message}` }));
                       ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
@@ -6737,7 +6741,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                     stream2.on("close", () => {
                       // Trigger execution of the newly uploaded installer
                       ws.send(JSON.stringify({ type: "cmd_stdout", text: `🚀 Execution starting on remote host for ${command}...` }));
-                      const finalCmd = `${sudoPrefix}env ${envStr}bash /tmp/install-matrix-stack.sh`;
+                      const finalCmd = `${sudoPrefix}env ${envStr}bash ${remoteDestPath}`;
                       console.log(`[SSH INSTALL] Executing installer script via finalCmd: "${finalCmd}"`);
                       conn.exec(finalCmd, { pty: true }, (err3, finalStream) => {
                         if (err3) {
@@ -7151,7 +7155,11 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
             LDAP_BASE_DC: String(confObj.LDAP_BASE_DC || "")
           };
 
-          const child = spawn("bash", ["./install-matrix-stack.sh"], { env: envVars });
+          let localScriptPath = "./matrix-installer.sh";
+          if (!fs.existsSync(path.join(process.cwd(), "matrix-installer.sh"))) {
+            localScriptPath = "./install-matrix-stack.sh";
+          }
+          const child = spawn("bash", [localScriptPath], { env: envVars });
 
           child.stdout.on("data", (data) => {
             ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));
