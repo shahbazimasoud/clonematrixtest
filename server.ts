@@ -6619,6 +6619,9 @@ wss.on("connection", (ws: WebSocket, request: any) => {
               "workers_disable"
             ].includes(command);
 
+            console.log(`[SSH READY] command: "${command}", useInstallerScript: ${useInstallerScript}, args:`, JSON.stringify(args));
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: `🔍 [DEBUG] Server state - command: "${command}", useInstaller: ${useInstallerScript}, hasConfig: ${!!args?.config}` }));
+
             if (useInstallerScript) {
               try {
                 // Determine action name
@@ -6674,95 +6677,130 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                 const scriptPath = path.join(process.cwd(), "install-matrix-stack.sh");
                 const scriptContent = fs.readFileSync(scriptPath, "utf8");
                 
-                // Upload script using inline tee
                 const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
                 const writeCmd = `${sudoPrefix}tee "/tmp/install-matrix-stack.sh" << 'EOF' >/dev/null\n${scriptContent}\nEOF`;
                 
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: `📤 Uploading Matrix installation script to remote server for action: ${action}...` }));
                 
-                console.log(`[SSH INSTALL] Uploading installer script to remote via writeCmd...`);
-                conn.exec(writeCmd, (err, stream) => {
-                  if (err) {
-                    ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to upload installer script: ${err.message}` }));
-                    ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
-                    return;
-                  }
-                  stream.on("close", () => {
-                    console.log(`[SSH INSTALL] Making script executable via: "${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh"`);
-                    conn.exec(`${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh`, (err2, stream2) => {
-                      if (err2) {
-                        ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to chmod installer script: ${err2.message}` }));
+                console.log(`[SSH INSTALL] Uploading installer script to remote via SFTP...`);
+                conn.sftp((errSftp, sftp) => {
+                  if (errSftp) {
+                    console.warn("[SSH INSTALL] SFTP initialization failed, falling back to tee command:", errSftp.message);
+                    ws.send(JSON.stringify({ type: "cmd_stdout", text: `⚠️ SFTP not supported on remote. Falling back to inline shell transfer...` }));
+                    
+                    conn.exec(writeCmd, (err, stream) => {
+                      if (err) {
+                        ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to upload installer script via fallback: ${err.message}` }));
                         ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
                         return;
                       }
-                      stream2.on("close", () => {
-                        // Trigger execution of the newly uploaded installer
-                        ws.send(JSON.stringify({ type: "cmd_stdout", text: `🚀 Execution starting on remote host for ${command}...` }));
-                        const finalCmd = `${sudoPrefix}env ${envStr}bash /tmp/install-matrix-stack.sh`;
-                        console.log(`[SSH INSTALL] Executing installer script via finalCmd: "${finalCmd}"`);
-                        conn.exec(finalCmd, { pty: true }, (err3, finalStream) => {
-                          if (err3) {
-                            ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to execute command: ${err3.message}` }));
-                            ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
-                            return;
-                          }
+                      stream.on("close", () => {
+                        proceedToChmod();
+                      });
+                    });
+                    return;
+                  }
+                  
+                  const scriptBuffer = fs.readFileSync(scriptPath);
+                  sftp.writeFile('/tmp/install-matrix-stack.sh', scriptBuffer, { mode: 0o755 }, (errWrite) => {
+                    if (errWrite) {
+                      console.warn("[SSH INSTALL] SFTP writeFile failed, falling back to tee command:", errWrite.message);
+                      ws.send(JSON.stringify({ type: "cmd_stdout", text: `⚠️ SFTP file write failed. Falling back to inline shell transfer...` }));
+                      
+                      conn.exec(writeCmd, (err, stream) => {
+                        if (err) {
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to upload installer script via fallback: ${err.message}` }));
+                          ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+                          return;
+                        }
+                        stream.on("close", () => {
+                          proceedToChmod();
+                        });
+                      });
+                      return;
+                    }
+                    
+                    console.log("[SSH INSTALL] SFTP upload completed successfully.");
+                    ws.send(JSON.stringify({ type: "cmd_stdout", text: `✅ Installer script successfully uploaded via SFTP.` }));
+                    proceedToChmod();
+                  });
+                });
 
-                          let accumulated = "";
-                          finalStream.on("data", (data: any) => {
-                            const rawText = data.toString();
-                            ws.send(JSON.stringify({ type: "cmd_stdout", text: rawText }));
-                            accumulated += rawText;
-                          });
+                function proceedToChmod() {
+                  console.log(`[SSH INSTALL] Making script executable via: "${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh"`);
+                  conn.exec(`${sudoPrefix}chmod +x /tmp/install-matrix-stack.sh`, (err2, stream2) => {
+                    if (err2) {
+                      ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to chmod installer script: ${err2.message}` }));
+                      ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+                      return;
+                    }
+                    stream2.on("close", () => {
+                      // Trigger execution of the newly uploaded installer
+                      ws.send(JSON.stringify({ type: "cmd_stdout", text: `🚀 Execution starting on remote host for ${command}...` }));
+                      const finalCmd = `${sudoPrefix}env ${envStr}bash /tmp/install-matrix-stack.sh`;
+                      console.log(`[SSH INSTALL] Executing installer script via finalCmd: "${finalCmd}"`);
+                      conn.exec(finalCmd, { pty: true }, (err3, finalStream) => {
+                        if (err3) {
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to execute command: ${err3.message}` }));
+                          ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+                          return;
+                        }
 
-                          finalStream.on("close", (code: number) => {
-                            ws.send(JSON.stringify({ type: "cmd_stdout", text: `🏁 [REMOTE] Installer finished with exit code: ${code}` }));
-                            ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
-                            
-                            // Post-install DB update if successful
-                            if (code === 0 || !code) {
-                              try {
-                                const db = readDb();
-                                const connIndex = db.connections.findIndex((c: any) => c.id === activeConn.id);
-                                if (connIndex !== -1) {
-                                  if (command === "uninstall_stack") {
-                                    db.connections[connIndex].status = "offline";
-                                  } else if (command === "purge_database") {
-                                    // No structural change
-                                  } else if (command === "install" || command === "custom_install") {
-                                    db.connections[connIndex].status = "online";
-                                    db.connections[connIndex].configPath = "/etc/matrix-stack.conf";
-                                    db.connections[connIndex].homeserverYamlPath = "/etc/matrix-synapse/homeserver.yaml";
-                                    db.connections[connIndex].elementConfigPath = "/var/www/element/config.json";
-                                  } else if (command === "install_workers" || command === "workers_enable") {
-                                    const workerCount = args?.count || 2;
-                                    const enableFed = args?.federationSender || false;
-                                    db.connections[connIndex].workersConfig = {
-                                      enabled: true,
-                                      count: Number(workerCount),
-                                      federationSender: enableFed,
-                                      basePort: 8083
-                                    };
-                                  } else if (command === "workers_disable") {
-                                    db.connections[connIndex].workersConfig = {
-                                      enabled: false,
-                                      count: 0,
-                                      federationSender: false,
-                                      basePort: 8083
-                                    };
-                                  }
-                                  writeDb(db);
+                        let accumulated = "";
+                        finalStream.on("data", (data: any) => {
+                          const rawText = data.toString();
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: rawText }));
+                          accumulated += rawText;
+                        });
+
+                        finalStream.on("close", (code: number) => {
+                          ws.send(JSON.stringify({ type: "cmd_stdout", text: `🏁 [REMOTE] Installer finished with exit code: ${code}` }));
+                          ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
+                          
+                          // Post-install DB update if successful
+                          if (code === 0 || !code) {
+                            try {
+                              const db = readDb();
+                              const connIndex = db.connections.findIndex((c: any) => c.id === activeConn.id);
+                              if (connIndex !== -1) {
+                                if (command === "uninstall_stack") {
+                                  db.connections[connIndex].status = "offline";
+                                } else if (command === "purge_database") {
+                                  // No structural change
+                                } else if (command === "install" || command === "custom_install") {
+                                  db.connections[connIndex].status = "online";
+                                  db.connections[connIndex].configPath = "/etc/matrix-stack.conf";
+                                  db.connections[connIndex].homeserverYamlPath = "/etc/matrix-synapse/homeserver.yaml";
+                                  db.connections[connIndex].elementConfigPath = "/var/www/element/config.json";
+                                } else if (command === "install_workers" || command === "workers_enable") {
+                                  const workerCount = args?.count || 2;
+                                  const enableFed = args?.federationSender || false;
+                                  db.connections[connIndex].workersConfig = {
+                                    enabled: true,
+                                    count: Number(workerCount),
+                                    federationSender: enableFed,
+                                    basePort: 8083
+                                  };
+                                } else if (command === "workers_disable") {
+                                  db.connections[connIndex].workersConfig = {
+                                    enabled: false,
+                                    count: 0,
+                                    federationSender: false,
+                                    basePort: 8083
+                                  };
                                 }
-                              } catch (e) {
-                                console.error("Failed to update remote connection configuration:", e);
+                                writeDb(db);
                               }
+                            } catch (e) {
+                              console.error("Failed to update remote connection configuration:", e);
                             }
-                            conn.end();
-                          });
+                          }
+                          conn.end();
                         });
                       });
                     });
                   });
-                });
+                }
               } catch (e: any) {
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Server Exception: ${e.message}` }));
                 ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
