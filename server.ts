@@ -6574,7 +6574,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       }
 
       if (data.type === "execute_command") {
-        const { command, args } = data;
+        const command = String(data.command || "").trim();
+        const args = data.args;
 
         // Perform RBAC validation
         if (role === "Viewer") {
