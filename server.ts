@@ -7036,7 +7036,12 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
             INSTALL_ELEMENT: String(selectedComponents.includes("element")),
             INSTALL_POSTGRES: String(selectedComponents.includes("postgres")),
             INSTALL_COTURN: String(selectedComponents.includes("coturn")),
-            INSTALL_NGINX: String(selectedComponents.includes("nginx"))
+            INSTALL_NGINX: String(selectedComponents.includes("nginx")),
+            LDAP_NOW: String(confObj.LDAP_NOW || "n"),
+            LDAP_URI: String(confObj.LDAP_URI || ""),
+            LDAP_BIND_DN: String(confObj.LDAP_BIND_DN || ""),
+            LDAP_BIND_PASS: String(confObj.LDAP_BIND_PASS || ""),
+            LDAP_BASE_DC: String(confObj.LDAP_BASE_DC || "")
           };
 
           const child = spawn("bash", ["./install-matrix-stack.sh"], { env: envVars });

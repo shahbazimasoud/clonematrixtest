@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Server, Globe, ShieldAlert, Key, Settings, 
@@ -91,6 +91,14 @@ const translations = {
     ldapDesc: "Enable LDAP integration to allow your users to log in using their enterprise directory accounts.",
     ldapCheckbox: "Configure LDAP Authentication right after installation completes?",
     ldapNotice: "If checked, the system will prompt you with the LDAP Wizard immediately after the core installation finishes successfully.",
+    ldapUriLabel: "LDAP Server URI",
+    ldapUriPlaceholder: "e.g., ldap://ldap.company.local:389 or ldaps://ldap.company.local:636",
+    ldapBindDnLabel: "LDAP Bind DN",
+    ldapBindDnPlaceholder: "e.g., cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "LDAP Bind Password",
+    ldapBindPasswordPlaceholder: "Enter password for the LDAP Bind DN account",
+    ldapBaseDnLabel: "LDAP User Search Base DN",
+    ldapBaseDnPlaceholder: "e.g., ou=users,dc=company,dc=local",
 
     // Step 6: Summary & Confirm
     summaryTitle: "Installation Summary",
@@ -187,6 +195,14 @@ const translations = {
     ldapDesc: "امکان احراز هویت کاربران سازمانی از طریق سرویس دایرکتوری سنترال (LDAP).",
     ldapCheckbox: "آیا می‌خواهید همین الان احراز هویت LDAP را پیکربندی کنید؟",
     ldapNotice: "در صورت انتخاب، بلافاصله پس از اتمام موفق نصب اصلی ماتریکس، ویزارد تنظیمات سرور LDAP به شما نمایش داده می‌شود.",
+    ldapUriLabel: "آدرس سرور LDAP (URI)",
+    ldapUriPlaceholder: "مثال: ldap://ldap.company.local:389 یا ldaps://ldap.company.local:636",
+    ldapBindDnLabel: "مشخصه اتصال (Bind DN)",
+    ldapBindDnPlaceholder: "مثال: cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "کلمه عبور اتصال (Bind Password)",
+    ldapBindPasswordPlaceholder: "پسورد اکانت متصل شونده به اکتیو دایرکتوری",
+    ldapBaseDnLabel: "پایه جستجوی کاربران (User Search Base DN)",
+    ldapBaseDnPlaceholder: "مثال: ou=users,dc=company,dc=local",
 
     // Step 6: Summary & Confirm
     summaryTitle: "خلاصه پیکربندی و شروع نصب",
@@ -223,7 +239,18 @@ export function InstallWizardModal({
   const isRtl = lang === 'fa';
   const t = translations[lang as 'fa' | 'en'] || translations.en;
 
+  const stepperContainerRef = useRef<HTMLDivElement>(null);
   const [currentStep, setCurrentStep] = useState(1);
+
+  useEffect(() => {
+    if (stepperContainerRef.current) {
+      const activeEl = stepperContainerRef.current.querySelector('[data-active="true"]');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+  }, [currentStep]);
+
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // Form states
@@ -249,6 +276,10 @@ export function InstallWizardModal({
   const [elementOfflineVersionLabel, setElementOfflineVersionLabel] = useState('');
 
   const [ldapConfigureNow, setLdapConfigureNow] = useState(false);
+  const [ldapUri, setLdapUri] = useState('ldap://localhost:389');
+  const [ldapBindDn, setLdapBindDn] = useState('cn=admin,dc=company,dc=local');
+  const [ldapBindPassword, setLdapBindPassword] = useState('');
+  const [ldapBaseDn, setLdapBaseDn] = useState('ou=users,dc=company,dc=local');
 
   if (!isOpen) return null;
 
@@ -284,6 +315,13 @@ export function InstallWizardModal({
       if (!elementOfflinePath.trim()) errors.elementOfflinePath = t.errRequired;
     }
 
+    if (step === 5 && ldapConfigureNow) {
+      if (!ldapUri.trim()) errors.ldapUri = t.errRequired;
+      if (!ldapBindDn.trim()) errors.ldapBindDn = t.errRequired;
+      if (!ldapBindPassword.trim()) errors.ldapBindPassword = t.errRequired;
+      if (!ldapBaseDn.trim()) errors.ldapBaseDn = t.errRequired;
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -299,7 +337,7 @@ export function InstallWizardModal({
   };
 
   const handleFinalConfirm = () => {
-    if (!validateStep(2) || !validateStep(3) || !validateStep(4)) {
+    if (!validateStep(2) || !validateStep(3) || !validateStep(4) || !validateStep(5)) {
       return;
     }
 
@@ -357,6 +395,10 @@ export function InstallWizardModal({
     // LDAP switch
     if (ldapConfigureNow) {
       finalConfig.LDAP_NOW = 'y';
+      finalConfig.LDAP_URI = ldapUri.trim();
+      finalConfig.LDAP_BIND_DN = ldapBindDn.trim();
+      finalConfig.LDAP_BIND_PASS = ldapBindPassword.trim();
+      finalConfig.LDAP_BASE_DC = ldapBaseDn.trim();
     } else {
       finalConfig.LDAP_NOW = 'n';
     }
@@ -415,14 +457,21 @@ export function InstallWizardModal({
         </div>
 
         {/* Stepper progress indicator */}
-        <div className={`px-6 py-4 border-b flex items-center justify-between overflow-x-auto gap-4 scrollbar-none transition-colors duration-300 ${
-          isLightMode ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-slate-950/20'
-        }`}>
+        <div 
+          ref={stepperContainerRef}
+          className={`px-6 py-4 border-b flex items-center justify-between overflow-x-auto gap-4 scrollbar-none transition-colors duration-300 ${
+            isLightMode ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-slate-950/20'
+          }`}
+        >
           {stepsList.map((step) => {
             const isActive = step.id === currentStep;
             const isCompleted = step.id < currentStep;
             return (
-              <div key={step.id} className="flex items-center gap-2 shrink-0">
+              <div 
+                key={step.id} 
+                data-active={isActive}
+                className="flex items-center gap-2 shrink-0"
+              >
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold font-mono border transition-all ${
                   isActive 
                     ? isLightMode 
@@ -1027,6 +1076,92 @@ export function InstallWizardModal({
                       <p className={`text-xs mt-1.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.ldapNotice}</p>
                     </div>
                   </div>
+
+                  {ldapConfigureNow && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <div className={`p-6 rounded-2xl border grid grid-cols-1 md:grid-cols-2 gap-4 ${
+                        isLightMode ? 'bg-slate-50/50 border-slate-200' : 'bg-slate-950/20 border-white/5'
+                      }`}>
+                        <div className="md:col-span-2">
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapUriLabel}</label>
+                          <input 
+                            type="text"
+                            value={ldapUri}
+                            onChange={(e) => setLdapUri(e.target.value)}
+                            placeholder={t.ldapUriPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapUri 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapUri && <p className="text-xs text-red-500 mt-1">{formErrors.ldapUri}</p>}
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapBindDnLabel}</label>
+                          <input 
+                            type="text"
+                            value={ldapBindDn}
+                            onChange={(e) => setLdapBindDn(e.target.value)}
+                            placeholder={t.ldapBindDnPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapBindDn 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapBindDn && <p className="text-xs text-red-500 mt-1">{formErrors.ldapBindDn}</p>}
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapBindPasswordLabel}</label>
+                          <input 
+                            type="password"
+                            value={ldapBindPassword}
+                            onChange={(e) => setLdapBindPassword(e.target.value)}
+                            placeholder={t.ldapBindPasswordPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapBindPassword 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapBindPassword && <p className="text-xs text-red-500 mt-1">{formErrors.ldapBindPassword}</p>}
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapBaseDnLabel}</label>
+                          <input 
+                            type="text"
+                            value={ldapBaseDn}
+                            onChange={(e) => setLdapBaseDn(e.target.value)}
+                            placeholder={t.ldapBaseDnPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapBaseDn 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapBaseDn && <p className="text-xs text-red-500 mt-1">{formErrors.ldapBaseDn}</p>}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
               )}
 
