@@ -243,12 +243,15 @@ export function InstallWizardModal({
   const [currentStep, setCurrentStep] = useState(1);
 
   useEffect(() => {
-    if (stepperContainerRef.current) {
-      const activeEl = stepperContainerRef.current.querySelector('[data-active="true"]');
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    const timer = setTimeout(() => {
+      if (stepperContainerRef.current) {
+        const activeEl = stepperContainerRef.current.querySelector('[data-active="true"]');
+        if (activeEl) {
+          activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
       }
-    }
+    }, 100);
+    return () => clearTimeout(timer);
   }, [currentStep]);
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
