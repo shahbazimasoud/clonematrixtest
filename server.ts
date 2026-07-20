@@ -6598,6 +6598,13 @@ wss.on("connection", (ws: WebSocket, request: any) => {
           
           const conn = new SSHClient();
           conn.on("ready", () => {
+            if ((command === "install" || command === "custom_install") && !args?.config) {
+              ws.send(JSON.stringify({ type: "cmd_stdout", text: "❌ Error: Direct raw execution of install command is blocked. Please use the installation wizard." }));
+              ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+              conn.end();
+              return;
+            }
+
             ws.send(JSON.stringify({ type: "cmd_stdout", text: `🔓 [REMOTE] SSH session established. Executing: ${command}` }));
             
             // Build the execution command
@@ -7063,13 +7070,6 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
               fullCmd = `echo "${b64}" | base64 -d | sudo bash`;
             }
             
-            if ((command === "install" || command === "custom_install") && !args?.config) {
-              ws.send(JSON.stringify({ type: "cmd_stdout", text: "❌ Error: Direct raw execution of install command is blocked." }));
-              ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
-              conn.end();
-              return;
-            }
-
             console.log(`[SSH EXECUTE_COMMAND] Executing command on SSH stream - fullCmd: "${fullCmd}"`);
             conn.exec(fullCmd, (err, stream) => {
               if (err) {
