@@ -6609,12 +6609,34 @@ wss.on("connection", (ws: WebSocket, request: any) => {
             
             // Build the execution command
             let fullCmd = command;
-            if (command === "custom_install" || command === "install") {
+            const useInstallerScript = [
+              "install",
+              "custom_install",
+              "uninstall_stack",
+              "purge_database",
+              "install_workers",
+              "workers_enable",
+              "workers_disable"
+            ].includes(command);
+
+            if (useInstallerScript) {
               try {
-                const selectedComponents = (command === "install") ? ["synapse", "element", "postgres", "coturn", "nginx"] : (args?.components || ["synapse", "element", "postgres", "coturn", "nginx"]);
+                // Determine action name
+                let action = "install";
+                if (command === "uninstall_stack") {
+                  action = "uninstall_stack";
+                } else if (command === "purge_database") {
+                  action = "remove_database_and_settings";
+                } else if (command === "install_workers" || command === "workers_enable") {
+                  action = "setup_workers";
+                } else if (command === "workers_disable") {
+                  action = "disable_workers";
+                }
+
                 const confObj = args?.config || {};
                 
-                if (command === "install") {
+                // If install/custom_install, make sure fields are populated
+                if (command === "install" || command === "custom_install") {
                   confObj.HS_DOMAIN = confObj.HS_DOMAIN || (activeConn.domain ? `matrix.${activeConn.domain}` : "matrix.company.local");
                   confObj.ELEMENT_DOMAIN = confObj.ELEMENT_DOMAIN || (activeConn.domain ? `chat.${activeConn.domain}` : "chat.company.local");
                   confObj.BASE_DOMAIN = confObj.BASE_DOMAIN || activeConn.domain || "company.local";
@@ -6628,16 +6650,25 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                   confObj.PG_PORT = confObj.PG_PORT || "5432";
                 }
 
-                // Convert config to env vars prefixed command
-                let envStr = "NON_INTERACTIVE=true ";
+                // Convert config to env vars
+                let envStr = `NON_INTERACTIVE=true ACTION='${action}' `;
                 Object.entries(confObj).forEach(([k, v]) => {
                   envStr += `${k}='${String(v).replace(/'/g, "'\\''")}' `;
                 });
-                envStr += `INSTALL_SYNAPSE='${selectedComponents.includes("synapse")}' `;
-                envStr += `INSTALL_ELEMENT='${selectedComponents.includes("element")}' `;
-                envStr += `INSTALL_POSTGRES='${selectedComponents.includes("postgres")}' `;
-                envStr += `INSTALL_COTURN='${selectedComponents.includes("coturn")}' `;
-                envStr += `INSTALL_NGINX='${selectedComponents.includes("nginx")}' `;
+
+                if (command === "install" || command === "custom_install") {
+                  const selectedComponents = (command === "install") ? ["synapse", "element", "postgres", "coturn", "nginx"] : (args?.components || ["synapse", "element", "postgres", "coturn", "nginx"]);
+                  envStr += `INSTALL_SYNAPSE='${selectedComponents.includes("synapse")}' `;
+                  envStr += `INSTALL_ELEMENT='${selectedComponents.includes("element")}' `;
+                  envStr += `INSTALL_POSTGRES='${selectedComponents.includes("postgres")}' `;
+                  envStr += `INSTALL_COTURN='${selectedComponents.includes("coturn")}' `;
+                  envStr += `INSTALL_NGINX='${selectedComponents.includes("nginx")}' `;
+                } else if (command === "install_workers" || command === "workers_enable") {
+                  const workerCount = args?.count || 2;
+                  const enableFed = args?.federationSender ? "true" : "false";
+                  envStr += `NUM_GENERIC_WORKERS='${workerCount}' `;
+                  envStr += `FED_SENDER_ENABLED='${enableFed}' `;
+                }
 
                 // Read our local /install-matrix-stack.sh script content from workspace
                 const scriptPath = path.join(process.cwd(), "install-matrix-stack.sh");
@@ -6647,9 +6678,9 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                 const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
                 const writeCmd = `${sudoPrefix}tee "/tmp/install-matrix-stack.sh" << 'EOF' >/dev/null\n${scriptContent}\nEOF`;
                 
-                ws.send(JSON.stringify({ type: "cmd_stdout", text: "📤 Uploading Matrix installation script to remote server..." }));
+                ws.send(JSON.stringify({ type: "cmd_stdout", text: `📤 Uploading Matrix installation script to remote server for action: ${action}...` }));
                 
-                console.log(`[SSH INSTALL] Uploading installer script to remote via writeCmd: "${writeCmd}"`);
+                console.log(`[SSH INSTALL] Uploading installer script to remote via writeCmd...`);
                 conn.exec(writeCmd, (err, stream) => {
                   if (err) {
                     ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Failed to upload installer script: ${err.message}` }));
@@ -6666,8 +6697,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                       }
                       stream2.on("close", () => {
                         // Trigger execution of the newly uploaded installer
-                        ws.send(JSON.stringify({ type: "cmd_stdout", text: "🚀 Execution starting on remote host..." }));
-                        const finalCmd = `${sudoPrefix}bash /tmp/install-matrix-stack.sh`;
+                        ws.send(JSON.stringify({ type: "cmd_stdout", text: `🚀 Execution starting on remote host for ${command}...` }));
+                        const finalCmd = `${sudoPrefix}env ${envStr}bash /tmp/install-matrix-stack.sh`;
                         console.log(`[SSH INSTALL] Executing installer script via finalCmd: "${finalCmd}"`);
                         conn.exec(finalCmd, { pty: true }, (err3, finalStream) => {
                           if (err3) {
@@ -6677,143 +6708,48 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                           }
 
                           let accumulated = "";
-                          const answered = {
-                            menuSelect: false,
-                            hsDomain: false,
-                            elementDomain: false,
-                            baseDomain: false,
-                            publicIp: false,
-                            leEmail: false,
-                            sslChoice: false,
-                            ldapNow: false,
-                            ldapUri: false,
-                            ldapBindDn: false,
-                            ldapBindPass: false,
-                            ldapBaseDn: false,
-                            pauseClear: false,
-                            exitMenu: false,
-                          };
-
                           finalStream.on("data", (data: any) => {
                             const rawText = data.toString();
                             ws.send(JSON.stringify({ type: "cmd_stdout", text: rawText }));
                             accumulated += rawText;
-
-                            // Strip ANSI escape sequences to match prompts reliably
-                            const cleanText = accumulated.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
-
-                            // 1. Menu Selection
-                            if (cleanText.includes("Select an option [1-5]:") && !answered.menuSelect) {
-                              answered.menuSelect = true;
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: "\n[AUTO-PTY] Selecting '1' (Standard Install Stack)\n" }));
-                              finalStream.write("1\n");
-                            }
-                            // 2. Homeserver Domain
-                            else if (cleanText.includes("Matrix homeserver domain") && !answered.hsDomain) {
-                              answered.hsDomain = true;
-                              const val = String(confObj.HS_DOMAIN || "matrix.company.local");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing Homeserver Domain: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 3. Element Web Domain
-                            else if (cleanText.includes("Element Web domain") && !answered.elementDomain) {
-                              answered.elementDomain = true;
-                              const val = String(confObj.ELEMENT_DOMAIN || "chat.company.local");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing Element Domain: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 4. Base Domain
-                            else if (cleanText.includes("Base domain for Well-Known pointers") && !answered.baseDomain) {
-                              answered.baseDomain = true;
-                              const val = String(confObj.BASE_DOMAIN || "company.local");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing Base Domain: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 5. Public IP
-                            else if (cleanText.includes("Public IP of this VPS") && !answered.publicIp) {
-                              answered.publicIp = true;
-                              const val = String(confObj.PUBLIC_IP || activeConn.host || "127.0.0.1");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing Public IP: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 6. Let's Encrypt Email
-                            else if (cleanText.includes("Let's Encrypt notification email") && !answered.leEmail) {
-                              answered.leEmail = true;
-                              const val = String(confObj.LE_EMAIL || "admin@company.local");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing LE Email: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 7. SSL Certificate Method Selection
-                            else if (cleanText.includes("Choose [1-2]:") && !answered.sslChoice) {
-                              answered.sslChoice = true;
-                              const val = confObj.SSL_MODE === "letsencrypt" ? "2" : "1";
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Choosing SSL Method: ${val} (${confObj.SSL_MODE || 'selfsigned'})\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 8. Configure LDAP Now?
-                            else if (cleanText.includes("Configure LDAP now? (y/n)") && !answered.ldapNow) {
-                              answered.ldapNow = true;
-                              const val = confObj.LDAP_NOW === "y" ? "y" : "n";
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Configure LDAP now?: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 9. LDAP URI
-                            else if (cleanText.includes("Enter LDAP URI") && !answered.ldapUri) {
-                              answered.ldapUri = true;
-                              const val = String(confObj.LDAP_URI || "ldap://localhost");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing LDAP URI: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 10. LDAP Bind DN
-                            else if (cleanText.includes("Enter LDAP Bind DN") && !answered.ldapBindDn) {
-                              answered.ldapBindDn = true;
-                              const val = String(confObj.LDAP_BIND_DN || "cn=admin,dc=company,dc=local");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing LDAP Bind DN: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 11. LDAP Bind Password
-                            else if (cleanText.includes("Enter LDAP Bind Password") && !answered.ldapBindPass) {
-                              answered.ldapBindPass = true;
-                              const val = String(confObj.LDAP_BIND_PASS || "");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: "\n[AUTO-PTY] Writing LDAP Bind Password: *****\n" }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 12. LDAP Base DN
-                            else if (cleanText.includes("Enter LDAP Base Search DN") && !answered.ldapBaseDn) {
-                              answered.ldapBaseDn = true;
-                              const val = String(confObj.LDAP_BASE_DC || "ou=users,dc=company,dc=local");
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: `\n[AUTO-PTY] Writing LDAP User Search Base DN: ${val}\n` }));
-                              finalStream.write(`${val}\n`);
-                            }
-                            // 13. Press Enter to continue... (pause utility at setup completion)
-                            else if (cleanText.includes("Press Enter to continue...") && !answered.pauseClear) {
-                              answered.pauseClear = true;
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: "\n[AUTO-PTY] Pressing Enter to clear completion screen pause...\n" }));
-                              finalStream.write("\n");
-                            }
-                            // 14. Exit Interactive Menu after completion
-                            else if (cleanText.includes("Select an option [1-5]:") && answered.pauseClear && !answered.exitMenu) {
-                              answered.exitMenu = true;
-                              ws.send(JSON.stringify({ type: "cmd_stdout", text: "\n[AUTO-PTY] Selecting '5' (Exit Console Manager)\n" }));
-                              finalStream.write("5\n");
-                            }
                           });
 
-                          finalStream.on("close", (code) => {
+                          finalStream.on("close", (code: number) => {
                             ws.send(JSON.stringify({ type: "cmd_stdout", text: `🏁 [REMOTE] Installer finished with exit code: ${code}` }));
                             ws.send(JSON.stringify({ type: "cmd_end", code: code || 0 }));
                             
-                            // Update remote state in database
-                            if (code === 0 || code === null) {
+                            // Post-install DB update if successful
+                            if (code === 0 || !code) {
                               try {
                                 const db = readDb();
                                 const connIndex = db.connections.findIndex((c: any) => c.id === activeConn.id);
                                 if (connIndex !== -1) {
-                                  db.connections[connIndex].status = "online";
-                                  // Update paths
-                                  db.connections[connIndex].configPath = "/etc/matrix-stack.conf";
-                                  db.connections[connIndex].homeserverYamlPath = "/etc/matrix-synapse/homeserver.yaml";
-                                  db.connections[connIndex].elementConfigPath = "/var/www/element/config.json";
+                                  if (command === "uninstall_stack") {
+                                    db.connections[connIndex].status = "offline";
+                                  } else if (command === "purge_database") {
+                                    // No structural change
+                                  } else if (command === "install" || command === "custom_install") {
+                                    db.connections[connIndex].status = "online";
+                                    db.connections[connIndex].configPath = "/etc/matrix-stack.conf";
+                                    db.connections[connIndex].homeserverYamlPath = "/etc/matrix-synapse/homeserver.yaml";
+                                    db.connections[connIndex].elementConfigPath = "/var/www/element/config.json";
+                                  } else if (command === "install_workers" || command === "workers_enable") {
+                                    const workerCount = args?.count || 2;
+                                    const enableFed = args?.federationSender || false;
+                                    db.connections[connIndex].workersConfig = {
+                                      enabled: true,
+                                      count: Number(workerCount),
+                                      federationSender: enableFed,
+                                      basePort: 8083
+                                    };
+                                  } else if (command === "workers_disable") {
+                                    db.connections[connIndex].workersConfig = {
+                                      enabled: false,
+                                      count: 0,
+                                      federationSender: false,
+                                      basePort: 8083
+                                    };
+                                  }
                                   writeDb(db);
                                 }
                               } catch (e) {
@@ -6833,7 +6769,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                 conn.end();
               }
               return;
-            } else if (command === "install_workers") {
+            } else if (false) {
               const workerCount = args?.count || 2;
               const enableFed = args?.federationSender ? "true" : "false";
               

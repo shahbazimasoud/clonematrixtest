@@ -154,6 +154,9 @@ print_header() {
 }
 
 pause() {
+  if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+    return 0
+  fi
   read -rp "Press Enter to continue..." _
 }
 
@@ -4961,6 +4964,9 @@ PYEOF
 # a `read` inside it would show no visible prompt and appear to hang.
 _pg_offer_restore_from_backup() {
   PG_RESTORE_FILE=""
+  if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+    return 0
+  fi
   local backup_dir="/root/matrix-backups"
   [[ -d "${backup_dir}" ]] || return 0
 
@@ -5507,7 +5513,10 @@ install_stack() {
   echo "║         (copy files from a local path or USB drive)     ║"
   echo "╚══════════════════════════════════════════════════════════╝"
   echo
-  read -rp "Choose installation mode [1-2]: " _install_mode
+  local _install_mode="1"
+  if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+    read -rp "Choose installation mode [1-2]: " _install_mode
+  fi
 
   case "${_install_mode}" in
     2)
@@ -5532,6 +5541,13 @@ install_stack() {
     local prompt_text="$1"
     local var_name="$2"
     local current_val="${!var_name:-}"
+    if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+      if [[ -z "${current_val}" ]]; then
+        echo "❌ Error: Variable ${var_name} is empty in non-interactive mode." >&2
+        exit 1
+      fi
+      return 0
+    fi
     if [[ -n "${current_val}" ]]; then
       local user_input
       read -rp "${prompt_text} [${current_val}]: " user_input
@@ -5573,7 +5589,10 @@ install_stack() {
   echo "SSL Mode:             ${ssl_mode_display}"
   echo "========================================="
   echo
-  read -rp "✅ Continue with installation? (y/n): " CONFIRM
+  local CONFIRM="y"
+  if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+    read -rp "✅ Continue with installation? (y/n): " CONFIRM
+  fi
   if [[ "${CONFIRM}" != "y" && "${CONFIRM}" != "Y" ]]; then
     echo "❎ Install aborted."
     pause
@@ -5718,11 +5737,18 @@ install_stack() {
 
   echo "🔒 Setting up SSL certificate..."
   echo
-  echo "Choose SSL certificate method:"
-  echo "  1) Auto-detect (self-signed for internal / Let's Encrypt for public)"
-  echo "  2) Self-signed certificate (recommended for internal/private networks)"
-  echo "  3) Provide my own PEM certificate"
-  read -rp "Choose [1-3]: " ssl_choice
+  local ssl_choice="1"
+  if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+    if [[ "${SSL_MODE:-}" == "selfsigned" ]]; then
+      ssl_choice="2"
+    elif [[ "${SSL_MODE:-}" == "custom" ]]; then
+      ssl_choice="3"
+    else
+      ssl_choice="1"
+    fi
+  else
+    read -rp "Choose [1-3]: " ssl_choice
+  fi
 
   case "${ssl_choice}" in
     1)
@@ -5735,9 +5761,14 @@ install_stack() {
     3)
       echo
       echo "Provide your PEM certificate files:"
-      read -rp "  Path to certificate / fullchain PEM: " user_cert
-      read -rp "  Path to private key PEM:            " user_key
-      read -rp "  Path to CA chain PEM (optional):     " user_chain
+      local user_cert="${USER_CERT:-}"
+      local user_key="${USER_KEY:-}"
+      local user_chain="${USER_CHAIN:-}"
+      if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+        read -rp "  Path to certificate / fullchain PEM: " user_cert
+        read -rp "  Path to private key PEM:            " user_key
+        read -rp "  Path to CA chain PEM (optional):     " user_chain
+      fi
       if [[ -z "${user_cert}" || -z "${user_key}" ]]; then
         echo "❌ Certificate and key paths are required. Falling back to auto-detect..."
         run_step "🔑 Configuring SSL (auto-detect)" setup_ssl_auto "${HS_DOMAIN}" "${ELEMENT_DOMAIN}" "${BASE_DOMAIN}" "${LE_EMAIL}"
@@ -7289,19 +7320,33 @@ setup_workers() {
     return 1
   fi
 
-  read -rp "How many generic workers do you want? [1-4, default 2]: " NUM_GENERIC_WORKERS
-  NUM_GENERIC_WORKERS="${NUM_GENERIC_WORKERS:-2}"
+  local num_workers="${NUM_GENERIC_WORKERS:-}"
+  if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+    NUM_GENERIC_WORKERS="${num_workers:-2}"
+  else
+    read -rp "How many generic workers do you want? [1-4, default 2]: " NUM_GENERIC_WORKERS
+    NUM_GENERIC_WORKERS="${NUM_GENERIC_WORKERS:-2}"
+  fi
   if ! [[ "${NUM_GENERIC_WORKERS}" =~ ^[1-4]$ ]]; then
     echo "❌ Please enter a number between 1 and 4."
     pause
     return 1
   fi
 
-  read -rp "Enable a dedicated federation_sender worker? (y/n): " FED_ANS
-  if [[ "${FED_ANS}" == "y" || "${FED_ANS}" == "Y" ]]; then
-    FED_SENDER_ENABLED="true"
+  local fed_sender="${FED_SENDER_ENABLED:-}"
+  if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+    if [[ "${fed_sender}" == "true" ]]; then
+      FED_SENDER_ENABLED="true"
+    else
+      FED_SENDER_ENABLED="false"
+    fi
   else
-    FED_SENDER_ENABLED="false"
+    read -rp "Enable a dedicated federation_sender worker? (y/n): " FED_ANS
+    if [[ "${FED_ANS}" == "y" || "${FED_ANS}" == "Y" ]]; then
+      FED_SENDER_ENABLED="true"
+    else
+      FED_SENDER_ENABLED="false"
+    fi
   fi
 
   WORKER_BASE_PORT=8083
@@ -7510,7 +7555,10 @@ workers_status() {
 disable_workers() {
   print_header
   echo "🧹 === Disable Workers (revert to single-process) ==="
-  read -rp "Are you sure you want to disable all workers? (y/n): " CONFIRM
+  local CONFIRM="y"
+  if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+    read -rp "Are you sure you want to disable all workers? (y/n): " CONFIRM
+  fi
   if [[ "${CONFIRM}" != "y" && "${CONFIRM}" != "Y" ]]; then
     echo "Cancelled."
     pause
@@ -10830,23 +10878,28 @@ updates_menu() {
 #############################################
 
 full_uninstall() {
-  print_header
-  echo "🧨 === FULL UNINSTALL / PURGE ==="
-  echo
-  echo "Choose a mode:"
-  echo "  1) 🔥 QUICK — purge EVERYTHING and reset to a clean server"
-  echo "     (packages, files, DB, SSL, logs, bots, NAS mount, configs)"
-  echo "  2) 🎛️  INTERACTIVE — pick what to remove, category by category"
-  echo "  0) Cancel"
-  read -rp "Choose [0-2]: " mode
-  case "${mode}" in
-    0) return 0 ;;
-    1|2) ;;
-    *) echo "Invalid option."; sleep 1; return 0 ;;
-  esac
+  local mode="1"
+  local confirm="DELETE"
+  if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+    print_header
+    echo "🧨 === FULL UNINSTALL / PURGE ==="
+    echo
+    echo "Choose a mode:"
+    echo "  1) 🔥 QUICK — purge EVERYTHING and reset to a clean server"
+    echo "     (packages, files, DB, SSL, logs, bots, NAS mount, configs)"
+    echo "  2) 🎛️  INTERACTIVE — pick what to remove, category by category"
+    echo "  0) Cancel"
+    read -rp "Choose [0-2]: " mode
+    case "${mode}" in
+      0) return 0 ;;
+      1|2) ;;
+      *) echo "Invalid option."; sleep 1; return 0 ;;
+    esac
 
-  echo
-  read -rp "⚠️  This is DESTRUCTIVE. Type DELETE to continue: " confirm
+    echo
+    read -rp "⚠️  This is DESTRUCTIVE. Type DELETE to continue: " confirm
+  fi
+
   if [[ "${confirm}" != "DELETE" ]]; then
     echo "Cancelled."
     pause
@@ -11161,7 +11214,10 @@ remove_database_and_settings() {
   echo "⚠️  This is DESTRUCTIVE and cannot be undone, other than by restoring"
   echo "   the backup above (e.g. via option 1 → PostgreSQL restore picker,"
   echo "   or the Backup & Recovery → Restore menu)."
-  read -rp "Are you sure you want to delete the database now? (y/n): " confirm
+  local confirm="y"
+  if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+    read -rp "Are you sure you want to delete the database now? (y/n): " confirm
+  fi
   if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
     echo "Cancelled. The backup above was kept; the database was NOT touched."
     echo "Restarting Synapse..."
@@ -12653,4 +12709,27 @@ echo
 }
 
 require_root
-main_menu
+
+if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+  echo "🚀 Running in Non-Interactive Mode..."
+  # Determine which action/command to run. Default to install_stack if empty.
+  ACTION="${ACTION:-install}"
+  
+  if [[ "${ACTION}" == "install" || "${ACTION}" == "custom_install" ]]; then
+    install_stack
+  elif [[ "${ACTION}" == "uninstall" || "${ACTION}" == "uninstall_stack" ]]; then
+    full_uninstall
+  elif [[ "${ACTION}" == "remove_database" || "${ACTION}" == "remove_database_and_settings" ]]; then
+    remove_database_and_settings
+  elif [[ "${ACTION}" == "workers_enable" || "${ACTION}" == "setup_workers" ]]; then
+    setup_workers
+  elif [[ "${ACTION}" == "workers_disable" || "${ACTION}" == "disable_workers" ]]; then
+    disable_workers
+  else
+    echo "⚠️ Unknown non-interactive action: ${ACTION}. Defaulting to install_stack."
+    install_stack
+  fi
+  exit 0
+else
+  main_menu
+fi
