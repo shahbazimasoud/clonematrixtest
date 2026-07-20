@@ -68,6 +68,28 @@ const wss = new WebSocketServer({ noServer: true });
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const JWT_SECRET = process.env.JWT_SECRET || "spatial-matrix-secret-key-9988";
 const SANDBOX_DIR = path.join(process.cwd(), "sandbox");
+const REMOTE_MATRIX_INSTALLER_PATH = "/tmp/matrix-installer.sh";
+const INSTALLER_WS_COMMANDS = [
+  "install",
+  "custom_install",
+  "uninstall_stack",
+  "purge_database",
+  "install_workers",
+  "workers_enable",
+  "workers_disable"
+];
+
+function resolveMatrixInstallerScriptPath(): string {
+  for (const name of ["matrix-installer.sh", "install-matrix-stack.sh"]) {
+    const scriptPath = path.join(process.cwd(), name);
+    if (fs.existsSync(scriptPath)) {
+      return scriptPath;
+    }
+  }
+  throw new Error(
+    `Matrix installer script not found in ${process.cwd()} (expected matrix-installer.sh or install-matrix-stack.sh)`
+  );
+}
 
 async function readConfigContent(filePath: string, defaultContent: string = ""): Promise<string> {
   const activeConn = getActiveConnection();
@@ -6605,24 +6627,13 @@ wss.on("connection", (ws: WebSocket, request: any) => {
               return;
             }
 
-            ws.send(JSON.stringify({ type: "cmd_stdout", text: `🔓 [REMOTE] SSH session established. Executing: ${command}` }));
-            
-            // Build the execution command
-            let fullCmd = command;
-            const useInstallerScript = [
-              "install",
-              "custom_install",
-              "uninstall_stack",
-              "purge_database",
-              "install_workers",
-              "workers_enable",
-              "workers_disable"
-            ].includes(command);
+            const useInstallerScript = INSTALLER_WS_COMMANDS.includes(command);
 
             console.log(`[SSH READY] command: "${command}", useInstallerScript: ${useInstallerScript}, args:`, JSON.stringify(args));
-            ws.send(JSON.stringify({ type: "cmd_stdout", text: `🔍 [DEBUG] Server state - command: "${command}", useInstaller: ${useInstallerScript}, hasConfig: ${!!args?.config}` }));
 
             if (useInstallerScript) {
+              ws.send(JSON.stringify({ type: "cmd_stdout", text: `🔓 [REMOTE] SSH session established. Deploying matrix-installer.sh (Standard Install Stack)...` }));
+
               try {
                 // Determine action name
                 let action = "install";
@@ -6673,15 +6684,11 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                   envStr += `FED_SENDER_ENABLED='${enableFed}' `;
                 }
 
-                // Read our local installer script content from workspace
-                let scriptPath = path.join(process.cwd(), "matrix-installer.sh");
-                if (!fs.existsSync(scriptPath)) {
-                  scriptPath = path.join(process.cwd(), "install-matrix-stack.sh");
-                }
+                const scriptPath = resolveMatrixInstallerScriptPath();
                 const scriptContent = fs.readFileSync(scriptPath, "utf8");
                 
                 const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-                const remoteDestPath = "/tmp/matrix-installer.sh";
+                const remoteDestPath = REMOTE_MATRIX_INSTALLER_PATH;
                 const writeCmd = `${sudoPrefix}tee "${remoteDestPath}" << 'EOF' >/dev/null\n${scriptContent}\nEOF`;
                 
                 ws.send(JSON.stringify({ type: "cmd_stdout", text: `📤 Uploading Matrix installation script to remote server for action: ${action}...` }));
@@ -6811,7 +6818,19 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                 conn.end();
               }
               return;
-            } else if (false) {
+            }
+
+            if (["install", "custom_install"].includes(command)) {
+              ws.send(JSON.stringify({ type: "cmd_stdout", text: "❌ Error: Installation must be started from the wizard with a valid configuration payload." }));
+              ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+              conn.end();
+              return;
+            }
+
+            ws.send(JSON.stringify({ type: "cmd_stdout", text: `🔓 [REMOTE] SSH session established. Executing: ${command}` }));
+
+            let fullCmd: string | null = null;
+            if (false) {
               const workerCount = args?.count || 2;
               const enableFed = args?.federationSender ? "true" : "false";
               
@@ -7046,6 +7065,15 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
 `;
               const b64 = Buffer.from(installScript).toString("base64");
               fullCmd = `echo "${b64}" | base64 -d | sudo bash`;
+            } else {
+              fullCmd = command;
+            }
+
+            if (!fullCmd) {
+              ws.send(JSON.stringify({ type: "cmd_stdout", text: `❌ Unsupported remote console command: ${command}` }));
+              ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
+              conn.end();
+              return;
             }
             
             console.log(`[SSH EXECUTE_COMMAND] Executing command on SSH stream - fullCmd: "${fullCmd}"`);
@@ -7155,11 +7183,8 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
             LDAP_BASE_DC: String(confObj.LDAP_BASE_DC || "")
           };
 
-          let localScriptPath = "./matrix-installer.sh";
-          if (!fs.existsSync(path.join(process.cwd(), "matrix-installer.sh"))) {
-            localScriptPath = "./install-matrix-stack.sh";
-          }
-          const child = spawn("bash", [localScriptPath], { env: envVars });
+          const localScriptPath = resolveMatrixInstallerScriptPath();
+          const child = spawn("bash", [localScriptPath], { env: { ...envVars, NON_INTERACTIVE: "true", ACTION: "install" } });
 
           child.stdout.on("data", (data) => {
             ws.send(JSON.stringify({ type: "cmd_stdout", text: data.toString() }));

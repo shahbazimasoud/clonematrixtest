@@ -711,6 +711,7 @@ export function InstallWizardModal({
       BASE_DOMAIN: baseDomain.trim(),
       PUBLIC_IP: publicIp.trim(),
       LE_EMAIL: leEmail.trim(),
+      INSTALL_SOURCE_MODE: installSource === "offline" ? "offline" : "online",
     };
 
     // Mapping SSL Mode
