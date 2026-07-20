@@ -41,6 +41,7 @@ import ConfigForms from './components/ConfigForms';
 import ReportingPanel from './components/ReportingPanel';
 import KetesaAdmin from './components/KetesaAdmin';
 import ConnectionManager from './components/ConnectionManager';
+import { InstallWizardModal } from './components/InstallWizardModal';
 import { SystemStats, ServiceState, PanelUser, AuditLog, BackupItem, UndoItem, MatrixConfig, LDAPConfig, MatrixUser } from './types';
 
 // Translation Dictionary for Persian (Default), English, Spanish, Arabic, German & Russian
@@ -400,6 +401,7 @@ export default function App() {
 
   // Navigation and terminal/command execution states
   const [activeView, setActiveView] = useState('dashboard');
+  const [showInstallWizard, setShowInstallWizard] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
     "System Shell Monitor Initialized. Welcome to Matrix Stack Manager."
   ]);
@@ -797,6 +799,10 @@ export default function App() {
   };
 
   const handleExecuteCommand = (command: string, args?: any) => {
+    if (command === 'install' && !args) {
+      setShowInstallWizard(true);
+      return;
+    }
     if (!wsRef.current || isExecuting) return;
     wsRef.current.send(JSON.stringify({ type: 'execute_command', command, args }));
     setActiveView('terminal');
@@ -1613,6 +1619,19 @@ export default function App() {
             onViewChange={setActiveView} 
             onLogout={handleLogout}
             userRole={currentUser?.role || 'Viewer'}
+          />
+
+          <InstallWizardModal
+            isOpen={showInstallWizard}
+            onClose={() => setShowInstallWizard(false)}
+            onConfirm={(config) => {
+              setShowInstallWizard(false);
+              handleExecuteCommand('install', { config });
+            }}
+            lang={lang}
+            isLightMode={isLightMode}
+            defaultHost={activeConnection?.host}
+            defaultDomain={activeConnection?.domain}
           />
         </div>
       )}

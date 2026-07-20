@@ -52,6 +52,13 @@ if [ -f "$CONFIG_FILE" ]; then
   set -e
 fi
 
+if [[ -n "${OFFLINE_CONFIG_PATH:-}" && -f "${OFFLINE_CONFIG_PATH}" ]]; then
+  log_info "Loading offline configuration from ${OFFLINE_CONFIG_PATH}..."
+  set +e
+  source "${OFFLINE_CONFIG_PATH}" 2>/dev/null || true
+  set -e
+fi
+
 # Configuration Defaults
 HS_DOMAIN="${HS_DOMAIN:-matrix.company.local}"
 ELEMENT_DOMAIN="${ELEMENT_DOMAIN:-chat.company.local}"
@@ -128,7 +135,13 @@ setup_synapse() {
     echo "matrix-synapse-py3 matrix-synapse/server-name string $HS_DOMAIN" | debconf-set-selections
     echo "matrix-synapse-py3 matrix-synapse/report-stats boolean false" | debconf-set-selections
     
-    apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" matrix-synapse-py3
+    if [[ -n "${OFFLINE_SYNAPSE_DEB_DIR:-}" && -d "${OFFLINE_SYNAPSE_DEB_DIR}" ]]; then
+      log_info "Installing Matrix Synapse from local .deb packages in $OFFLINE_SYNAPSE_DEB_DIR..."
+      dpkg -i "$OFFLINE_SYNAPSE_DEB_DIR"/*.deb || true
+      apt-get install -f -y || true
+    else
+      apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" matrix-synapse-py3
+    fi
     
     log_info "Configuring Synapse homeserver.yaml..."
     YAML_FILE="/etc/matrix-synapse/homeserver.yaml"
@@ -187,16 +200,25 @@ setup_element() {
     WEBROOT="/var/www/element"
     mkdir -p "$WEBROOT"
 
-    # Fetch the latest element-web release tarball
-    log_info "Downloading Element Client Web package archive..."
-    ELEMENT_VERSION="v1.11.55"
-    wget -qO /tmp/element-web.tar.gz "https://github.com/element-hq/element-web/releases/download/$ELEMENT_VERSION/element-$ELEMENT_VERSION.tar.gz" || true
-    
-    if [ -f "/tmp/element-web.tar.gz" ]; then
-      tar -xzf /tmp/element-web.tar.gz -C "$WEBROOT" --strip-components=1
+    if [[ -n "${OFFLINE_ELEMENT_PKG:-}" && -f "${OFFLINE_ELEMENT_PKG}" ]]; then
+      log_info "Deploying Element Web from local package: $OFFLINE_ELEMENT_PKG..."
+      tar -xzf "$OFFLINE_ELEMENT_PKG" -C "$WEBROOT" --strip-components=1
     else
-      log_warning "Failed to download Element web from Github. Creating fallback page."
-      echo "<h1>Element Web Client Fallback</h1><p>Pointed at https://$HS_DOMAIN</p>" > "$WEBROOT/index.html"
+      local el_ver="${ELEMENT_VERSION:-1.11.55}"
+      # Ensure there is no leading v twice, but standard format is v1.x.y on github
+      if [[ ! "$el_ver" == v* ]]; then
+        el_ver="v$el_ver"
+      fi
+      log_info "Downloading Element Client Web package archive ($el_ver)..."
+      wget -qO /tmp/element-web.tar.gz "https://github.com/element-hq/element-web/releases/download/$el_ver/element-$el_ver.tar.gz" || true
+      
+      if [ -f "/tmp/element-web.tar.gz" ]; then
+        tar -xzf /tmp/element-web.tar.gz -C "$WEBROOT" --strip-components=1
+        rm -f /tmp/element-web.tar.gz
+      else
+        log_warning "Failed to download Element web from Github. Creating fallback page."
+        echo "<h1>Element Web Client Fallback</h1><p>Pointed at https://$HS_DOMAIN</p>" > "$WEBROOT/index.html"
+      fi
     fi
 
     # Create config.json
@@ -274,6 +296,21 @@ setup_ssl() {
   log_step "Initializing SSL/TLS certificates layer..."
   CERT_DIR="/etc/letsencrypt/live/$HS_DOMAIN"
   mkdir -p "$CERT_DIR"
+
+  if [ "$SSL_MODE" = "custom" ]; then
+    log_info "Deploying custom PEM SSL certificates..."
+    if [[ -f "${CUSTOM_CERT_PEM:-}" && -f "${CUSTOM_KEY_PEM:-}" ]]; then
+      cp -f "$CUSTOM_CERT_PEM" "$CERT_DIR/fullchain.pem"
+      cp -f "$CUSTOM_KEY_PEM" "$CERT_DIR/privkey.pem"
+      if [[ -f "${CUSTOM_CHAIN_PEM:-}" ]]; then
+        cp -f "$CUSTOM_CHAIN_PEM" "$CERT_DIR/chain.pem"
+      fi
+      log_success "Custom PEM certificate files copied."
+    else
+      log_error "Custom PEM files not found or invalid: cert=${CUSTOM_CERT_PEM:-}, key=${CUSTOM_KEY_PEM:-}. Falling back to self-signed..."
+      SSL_MODE="selfsigned"
+    fi
+  fi
 
   if [ "$SSL_MODE" = "letsencrypt" ]; then
     log_info "Requesting genuine Let's Encrypt certificates..."
@@ -481,7 +518,7 @@ install_stack() {
   local CONFIRM="y"
   local ssl_choice="1"
   local element_install_mode="1"
-  local LDAP_NOW="n"
+  local LDAP_NOW="${LDAP_NOW:-n}"
 
   if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
     echo "===== Pre-requisite Configuration Entry ====="
