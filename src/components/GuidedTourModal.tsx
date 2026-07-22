@@ -414,23 +414,24 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
+          dir={isRtl ? "rtl" : "ltr"}
           className={`relative w-full max-w-2xl rounded-3xl shadow-2xl border overflow-hidden transition-all ${
             isLightMode 
               ? 'bg-white border-slate-200 text-slate-800' 
               : 'bg-slate-950 border-white/10 text-white'
-          } ${isRtl ? 'dir-rtl' : 'dir-ltr'}`}
+          } ${isRtl ? 'dir-rtl text-right' : 'dir-ltr text-left'}`}
         >
           {/* Header Banner */}
-          <div className="relative p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-white/10 text-white">
+          <div className="relative p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-white/10 text-white" dir={isRtl ? "rtl" : "ltr"}>
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-400">
+                <div className="p-2.5 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 shrink-0">
                   <BookOpen className="w-6 h-6" />
                 </div>
-                <div>
+                <div className={isRtl ? 'text-right' : 'text-left'}>
                   <h3 className="text-lg font-bold flex items-center gap-2">
                     <span>{t.tourTitle}</span>
-                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
                   </h3>
                   <p className="text-xs text-slate-300 mt-0.5">{t.tourSub}</p>
                 </div>
@@ -439,7 +440,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all cursor-pointer"
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
                 title={t.btnSkip}
               >
                 <X className="w-5 h-5" />
@@ -447,7 +448,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
             </div>
 
             {/* Step Progress Bar */}
-            <div className="mt-5 flex items-center justify-between gap-2">
+            <div className="mt-5 flex items-center justify-between gap-2" dir={isRtl ? "rtl" : "ltr"}>
               <span className="text-[11px] font-mono text-indigo-300">
                 {t.stepOf(currentStep + 1, totalSteps)}
               </span>
@@ -461,20 +462,20 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
           </div>
 
           {/* Main Body Card */}
-          <div className="p-6 md:p-8 space-y-6">
+          <div className="p-6 md:p-8 space-y-6" dir={isRtl ? "rtl" : "ltr"}>
             <div className="flex items-start gap-4">
               <div className={`p-3.5 rounded-2xl bg-gradient-to-br ${stepData.color} text-white shadow-lg shrink-0`}>
                 <StepIcon className="w-7 h-7" />
               </div>
-              <div className="space-y-1.5">
-                <span className="text-[10px] font-mono font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
+              <div className={`space-y-1.5 w-full ${isRtl ? 'text-right' : 'text-left'}`}>
+                <span className="inline-block text-[10px] font-mono font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
                   {stepData.sub}
                 </span>
-                <h4 className={`text-base md:text-lg font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
-                  {stepData.title}
+                <h4 className={`text-base md:text-lg font-bold leading-snug ${isLightMode ? 'text-slate-900' : 'text-white'} ${isRtl ? 'text-right' : 'text-left'}`}>
+                  <bdi>{stepData.title}</bdi>
                 </h4>
-                <p className={`text-xs md:text-sm leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
-                  {stepData.desc}
+                <p className={`text-xs md:text-sm leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'} ${isRtl ? 'text-right' : 'text-left'}`}>
+                  <bdi>{stepData.desc}</bdi>
                 </p>
               </div>
             </div>
@@ -482,7 +483,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
             {/* Quick Action Link Button */}
             <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${
               isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/5'
-            }`}>
+            }`} dir={isRtl ? "rtl" : "ltr"}>
               <div className="flex items-center gap-2 text-xs font-semibold">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                 <span className={isLightMode ? 'text-slate-700' : 'text-slate-300'}>
@@ -500,7 +501,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
             </div>
 
             {/* Steps Dots */}
-            <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="flex items-center justify-center gap-2 pt-2" dir={isRtl ? "rtl" : "ltr"}>
               {t.steps.map((_, idx) => (
                 <button
                   key={idx}
@@ -519,7 +520,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
           {/* Footer Controls */}
           <div className={`p-4 md:px-8 border-t flex items-center justify-between gap-3 ${
             isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/50 border-white/5'
-          }`}>
+          }`} dir={isRtl ? "rtl" : "ltr"}>
             <button
               type="button"
               onClick={onClose}

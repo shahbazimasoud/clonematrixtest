@@ -302,7 +302,13 @@ const LANGUAGES = [
 export default function App() {
   const [lang, setLang] = useState<'fa' | 'en' | 'es' | 'ar' | 'de' | 'ru'>((localStorage.getItem('lang_pref') as any) || 'en');
   const t = translations[lang] || translations.en;
+  const isRtl = lang === 'fa' || lang === 'ar';
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
+    document.documentElement.lang = lang;
+  }, [lang, isRtl]);
 
   // Theme State
   const [isLightMode, setIsLightMode] = useState<boolean>(localStorage.getItem('theme_mode') === 'light');
@@ -860,7 +866,10 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen relative flex flex-col justify-between ${isLightMode ? 'theme-light' : ''} ${['fa', 'ar'].includes(lang) ? 'rtl font-sans' : 'ltr font-sans'}`}>
+    <div 
+      className={`min-h-screen relative flex flex-col justify-between ${isLightMode ? 'theme-light' : ''} ${isRtl ? 'dir-rtl' : 'dir-ltr'}`} 
+      dir={isRtl ? "rtl" : "ltr"}
+    >
       {/* Background neon visual noise */}
       <div className="ambient-glow-background" />
 
@@ -1243,7 +1252,9 @@ export default function App() {
                               setUserDropdownOpen(false);
                               setIsGuidedTourOpen(true);
                             }}
-                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
+                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isRtl ? 'text-right justify-start' : 'text-left justify-start'
+                            } ${
                               isLightMode 
                                 ? 'text-indigo-600 hover:bg-indigo-50' 
                                 : 'text-indigo-400 hover:bg-indigo-500/10'
@@ -1265,7 +1276,9 @@ export default function App() {
                               setUserDropdownOpen(false);
                               handleLogout();
                             }}
-                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
+                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isRtl ? 'text-right justify-start' : 'text-left justify-start'
+                            } ${
                               isLightMode 
                                 ? 'text-rose-600 hover:bg-rose-50' 
                                 : 'text-rose-400 hover:bg-rose-500/10'

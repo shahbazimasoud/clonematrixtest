@@ -199,15 +199,51 @@
 }
 
 @layer base {
+  html {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
   body {
     background-color: var(--color-spatial-bg);
     color: #e2e8f0;
-    font-family: 'Vazirmatn', var(--font-sans);
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     overflow-x: hidden;
   }
 
-  [dir="rtl"], [lang="fa"], .dir-rtl {
-    font-family: 'Vazirmatn', system-ui, sans-serif !important;
+  /* Force Vazirmatn font on all elements when dir=rtl or lang=fa */
+  html[dir="rtl"],
+  html[lang="fa"],
+  body[dir="rtl"],
+  [dir="rtl"],
+  [lang="fa"],
+  .dir-rtl {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    direction: rtl;
+  }
+
+  html[dir="rtl"] *,
+  [lang="fa"] * {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* Exception for code and terminal monospace elements */
+  html[dir="rtl"] .font-mono,
+  [lang="fa"] .font-mono,
+  html[dir="rtl"] code,
+  html[dir="rtl"] pre,
+  .keep-ltr {
+    font-family: "JetBrains Mono", "Vazirmatn", monospace !important;
+  }
+
+  /* Automatic Right Text Alignment for RTL layout, preserving explicit LTR blocks */
+  html[dir="rtl"] .text-left:not(.keep-ltr),
+  [dir="rtl"] .text-left:not(.keep-ltr) {
+    text-align: right;
+  }
+
+  html[dir="rtl"] input:not([type="checkbox"]):not([type="radio"]):not(.keep-ltr),
+  html[dir="rtl"] textarea:not(.keep-ltr) {
+    text-align: right;
   }
 }
 
