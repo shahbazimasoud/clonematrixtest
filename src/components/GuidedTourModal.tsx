@@ -59,11 +59,11 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
           color: 'from-blue-500 to-cyan-500'
         },
         {
-          title: '۲. نصب پکیج ماتریکس و دستیار ترمینال (Terminal & Install Wizard)',
-          sub: 'نصب خودکار Synapse، PostgreSQL و Element Web',
-          desc: 'اگر ماتریکس یا Synapse هنوز روی سرور شما نصب نشده است، به بخش «ترمینال» رفته یا دکمه Wizard نصب را بزنید. با اجرای گزینه ۸ و سپس گزینه ۲، سیستم به طور خودکار کامل‌ترین استک ماتریکس را روی سرور شما نصب و کانفیگ می‌کند.',
+          title: '۲. نصب پکیج ماتریکس و دستیار نصب (Web Console & Install Wizard)',
+          sub: 'نصب آسان ماتریکس از طریق کنسول وب و مودال هوشمند نصب',
+          desc: 'اگر ماتریکس یا Synapse هنوز روی سرور شما نصب نشده است، به قسمت «کنسول وب» رفته و روی «نصب مخزن استاندارد ماتریکس» کلیک کنید و از مودال بازشده موارد درخواستی را کامل کنید. پیش از شروع نصب، موارد زیر را آماده داشته باشید: مشخصات سرور (آدرس IP یا دامنه، نام کاربری و رمزعبور/کلید SSH)، اطلاعات دیتابیس PostgreSQL و ایمیل مدیرکل.',
           view: 'terminal',
-          viewLabel: 'باز کردن ترمینال و Wizard نصب',
+          viewLabel: 'باز کردن کنسول وب و مودال نصب',
           icon: TermIcon,
           color: 'from-purple-500 to-indigo-500'
         },
@@ -116,11 +116,11 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
           color: 'from-blue-500 to-cyan-500'
         },
         {
-          title: '2. Matrix Stack Installation & Terminal Wizard',
-          sub: 'Automated Synapse, PostgreSQL & Element Setup',
-          desc: 'If Matrix/Synapse is not yet installed on your remote server, go to "Terminal" or click the Install Wizard button. Run Option 8 -> Option 2 to execute full automated installation.',
+          title: '2. Matrix Stack Installation & Setup Wizard',
+          sub: 'Easy Matrix Setup via Web Console & Smart Wizard Modal',
+          desc: 'If Matrix/Synapse is not yet installed on your server, go to "Web Console", click "Install Standard Matrix Repository", and fill in the requested fields in the modal. Before starting, prepare the following: Server credentials (IP/Domain, SSH user & password/key), PostgreSQL DB info, and admin email.',
           view: 'terminal',
-          viewLabel: 'Open Terminal & Install Wizard',
+          viewLabel: 'Open Web Console & Install Wizard',
           icon: TermIcon,
           color: 'from-purple-500 to-indigo-500'
         },
