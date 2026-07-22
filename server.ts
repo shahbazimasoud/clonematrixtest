@@ -5209,8 +5209,19 @@ email:
     }
 
     if (ldap) {
-      if (ldap.uri) {
-        await writeConfigContent("/etc/matrix-stack-ldap.conf", `LDAP_URI=${ldap.uri}\n`);
+      if (ldap.uri || ldap.base) {
+        const ldapConfContent = [
+          `LDAP_URI=${ldap.uri || ""}`,
+          `LDAP_BASE=${ldap.base || ""}`,
+          `LDAP_MODE=${ldap.mode || "search"}`,
+          `LDAP_START_TLS=${ldap.start_tls ? "true" : "false"}`,
+          `LDAP_BIND_DN=${ldap.bind_dn || ""}`,
+          `LDAP_BIND_PASSWORD=${ldap.bind_password || ""}`,
+          `LDAP_UID_ATTR=${ldap.uid_attr || "sAMAccountName"}`,
+          `LDAP_MAIL_ATTR=${ldap.mail_attr || "mail"}`,
+          `LDAP_NAME_ATTR=${ldap.name_attr || "displayName"}`
+        ].join("\n");
+        await writeConfigContent("/etc/matrix-stack-ldap.conf", ldapConfContent + "\n");
       }
 
       let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
@@ -7217,10 +7228,17 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
             INSTALL_COTURN: String(selectedComponents.includes("coturn")),
             INSTALL_NGINX: String(selectedComponents.includes("nginx")),
             LDAP_NOW: String(confObj.LDAP_NOW || "n"),
-            LDAP_URI: String(confObj.LDAP_URI || ""),
-            LDAP_BIND_DN: String(confObj.LDAP_BIND_DN || ""),
-            LDAP_BIND_PASS: String(confObj.LDAP_BIND_PASS || ""),
-            LDAP_BASE_DC: String(confObj.LDAP_BASE_DC || "")
+            LDAP_URI: String(confObj.LDAP_URI || confObj.ldapUri || ""),
+            LDAP_BASE: String(confObj.LDAP_BASE || confObj.LDAP_BASE_DC || confObj.ldapBase || ""),
+            LDAP_BASE_DC: String(confObj.LDAP_BASE || confObj.LDAP_BASE_DC || confObj.ldapBase || ""),
+            LDAP_BIND_DN: String(confObj.LDAP_BIND_DN || confObj.ldapBindDn || ""),
+            LDAP_BIND_PASSWORD: String(confObj.LDAP_BIND_PASSWORD || confObj.LDAP_BIND_PASS || confObj.ldapBindPassword || ""),
+            LDAP_BIND_PASS: String(confObj.LDAP_BIND_PASSWORD || confObj.LDAP_BIND_PASS || confObj.ldapBindPassword || ""),
+            LDAP_MODE: String(confObj.LDAP_MODE || confObj.ldapMode || "search"),
+            LDAP_UID_ATTR: String(confObj.LDAP_UID_ATTR || confObj.ldapUidAttr || "sAMAccountName"),
+            LDAP_MAIL_ATTR: String(confObj.LDAP_MAIL_ATTR || confObj.ldapMailAttr || "mail"),
+            LDAP_NAME_ATTR: String(confObj.LDAP_NAME_ATTR || confObj.ldapNameAttr || "displayName"),
+            LDAP_START_TLS: String(confObj.LDAP_START_TLS || confObj.ldapStartTls || "false")
           };
 
           let localScriptPath = "./matrix-installer.sh";

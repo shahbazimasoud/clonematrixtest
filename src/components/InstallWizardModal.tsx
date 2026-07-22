@@ -802,7 +802,14 @@ export function InstallWizardModal({
       finalConfig.LDAP_URI = effectiveLdapUri;
       finalConfig.LDAP_BIND_DN = effectiveLdapBindDn;
       finalConfig.LDAP_BIND_PASS = ldapBindPassword.trim();
+      finalConfig.LDAP_BIND_PASSWORD = ldapBindPassword.trim();
       finalConfig.LDAP_BASE_DC = effectiveLdapBaseDn;
+      finalConfig.LDAP_BASE = effectiveLdapBaseDn;
+      finalConfig.LDAP_MODE = 'search';
+      finalConfig.LDAP_UID_ATTR = 'sAMAccountName';
+      finalConfig.LDAP_MAIL_ATTR = 'mail';
+      finalConfig.LDAP_NAME_ATTR = 'displayName';
+      finalConfig.LDAP_START_TLS = 'false';
     } else {
       finalConfig.LDAP_NOW = 'n';
     }

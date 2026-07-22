@@ -61,6 +61,9 @@ interface KetesaAdminProps {
   showToast: (type: 'success' | 'error', text: string) => void;
   isLightMode?: boolean;
   activeConnectionId?: string;
+  onExecuteCommand?: (command: string, args?: any) => void;
+  isExecuting?: boolean;
+  logs?: string[];
 }
 
 const faTranslations = {
@@ -777,7 +780,17 @@ const ruTranslations = {
   syncSuccess: "Пользователи успешно синхронизированы с основным сервером."
 };
 
-export default function KetesaAdmin({ lang, authToken, currentUser, showToast, isLightMode = false, activeConnectionId }: KetesaAdminProps) {
+export default function KetesaAdmin({
+  lang,
+  authToken,
+  currentUser,
+  showToast,
+  isLightMode = false,
+  activeConnectionId,
+  onExecuteCommand,
+  isExecuting = false,
+  logs = []
+}: KetesaAdminProps) {
   const translationsMap = {
     fa: faTranslations,
     en: enTranslations,
@@ -836,9 +849,20 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
   };
 
   const runInstallerAction = (command: 'custom_install' | 'uninstall_stack' | 'purge_database') => {
-    if (isInstalling) return;
+    if (isExecuting || isInstalling) return;
     setIsInstalling(true);
     setInstallLogs([`[EXEC] Starting command: ${command}...`]);
+
+    const actualCommand = command === 'custom_install' ? 'install' : command;
+
+    if (onExecuteCommand) {
+      onExecuteCommand(actualCommand, {
+        mode: installerMode,
+        components: selectedComponents,
+        config: installerConfig
+      });
+      return;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -3596,7 +3620,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
                 {/* Terminal Logs Output */}
                 <div className="flex-1 p-4 bg-black/40 rounded-xl font-mono text-[11px] leading-relaxed overflow-y-auto space-y-1.5 border border-white/5 min-h-[300px] max-h-[500px]">
-                  {installLogs.map((log, index) => {
+                  {((logs && logs.length > 0) ? logs : installLogs).map((log, index) => {
                     let color = 'text-slate-300';
                     if (log.includes('✔') || log.includes('✅') || log.includes('SUCCESS') || log.includes('COMPLETED')) {
                       color = 'text-emerald-400 font-bold';

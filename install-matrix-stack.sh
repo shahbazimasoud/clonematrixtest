@@ -6229,7 +6229,11 @@ EOF
 
   print_install_summary
 
-  if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+  if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+    if [[ "${LDAP_NOW}" == "y" || "${LDAP_NOW}" == "Y" || -n "${LDAP_URI}" ]]; then
+      configure_ldap_noninteractive
+    fi
+  else
     echo
     echo "🔐 Optional: LDAP Authentication"
     read -rp "Do you want to configure LDAP authentication now? (y/n): " LDAP_NOW
@@ -6617,6 +6621,35 @@ write_ldap_yaml() {
   fi
 
   fix_synapse_perms
+}
+
+configure_ldap_noninteractive() {
+  echo "🔐 === Configuring LDAP / Active Directory Authentication ==="
+  LDAP_URI="${LDAP_URI:-}"
+  LDAP_BASE="${LDAP_BASE:-${LDAP_BASE_DC:-}}"
+  LDAP_BIND_DN="${LDAP_BIND_DN:-}"
+  LDAP_BIND_PASSWORD="${LDAP_BIND_PASSWORD:-${LDAP_BIND_PASS:-}}"
+  LDAP_MODE="${LDAP_MODE:-search}"
+  LDAP_START_TLS="${LDAP_START_TLS:-false}"
+  LDAP_UID_ATTR="${LDAP_UID_ATTR:-sAMAccountName}"
+  LDAP_MAIL_ATTR="${LDAP_MAIL_ATTR:-mail}"
+  LDAP_NAME_ATTR="${LDAP_NAME_ATTR:-displayName}"
+
+  if [[ -n "${LDAP_URI}" && -n "${LDAP_BASE}" ]]; then
+    save_ldap_config
+    write_ldap_yaml "true"
+    echo "🐍 Verifying matrix-synapse-ldap3 is available to Synapse..."
+    if [[ -x /opt/venvs/matrix-synapse/bin/python ]]; then
+      if ! /opt/venvs/matrix-synapse/bin/python -c "import ldap3" >/dev/null 2>&1; then
+        echo "   Installing matrix-synapse-ldap3..."
+        /opt/venvs/matrix-synapse/bin/pip install matrix-synapse-ldap3 || true
+      fi
+    fi
+    echo "✅ LDAP configuration successfully applied."
+    systemctl restart matrix-synapse || true
+  else
+    echo "ℹ️ LDAP_URI or LDAP_BASE missing. Skipping non-interactive LDAP configuration."
+  fi
 }
 
 configure_ldap_interactive() {

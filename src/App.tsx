@@ -1739,6 +1739,9 @@ export default function App() {
                 showToast={showToast}
                 isLightMode={isLightMode}
                 activeConnectionId={activeConnection?.id}
+                onExecuteCommand={handleExecuteCommand}
+                isExecuting={isExecuting}
+                logs={terminalLogs}
               />
             )}
 
