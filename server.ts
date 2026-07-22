@@ -6698,6 +6698,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                         ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
                         return;
                       }
+                      stream.resume();
                       stream.on("close", () => {
                         proceedToChmod();
                       });
@@ -6717,6 +6718,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                           ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
                           return;
                         }
+                        stream.resume();
                         stream.on("close", () => {
                           proceedToChmod();
                         });
@@ -6738,6 +6740,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                       ws.send(JSON.stringify({ type: "cmd_end", code: 1 }));
                       return;
                     }
+                    stream2.resume();
                     stream2.on("close", () => {
                       // Trigger execution of the newly uploaded installer
                       ws.send(JSON.stringify({ type: "cmd_stdout", text: `🚀 Execution starting on remote host for ${command}...` }));
@@ -6756,6 +6759,14 @@ wss.on("connection", (ws: WebSocket, request: any) => {
                           ws.send(JSON.stringify({ type: "cmd_stdout", text: rawText }));
                           accumulated += rawText;
                         });
+
+                        if (finalStream.stderr) {
+                          finalStream.stderr.on("data", (data: any) => {
+                            const rawText = data.toString();
+                            ws.send(JSON.stringify({ type: "cmd_stdout", text: rawText }));
+                            accumulated += rawText;
+                          });
+                        }
 
                         finalStream.on("close", (code: number) => {
                           ws.send(JSON.stringify({ type: "cmd_stdout", text: `🏁 [REMOTE] Installer finished with exit code: ${code}` }));
