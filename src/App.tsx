@@ -32,7 +32,8 @@ import {
   Sun,
   Moon,
   ArrowRight,
-  LogOut
+  LogOut,
+  BookOpen
 } from 'lucide-react';
 import SpatialDock from './components/SpatialDock';
 import MetricCard from './components/MetricCard';
@@ -42,6 +43,7 @@ import ReportingPanel from './components/ReportingPanel';
 import KetesaAdmin from './components/KetesaAdmin';
 import ConnectionManager from './components/ConnectionManager';
 import { InstallWizardModal } from './components/InstallWizardModal';
+import { GuidedTourModal } from './components/GuidedTourModal';
 import { SystemStats, ServiceState, PanelUser, AuditLog, BackupItem, UndoItem, MatrixConfig, LDAPConfig, MatrixUser } from './types';
 
 // Translation Dictionary for Persian (Default), English, Spanish, Arabic, German & Russian
@@ -376,6 +378,7 @@ export default function App() {
   const [commitsBehind, setCommitsBehind] = useState<number>(0);
   const [latestCommitDesc, setLatestCommitDesc] = useState<string>('');
   const [userDropdownOpen, setUserDropdownOpen] = useState<boolean>(false);
+  const [isGuidedTourOpen, setIsGuidedTourOpen] = useState<boolean>(false);
   const [terminalInitialTab, setTerminalInitialTab] = useState<'console' | 'install' | 'updates'>('console');
 
   // Connection Profile states
@@ -1238,15 +1241,37 @@ export default function App() {
                             type="button"
                             onClick={() => {
                               setUserDropdownOpen(false);
+                              setIsGuidedTourOpen(true);
+                            }}
+                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
+                              isLightMode 
+                                ? 'text-indigo-600 hover:bg-indigo-50' 
+                                : 'text-indigo-400 hover:bg-indigo-500/10'
+                            }`}
+                          >
+                            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                            <span>
+                              {lang === 'fa' ? 'راهنمای کار با پنل' :
+                               lang === 'es' ? 'Guía del panel' :
+                               lang === 'ar' ? 'دليل استخدام اللوحة' :
+                               lang === 'de' ? 'Panel-Anleitung' :
+                               lang === 'ru' ? 'Инструкция по панели' : 'Panel Guided Tour'}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUserDropdownOpen(false);
                               handleLogout();
                             }}
-                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs font-bold mt-1 transition-all cursor-pointer ${
+                            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${
                               isLightMode 
                                 ? 'text-rose-600 hover:bg-rose-50' 
                                 : 'text-rose-400 hover:bg-rose-500/10'
                             }`}
                           >
-                            <LogOut className="w-3.5 h-3.5" />
+                            <LogOut className="w-3.5 h-3.5 shrink-0" />
                             <span>
                               {lang === 'fa' ? 'خروج از حساب کاربری' :
                                lang === 'es' ? 'Cerrar sesión' :
@@ -1636,6 +1661,14 @@ export default function App() {
             isLightMode={isLightMode}
             defaultHost={activeConnection?.host}
             defaultDomain={activeConnection?.domain}
+          />
+
+          <GuidedTourModal
+            isOpen={isGuidedTourOpen}
+            onClose={() => setIsGuidedTourOpen(false)}
+            lang={lang}
+            isLightMode={isLightMode}
+            onNavigateView={(view) => setActiveView(view)}
           />
         </div>
       )}
