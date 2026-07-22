@@ -122,11 +122,15 @@ done
 # ------------------------------------------------------------------------------
 # 2. System Dependency Installation
 # ------------------------------------------------------------------------------
+log_step "Checking and repairing package database state (if interrupted)..."
+DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>/dev/null || true
+DEBIAN_FRONTEND=noninteractive apt-get install -f -y 2>/dev/null || true
+
 log_step "Updating local package list..."
 apt-get update -y || log_warning "Some package repositories could not be updated (e.g. offline or forbidden). Continuing with remaining catalogs..."
 
 log_step "Installing general system tools (git, curl, build-essential, python3, pip, venv)..."
-apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git curl build-essential python3 python3-pip python3-venv python3-dev
+DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git curl build-essential python3 python3-pip python3-venv python3-dev
 
 # Node.js and NPM detection and installation
 if ! command -v node &> /dev/null || [ $(node -v | cut -d. -f1 | tr -d 'v') -lt 20 ]; then

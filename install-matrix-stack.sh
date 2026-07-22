@@ -663,8 +663,9 @@ pkg_is_installed() {
 deploy_ensure_pkg() {
   local pkg="$1"
   if ! pkg_is_installed "${pkg}"; then
+    DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>/dev/null || true
     apt update
-    apt install -y "${pkg}"
+    DEBIAN_FRONTEND=noninteractive apt install -y "${pkg}"
   fi
 }
 
