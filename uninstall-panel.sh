@@ -70,7 +70,8 @@ if [ -d "$INSTALL_DIR" ]; then
   echo -e "\n${YELLOW}Would you like to delete the installation directory completely?${NC}"
   log_warning "This will permanently delete all panel databases, connections, and files inside $INSTALL_DIR."
   
-  read -p "Type 'DELETE' to confirm full deletion, or anything else to keep the files: " CONFIRM_DELETE < /dev/tty
+  printf "%s" "Type 'DELETE' to confirm full deletion, or anything else to keep the files: " > /dev/tty 2>/dev/null || true
+  read -r CONFIRM_DELETE < /dev/tty 2>/dev/null || CONFIRM_DELETE="KEEP"
   if [ "$CONFIRM_DELETE" = "DELETE" ]; then
     log_step "Deleting $INSTALL_DIR directory..."
     rm -rf "$INSTALL_DIR"
