@@ -311,26 +311,22 @@ export default function App() {
     document.documentElement.lang = lang;
   }, [lang, isRtl]);
 
-  // Theme State (obsidian, emerald, light)
-  const [panelTheme, setPanelTheme] = useState<'obsidian' | 'emerald' | 'light'>(() => {
-    const saved = localStorage.getItem('panel_theme');
-    if (saved === 'emerald' || saved === 'light' || saved === 'obsidian') return saved;
+  // Theme State (obsidian, emerald, rose, amber, cobalt, light)
+  type ThemeType = 'obsidian' | 'emerald' | 'rose' | 'amber' | 'cobalt' | 'light';
+
+  const [panelTheme, setPanelTheme] = useState<ThemeType>(() => {
+    const saved = localStorage.getItem('panel_theme') as ThemeType;
+    if (['obsidian', 'emerald', 'rose', 'amber', 'cobalt', 'light'].includes(saved)) return saved;
     if (localStorage.getItem('theme_mode') === 'light') return 'light';
     return 'obsidian';
   });
 
   const isLightMode = panelTheme === 'light';
 
-  const changeTheme = (newTheme: 'obsidian' | 'emerald' | 'light') => {
+  const changeTheme = (newTheme: ThemeType) => {
     setPanelTheme(newTheme);
     localStorage.setItem('panel_theme', newTheme);
     localStorage.setItem('theme_mode', newTheme === 'light' ? 'light' : 'dark');
-  };
-
-  const toggleTheme = () => {
-    if (panelTheme === 'light') changeTheme('obsidian');
-    else if (panelTheme === 'obsidian') changeTheme('emerald');
-    else changeTheme('light');
   };
 
   // Auth States
@@ -945,13 +941,6 @@ export default function App() {
                   </>
                 )}
               </div>
-              <button
-                onClick={toggleTheme}
-                title={t.themeToggle}
-                className="p-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-slate-400 hover:text-white cursor-pointer"
-              >
-                {isLightMode ? <Moon className="w-3.5 h-3.5 text-purple-400" /> : <Sun className="w-3.5 h-3.5 text-amber-400" />}
-              </button>
             </div>
 
             {/* Premium Aesthetic Glowing backdrops inside card */}
@@ -1114,25 +1103,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Theme Switcher */}
-              <button
-                onClick={toggleTheme}
-                title={t.themeToggle}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs transition-all"
-              >
-                {isLightMode ? (
-                  <>
-                    <Moon className="w-4 h-4 text-purple-400" />
-                    <span className="font-semibold">Dark Theme</span>
-                  </>
-                ) : (
-                  <>
-                    <Sun className="w-4 h-4 text-amber-400" />
-                    <span className="font-semibold">Light Theme</span>
-                  </>
-                )}
-              </button>
-
               {/* User Avatar & Dropdown */}
               {currentUser && (
                 <div className={`flex items-center gap-3 ${isRtl ? 'border-r pr-4' : 'border-l pl-4'} border-white/10 relative`}>
@@ -1284,7 +1254,7 @@ export default function App() {
                                   ? 'bg-indigo-600 text-white shadow-md ring-1 ring-indigo-400'
                                   : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
                               }`}
-                              title="Obsidian Dark"
+                              title="Obsidian Dark (Indigo)"
                             >
                               <div className="w-3.5 h-3.5 rounded-full bg-slate-900 border border-indigo-400 flex items-center justify-center">
                                 <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -1303,13 +1273,70 @@ export default function App() {
                                   ? 'bg-emerald-600 text-white shadow-md ring-1 ring-emerald-400'
                                   : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
                               }`}
-                              title="Matrix Emerald"
+                              title="Matrix Emerald (Green)"
                             >
                               <div className="w-3.5 h-3.5 rounded-full bg-emerald-950 border border-emerald-400 flex items-center justify-center">
                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                               </div>
                               <span className="truncate">
                                 {lang === 'fa' ? 'زمردی' : 'Emerald'}
+                              </span>
+                            </button>
+
+                            {/* Rose Theme */}
+                            <button
+                              type="button"
+                              onClick={() => changeTheme('rose')}
+                              className={`p-2 rounded-lg text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                                panelTheme === 'rose'
+                                  ? 'bg-rose-600 text-white shadow-md ring-1 ring-rose-400'
+                                  : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
+                              }`}
+                              title="Cyber Rose (Crimson)"
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full bg-rose-950 border border-rose-400 flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                              </div>
+                              <span className="truncate">
+                                {lang === 'fa' ? 'ارغوانی' : 'Rose'}
+                              </span>
+                            </button>
+
+                            {/* Amber Theme */}
+                            <button
+                              type="button"
+                              onClick={() => changeTheme('amber')}
+                              className={`p-2 rounded-lg text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                                panelTheme === 'amber'
+                                  ? 'bg-amber-600 text-white shadow-md ring-1 ring-amber-400'
+                                  : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
+                              }`}
+                              title="Sunset Gold (Amber)"
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full bg-amber-950 border border-amber-400 flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                              </div>
+                              <span className="truncate">
+                                {lang === 'fa' ? 'کهربایی' : 'Amber'}
+                              </span>
+                            </button>
+
+                            {/* Cobalt Theme */}
+                            <button
+                              type="button"
+                              onClick={() => changeTheme('cobalt')}
+                              className={`p-2 rounded-lg text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                                panelTheme === 'cobalt'
+                                  ? 'bg-sky-600 text-white shadow-md ring-1 ring-sky-400'
+                                  : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
+                              }`}
+                              title="Ocean Cobalt (Blue)"
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full bg-slate-900 border border-sky-400 flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                              </div>
+                              <span className="truncate">
+                                {lang === 'fa' ? 'کبالت' : 'Cobalt'}
                               </span>
                             </button>
 

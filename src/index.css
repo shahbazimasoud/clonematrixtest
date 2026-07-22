@@ -86,6 +86,138 @@
 .theme-emerald .border-indigo-500\/30 { border-color: rgba(16, 185, 129, 0.3) !important; }
 .theme-emerald .hover\:bg-indigo-500\/10:hover { background-color: rgba(16, 185, 129, 0.12) !important; }
 
+/* Rose Crimson Cyber Theme */
+.theme-rose {
+  --color-spatial-bg: #1f0914;
+  --color-spatial-glass: rgba(80, 15, 45, 0.75);
+  --color-spatial-glass-hover: rgba(120, 20, 65, 0.85);
+  --color-spatial-glow-cyan: #f43f5e;
+  --color-spatial-glow-purple: #ec4899;
+  --color-spatial-glow-amber: #f43f5e;
+  color: #fff1f2 !important;
+  background-color: #1f0914 !important;
+}
+
+.theme-rose .ambient-glow-background {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(244, 63, 94, 0.18) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 0.08) 0%, transparent 60%),
+    #1f0914 !important;
+}
+
+.theme-rose .spatial-glass {
+  background: rgba(45, 10, 28, 0.75) !important;
+  border-color: rgba(244, 63, 94, 0.25) !important;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.6),
+    0 0 15px rgba(244, 63, 94, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.theme-rose .spatial-glass-hover:hover {
+  background: rgba(80, 15, 45, 0.85) !important;
+  border-color: rgba(244, 63, 94, 0.5) !important;
+}
+
+.theme-rose .glow-text-cyan { text-shadow: 0 0 12px rgba(244, 63, 94, 0.6) !important; color: #fb7185 !important; }
+.theme-rose .glow-text-purple { text-shadow: 0 0 12px rgba(236, 72, 153, 0.6) !important; color: #f472b6 !important; }
+.theme-rose .text-indigo-400 { color: #fb7185 !important; }
+.theme-rose .text-indigo-500 { color: #f43f5e !important; }
+.theme-rose .text-indigo-600 { color: #e11d48 !important; }
+.theme-rose .bg-indigo-600 { background-color: #e11d48 !important; }
+.theme-rose .bg-indigo-500 { background-color: #f43f5e !important; }
+.theme-rose .border-indigo-500\/30 { border-color: rgba(244, 63, 94, 0.3) !important; }
+.theme-rose .hover\:bg-indigo-500\/10:hover { background-color: rgba(244, 63, 94, 0.12) !important; }
+
+/* Amber Sunset Theme */
+.theme-amber {
+  --color-spatial-bg: #1c1305;
+  --color-spatial-glass: rgba(69, 44, 10, 0.75);
+  --color-spatial-glass-hover: rgba(100, 60, 15, 0.85);
+  --color-spatial-glow-cyan: #f59e0b;
+  --color-spatial-glow-purple: #d97706;
+  --color-spatial-glow-amber: #fbbf24;
+  color: #fffbeb !important;
+  background-color: #1c1305 !important;
+}
+
+.theme-amber .ambient-glow-background {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(245, 158, 11, 0.18) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(217, 119, 6, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.08) 0%, transparent 60%),
+    #1c1305 !important;
+}
+
+.theme-amber .spatial-glass {
+  background: rgba(40, 25, 8, 0.75) !important;
+  border-color: rgba(245, 158, 11, 0.25) !important;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.6),
+    0 0 15px rgba(245, 158, 11, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.theme-amber .spatial-glass-hover:hover {
+  background: rgba(69, 44, 10, 0.85) !important;
+  border-color: rgba(245, 158, 11, 0.5) !important;
+}
+
+.theme-amber .glow-text-cyan { text-shadow: 0 0 12px rgba(245, 158, 11, 0.6) !important; color: #fbbf24 !important; }
+.theme-amber .glow-text-purple { text-shadow: 0 0 12px rgba(217, 119, 6, 0.6) !important; color: #f59e0b !important; }
+.theme-amber .text-indigo-400 { color: #fbbf24 !important; }
+.theme-amber .text-indigo-500 { color: #f59e0b !important; }
+.theme-amber .text-indigo-600 { color: #d97706 !important; }
+.theme-amber .bg-indigo-600 { background-color: #d97706 !important; }
+.theme-amber .bg-indigo-500 { background-color: #f59e0b !important; }
+.theme-amber .border-indigo-500\/30 { border-color: rgba(245, 158, 11, 0.3) !important; }
+.theme-amber .hover\:bg-indigo-500\/10:hover { background-color: rgba(245, 158, 11, 0.12) !important; }
+
+/* Cobalt Blue Theme */
+.theme-cobalt {
+  --color-spatial-bg: #03132e;
+  --color-spatial-glass: rgba(10, 45, 100, 0.75);
+  --color-spatial-glass-hover: rgba(15, 65, 140, 0.85);
+  --color-spatial-glow-cyan: #0284c7;
+  --color-spatial-glow-purple: #38bdf8;
+  --color-spatial-glow-amber: #0284c7;
+  color: #f0f9ff !important;
+  background-color: #03132e !important;
+}
+
+.theme-cobalt .ambient-glow-background {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.18) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(2, 132, 199, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(125, 211, 252, 0.08) 0%, transparent 60%),
+    #03132e !important;
+}
+
+.theme-cobalt .spatial-glass {
+  background: rgba(5, 25, 60, 0.75) !important;
+  border-color: rgba(56, 189, 248, 0.25) !important;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.6),
+    0 0 15px rgba(56, 189, 248, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.theme-cobalt .spatial-glass-hover:hover {
+  background: rgba(10, 45, 100, 0.85) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
+}
+
+.theme-cobalt .glow-text-cyan { text-shadow: 0 0 12px rgba(56, 189, 248, 0.6) !important; color: #38bdf8 !important; }
+.theme-cobalt .glow-text-purple { text-shadow: 0 0 12px rgba(2, 132, 199, 0.6) !important; color: #0284c7 !important; }
+.theme-cobalt .text-indigo-400 { color: #38bdf8 !important; }
+.theme-cobalt .text-indigo-500 { color: #0284c7 !important; }
+.theme-cobalt .text-indigo-600 { color: #0369a1 !important; }
+.theme-cobalt .bg-indigo-600 { background-color: #0369a1 !important; }
+.theme-cobalt .bg-indigo-500 { background-color: #0284c7 !important; }
+.theme-cobalt .border-indigo-500\/30 { border-color: rgba(56, 189, 248, 0.3) !important; }
+.theme-cobalt .hover\:bg-indigo-500\/10:hover { background-color: rgba(56, 189, 248, 0.12) !important; }
+
 .theme-light .spatial-glass {
   background: #ffffff !important;
   border-color: #cbd5e1 !important;
