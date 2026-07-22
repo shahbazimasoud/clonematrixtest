@@ -390,6 +390,21 @@ run_step() {
     echo "───── [STEP ${CURRENT_STEP}/${TOTAL_STEPS}] ${label} ─────"
   } >> "${LOG_FILE}" 2>&1
 
+  if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+    echo "───── [STEP ${CURRENT_STEP}/${TOTAL_STEPS}] ${label} ─────"
+    local status=0
+    "$@" 2>&1 | tee -a "${LOG_FILE}" || status=${PIPESTATUS[0]}
+    LAST_STEP_STATUS="${status}"
+    if [[ ${status} -eq 0 ]]; then
+      echo "✔ [STEP ${CURRENT_STEP}/${TOTAL_STEPS}] ${label} completed successfully."
+    else
+      echo "✘ [STEP ${CURRENT_STEP}/${TOTAL_STEPS}] ${label} failed with exit code ${status}."
+      FAILED_STEPS+=("${label} (exit code: ${status} — see ${LOG_FILE})")
+    fi
+    echo
+    return 0
+  fi
+
   # Cosmetic spinner running in the background — it does NOT run the
   # actual install command, so failures/variables from the real step
   # are never lost to a subshell.
@@ -5927,8 +5942,13 @@ EOF
   if [[ -n "${OFFLINE_ELEMENT_PKG:-}" && -f "${OFFLINE_ELEMENT_PKG:-}" ]]; then
     echo "📂 An offline Element Web package was already selected earlier:"
     echo "   ${OFFLINE_ELEMENT_PKG}"
-    read -rp "   Use this file? (y/n) [y]: " use_prev_offline
-    if [[ "${use_prev_offline:-y}" == "y" || "${use_prev_offline:-y}" == "Y" ]]; then
+    if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+      read -rp "   Use this file? (y/n) [y]: " use_prev_offline
+      if [[ "${use_prev_offline:-y}" == "y" || "${use_prev_offline:-y}" == "Y" ]]; then
+        element_install_mode="offline"
+        ELEMENT_SOURCE_PATH="${OFFLINE_ELEMENT_PKG}"
+      fi
+    else
       element_install_mode="offline"
       ELEMENT_SOURCE_PATH="${OFFLINE_ELEMENT_PKG}"
     fi
@@ -5936,15 +5956,19 @@ EOF
   fi
 
   if [[ -z "${element_install_mode}" ]]; then
-    while true; do
-      read -rp "   Choose [1]: " element_install_mode
-      element_install_mode="${element_install_mode:-1}"
-      case "${element_install_mode}" in
-        1|online|Online) element_install_mode="online"; break ;;
-        2|offline|Offline) element_install_mode="offline"; break ;;
-        *) echo "❌ Invalid option. Please enter 1 or 2." ;;
-      esac
-    done
+    if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+      element_install_mode="online"
+    else
+      while true; do
+        read -rp "   Choose [1]: " element_install_mode
+        element_install_mode="${element_install_mode:-1}"
+        case "${element_install_mode}" in
+          1|online|Online) element_install_mode="online"; break ;;
+          2|offline|Offline) element_install_mode="offline"; break ;;
+          *) echo "❌ Invalid option. Please enter 1 or 2." ;;
+        esac
+      done
+    fi
   fi
 
   if [[ "${element_install_mode}" == "offline" && -z "${ELEMENT_SOURCE_PATH}" ]]; then
@@ -5993,8 +6017,12 @@ EOF
     _detected_ver="$(basename "${ELEMENT_SOURCE_PATH}" | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1)"
     local default_ver="${_detected_ver:-${ELEMENT_VERSION:-manual}}"
     echo
-    read -rp "Version label to store in the config (optional) [${default_ver}]: " in_el_ver
-    ELEMENT_VERSION="${in_el_ver:-${default_ver}}"
+    if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+      read -rp "Version label to store in the config (optional) [${default_ver}]: " in_el_ver
+      ELEMENT_VERSION="${in_el_ver:-${default_ver}}"
+    else
+      ELEMENT_VERSION="${default_ver}"
+    fi
   else
     # Online path: pick a version, then check the local matrix_package
     # cache before downloading anything (reuse an existing file, or
@@ -6004,8 +6032,10 @@ EOF
     echo
     echo "🔎 Checking latest Element Web release..."
     echo "   Latest available: v${LATEST_ELEMENT:-unknown}"
-    read -rp "Version to install [${ELEMENT_VERSION}]: " custom_ver
-    ELEMENT_VERSION="${custom_ver:-${ELEMENT_VERSION}}"
+    if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+      read -rp "Version to install [${ELEMENT_VERSION}]: " custom_ver
+      ELEMENT_VERSION="${custom_ver:-${ELEMENT_VERSION}}"
+    fi
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -6199,13 +6229,15 @@ EOF
 
   print_install_summary
 
-  echo
-  echo "🔐 Optional: LDAP Authentication"
-  read -rp "Do you want to configure LDAP authentication now? (y/n): " LDAP_NOW
-  if [[ "${LDAP_NOW}" == "y" || "${LDAP_NOW}" == "Y" ]]; then
-    configure_ldap_interactive
-  else
-    echo "ℹ️  You can configure LDAP later from the main menu (LDAP Management)."
+  if [[ "${NON_INTERACTIVE:-}" != "true" ]]; then
+    echo
+    echo "🔐 Optional: LDAP Authentication"
+    read -rp "Do you want to configure LDAP authentication now? (y/n): " LDAP_NOW
+    if [[ "${LDAP_NOW}" == "y" || "${LDAP_NOW}" == "Y" ]]; then
+      configure_ldap_interactive
+    else
+      echo "ℹ️  You can configure LDAP later from the main menu (LDAP Management)."
+    fi
   fi
 
   echo
@@ -12711,6 +12743,7 @@ echo
 require_root
 
 if [[ "${NON_INTERACTIVE:-}" == "true" ]]; then
+  export DEBIAN_FRONTEND=noninteractive
   echo "🚀 Running in Non-Interactive Mode..."
   # Determine which action/command to run. Default to install_stack if empty.
   ACTION="${ACTION:-install}"

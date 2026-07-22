@@ -799,7 +799,7 @@ export default function App() {
   };
 
   const handleExecuteCommand = (command: string, args?: any) => {
-    if (command === 'install' && !args?.config) {
+    if (command === 'install' && !args) {
       setShowInstallWizard(true);
       return;
     }
