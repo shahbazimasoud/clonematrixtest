@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Ketesa Admin Matrix Manager - Interactive VPS Setup Installer
+# Raven — Intelligent Matrix Stack Manager VPS Setup Installer
 # Supports Ubuntu 20.04/22.04/24.04, Debian 11/12, and other Debian-based systems
 # ==============================================================================
 
@@ -28,13 +28,12 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 clear
 echo -e "${CYAN}"
 echo "======================================================================"
-echo "    __  ___      __        _         __  ___                                "
-echo "   /  |/  /___ _/ /_______pe_  __   /  |/  /___ _____  ____ _____ ____  _____"
-echo "  / /|_/ / __ \`/ __/ ___/ / |/_/  / /|_/ / __ \`/ __ \/ __ \`/ __ \`/ _ \/ ___/"
-echo " / /  / / /_/ / /_/ /  / />  <   / /  / / /_/ / / / / /_/ / /_/ /  __/ /    "
-echo "/_/  /_/\__,_/\__/_/  /_/_/|_|  /_/  /_/\__,_/\_/ /_/\__,_/\__, /\___/_/     "
-echo "                                                         /____/             "
-echo "        KETESA ADMIN MATRIX MANAGER PANEL - PRODUCTION INSTALLER"
+echo "   ___  ___  _  __ ___  _  _   ___  ___  _  _  ___  _     "
+echo "  | _ \/ _ \| |/ /| __|| \| | | _ \/ _ \| \| || __|| |    "
+echo "  |   / ___ | ' < | _| | .` | |  _/ ___ | .` || _| | |__  "
+echo "  |_|_\_/  _|_|\_\|___||_|\_| |_| _/  _|_|\_|_||___||____| "
+echo "                                                           "
+echo "      RAVEN — INTELLIGENT MATRIX STACK MANAGEMENT PANEL    "
 echo "======================================================================"
 echo -e "${NC}"
 

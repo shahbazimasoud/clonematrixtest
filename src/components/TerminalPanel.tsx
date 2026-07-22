@@ -748,7 +748,7 @@ export default function TerminalPanel({
           {activeTab === 'console' ? (
             <div className="space-y-1">
               <p className="text-slate-500 font-semibold mb-2">
-                # Matrix Stack Manager CLI Terminal - Connected to secure Node WebSocket
+                # Raven Matrix Stack Manager CLI Terminal - Connected to secure Node WebSocket
               </p>
               
               {logs.map((log, index) => (

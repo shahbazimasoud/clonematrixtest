@@ -1,4 +1,4 @@
-# 🌌 Ketesa Matrix Stack Manager
+# 🌌 Raven — Intelligent Matrix Stack Manager
 
 یک پنل مدیریتی تمام‌عیار، مدرن و شکیل با معماری فول‌استک برای استقرار، پیکربندی و مدیریت سرورهای چت سازمانی **Matrix (Synapse)** و کلاینت **Element Web**. این پروژه دارای رابط کاربری شیشه‌ای (Dark Glass UI) تعاملی و معماری جدید **عامل‌محور (Agent-Based)** برای مدیریت متمرکز سرورهای ماتریکس مجزا و توزیع‌شده در گستره شبکه بدون نیاز به افشای دسترسی مستقیم دیتابیس یا SSH است.
 
@@ -36,7 +36,7 @@ curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/maste
 
 ## 🇬🇧 Quick Central Panel Installation Guide (English)
 
-Deploy the entire full-stack Matrix Stack Manager panel on any fresh Ubuntu/Debian VPS with a single interactive command:
+Deploy the entire full-stack Raven Matrix Stack Manager panel on any fresh Ubuntu/Debian VPS with a single interactive command:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/shahbazimasoud/clonematrixtest/master/setup-panel.sh | sudo bash

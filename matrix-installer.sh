@@ -10101,7 +10101,7 @@ ketesa_menu() {
   while true; do
     print_header
     load_ketesa_config 2>/dev/null || true
-    echo "🧭 === Ketesa — Matrix/Synapse Admin Panel ==="
+    echo "🧭 === Raven — Matrix/Synapse Admin Panel ==="
     echo "    (manage rooms, channels, users, media — https://github.com/etkecc/ketesa)"
     echo
     if [[ -n "${KETESA_DOMAIN:-}" ]]; then
@@ -12726,7 +12726,7 @@ deployment_menu() {
 main_menu() {
   while true; do
     print_header
-    echo "════════ Matrix Stack Manager v${VERSION} ════════"
+    echo "════════ Raven Matrix Stack Manager v${VERSION} ════════"
 echo
     echo "1)  🧩 Install / Reinstall Matrix + Element + TURN (PostgreSQL)"
     echo "2)  👤 User Management"
@@ -12737,7 +12737,7 @@ echo
     echo "7)  💾 Backup & Recovery"
     echo "8)  📋 Information"
     echo "9)  🧩 Integration/Extension Manager (widgets, bridges & bots)"
-    echo "10) 🧭 Ketesa — Synapse Admin Panel (users, rooms, media)"
+    echo "10) 🧭 Raven — Synapse Admin Panel (users, rooms, media)"
     echo "11) 👥 Rooms, Presence & Privacy (public rooms, auto-join, presence...)"
     echo "12) 🧨 Uninstall (full purge, or just the database)"
     echo "13) ❓ Help / Guides (DNS records, E2EE, security, Ketesa steps...)"

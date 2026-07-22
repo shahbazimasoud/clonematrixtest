@@ -1,6 +1,6 @@
 {
-  "name": "Matrix Stack Manager",
-  "description": "A real-time spatial web management panel for Linux servers running Matrix Synapse, Element Web, and auxiliary modules with WebSocket terminal sync.",
+  "name": "Raven — Intelligent Matrix Stack Manager",
+  "description": "Raven — Real-time spatial web management panel for Linux servers running Matrix Synapse, Element Web, and auxiliary modules with WebSocket terminal sync.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

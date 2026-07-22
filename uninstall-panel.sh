@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Ketesa Admin Matrix Manager - Interactive VPS Uninstaller
+# Raven Matrix Stack Manager - Interactive VPS Uninstaller
 # ==============================================================================
 
 set -eo pipefail
@@ -22,7 +22,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 clear
 echo -e "${RED}"
 echo "======================================================================"
-echo "        KETESA ADMIN MATRIX MANAGER PANEL - VPS UNINSTALLER"
+echo "        RAVEN MATRIX STACK MANAGER PANEL - VPS UNINSTALLER"
 echo "======================================================================"
 echo -e "${NC}"
 

@@ -45,15 +45,16 @@ import KetesaAdmin from './components/KetesaAdmin';
 import ConnectionManager from './components/ConnectionManager';
 import { InstallWizardModal } from './components/InstallWizardModal';
 import { GuidedTourModal } from './components/GuidedTourModal';
+import RavenLogo from './components/RavenLogo';
 import { SystemStats, ServiceState, PanelUser, AuditLog, BackupItem, UndoItem, MatrixConfig, LDAPConfig, MatrixUser } from './types';
 
 // Translation Dictionary for Persian (Default), English, Spanish, Arabic, German & Russian
 const translations = {
   fa: {
-    title: "پنل مدیریت پیشرفته ماتریکس",
-    subtitle: "رابط کاربری فضایی (Spatial UI) - مدیریت آنی سرور ماتریکس، المنت و کانال‌های ارتباطی",
-    loginTitle: "پنل مدیریت یکپارچه ماتریکس",
-    loginSubtitle: "درگاه امن ورود به پنل مدیریت ماتریکس (Synapse)، کلاینت المنت و سرور TURN",
+    title: "Raven — مدیریت هوشمند پشته ماتریکس",
+    subtitle: "رابط کاربری فضایی (Spatial UI) - مدیریت بلادرنگ سرور ماتریکس، المنت و سرویس‌های پشته Raven",
+    loginTitle: "پنل مدیریت هوشمند Raven",
+    loginSubtitle: "درگاه هوشمند امن Raven برای مدیریت سرور ماتریکس (Synapse)، کلاینت المنت و سرویس‌های پشتیبان",
     username: "نام کاربری",
     password: "رمز عبور",
     loginBtn: "لاگین",
@@ -90,10 +91,10 @@ const translations = {
     refreshing: "در حال بروزرسانی..."
   },
   en: {
-    title: "Matrix Stack Manager",
-    subtitle: "Spatial UI Design - Real-time Management Panel for Matrix Synapse, Element & TURN",
-    loginTitle: "Matrix Stack Manager",
-    loginSubtitle: "Secure access gateway for Matrix Synapse core, Element Client, and TURN server",
+    title: "Raven — Intelligent Matrix Stack Manager",
+    subtitle: "Spatial UI Design - Real-time Intelligent Management Panel for Matrix Synapse, Element & TURN",
+    loginTitle: "Raven Intelligent Panel",
+    loginSubtitle: "Secure access gateway for Raven Matrix Synapse core, Element Client, and auxiliary services",
     username: "Username",
     password: "Password",
     loginBtn: "Login",
@@ -420,7 +421,7 @@ export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [showInstallWizard, setShowInstallWizard] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
-    "System Shell Monitor Initialized. Welcome to Matrix Stack Manager."
+    "System Shell Monitor Initialized. Welcome to Raven Matrix Stack Manager."
   ]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -951,8 +952,8 @@ export default function App() {
             <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:16px_16px] [mask-image:radial-gradient(ellipse_at_center,black_60%,transparent_100%)] pointer-events-none" />
 
             <div className="flex flex-col items-center text-center mb-8 relative">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.2)] pulse-glow-cyan mb-4 animate-float">
-                <ShieldCheck className="w-8 h-8" />
+              <div className="mb-4 animate-float flex items-center justify-center p-2 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 shadow-[0_0_30px_rgba(99,102,241,0.25)]">
+                <RavenLogo size={56} showGlow={true} />
               </div>
               <h2 className="text-2xl font-display font-bold text-white tracking-tight glow-text-cyan">{t.loginTitle}</h2>
               <p className="text-xs text-slate-400 mt-2 leading-relaxed max-w-sm">{t.loginSubtitle}</p>
@@ -1045,8 +1046,8 @@ export default function App() {
           {/* Top Spatial Header bar */}
           <header className="px-6 py-4 bg-black/20 backdrop-blur-sm border-b border-white/5 flex items-center justify-between sticky top-0 z-40">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.1)]">
-                <Server className="w-5 h-5" />
+              <div className="p-1 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.2)]">
+                <RavenLogo size={32} showGlow={false} />
               </div>
               <div>
                 <h1 className="text-lg font-display font-bold text-white flex items-center gap-2">

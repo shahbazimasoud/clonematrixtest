@@ -7554,7 +7554,7 @@ echo "🎉 SYNAPSE WORKERS AND SCALING COMPLETED SUCCESSFULLY!"
           const confObj = args?.config || {};
 
           steps = [
-            `⚡ [INFO] Starting customized Matrix Stack installation in ${mode.toUpperCase()} mode...`,
+            `⚡ [INFO] Starting customized Raven Matrix Stack installation in ${mode.toUpperCase()} mode...`,
             `⚙️  Active config parameters:`,
             `   - Domain: ${confObj.HS_DOMAIN || 'matrix.company.local'}`,
             `   - Element Client: ${confObj.ELEMENT_DOMAIN || 'chat.company.local'}`,

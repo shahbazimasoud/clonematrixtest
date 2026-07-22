@@ -116,7 +116,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
           color: 'from-blue-500 to-cyan-500'
         },
         {
-          title: '2. Matrix Stack Installation & Setup Wizard',
+          title: '2. Raven Matrix Stack Installation & Setup Wizard',
           sub: 'Easy Matrix Setup via Web Console & Smart Wizard Modal',
           desc: 'If Matrix/Synapse is not yet installed on your server, go to "Web Console", click "Install Standard Matrix Repository", and fill in the requested fields in the modal. Before starting, prepare the following: Server credentials (IP/Domain, SSH user & password/key), PostgreSQL DB info, and admin email.',
           view: 'terminal',
