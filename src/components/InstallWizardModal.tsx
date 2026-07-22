@@ -330,7 +330,15 @@ const translations = {
     errDomain: "Ingrese un formato de dominio válido.",
     errIp: "Ingrese una dirección IPv4 válida.",
     errEmail: "Ingrese un correo electrónico válido.",
-    errRequired: "Este campo es obligatorio."
+    errRequired: "Este campo es obligatorio.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Pasos Obligatorios Tras Finalizar la Instalación",
+    postInstallGuideSub: "Siga estos pasos esenciales después de la instalación para conectar el panel a PostgreSQL y habilitar las funciones de la API de Matrix:",
+    stepDbTitle: "1. Ingresar credenciales de BD en 'Conexiones del Servidor'",
+    stepDbDesc: "Copie la contraseña de la tarjeta 'Información de Conexión a la Base de Datos PostgreSQL'. Luego navegue a 'Conexiones del Servidor' en el menú lateral, edite su perfil activo e ingrese las credenciales (Host: 127.0.0.1, Puerto: 5432, BD: synapse, Usuario: synapse_user y Contraseña) para consultar usuarios y salas directamente desde PostgreSQL.",
+    stepAdminTitle: "2. Registrar Usuario Admin de Synapse y Guardar Credenciales",
+    stepAdminDesc: "Vaya a 'Gestión de Usuarios' (o Matrix Admin) en el menú del panel y use 'Registrar Nuevo Usuario' para crear una cuenta con privilegios de Administrador de Synapse. Luego, regrese a 'Conexiones del Servidor', edite el perfil activo, despliegue 'Mostrar Configuración de Token de Admin' y guarde las credenciales o token de este usuario."
   },
   ar: {
     title: "تكوين حزمة ماتریکس لـ Enterprise",
@@ -420,7 +428,15 @@ const translations = {
     errDomain: "يرجى إدخال تنسيق نطاق صالح.",
     errIp: "يرجى إدخال عنوان IPv4 صالح.",
     errEmail: "يرجى إدخال عنوان بريد إلكتروني صالح.",
-    errRequired: "هذا الحقل مطلوب."
+    errRequired: "هذا الحقل مطلوب.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "خطوات إضافية وإلزامية بعد اكتمال التثبيت",
+    postInstallGuideSub: "اتبع هذه الخطوات الأساسية بعد التثبيت لربط اللوحة بـ PostgreSQL وتفعيل قدرات واجهة برمجة تطبيقات ماتركس:",
+    stepDbTitle: "1. إدخال بيانات اعتماد قاعدة البيانات في 'اتصالات الخادم'",
+    stepDbDesc: "انسخ كلمة المرور من بطاقة 'معلومات الاتصال بقاعدة بيانات PostgreSQL'. ثم انتقل إلى 'اتصالات الخادم' في القائمة الجانبية، وحرر ملف الخادم النشط، واملأ بيانات قاعدة البيانات (المضيف: 127.0.0.1، المنفذ: 5432، قاعدة البيانات: synapse، المستخدم: synapse_user وكلمة المرور) للاستعلام عن المستخدمين والغرف مباشرة من PostgreSQL.",
+    stepAdminTitle: "2. تسجيل مستخدم مسؤول Synapse وحفظ بيانات الاعتماد",
+    stepAdminDesc: "انتقل إلى 'إدارة المستخدمين' (أو مسؤول ماتركس) في قائمة اللوحة واستخدم 'تسجيل مستخدم جديد' لإنشاء حساب بتفعيل صلاحيات مسؤول Synapse. بعد ذلك، ارجع إلى 'اتصالات الخادم'، وحرر ملف الخادم النشط، ووسع 'عرض إعدادات توکن المسؤول'، واحفظ بيانات الاعتماد أو التوكن الخاص بهذا المستخدم المسؤول."
   },
   de: {
     title: "Matrix Enterprise Stack konfigurieren",
@@ -510,7 +526,15 @@ const translations = {
     errDomain: "Bitte geben Sie ein gültiges Domainformat ein.",
     errIp: "Bitte geben Sie eine gültige IPv4-Adresse ein.",
     errEmail: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
-    errRequired: "Dieses Feld ist erforderlich."
+    errRequired: "Dieses Feld ist erforderlich.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Obligatorische Schritte nach Abschluss der Installation",
+    postInstallGuideSub: "Befolgen Sie diese wesentlichen Schritte nach der Installation, um das Panel mit PostgreSQL zu verbinden und Matrix-API-Funktionen zu aktivieren:",
+    stepDbTitle: "1. Datenbank Zugangsdaten unter 'Serververbindungen' eingeben",
+    stepDbDesc: "Kopieren Sie das Passwort aus der Karte 'PostgreSQL-Datenbankverbindungsinformationen'. Navigieren Sie dann im Seitenmenü zu 'Serververbindungen', bearbeiten Sie Ihr aktives Serverprofil und tragen Sie die Zugangsdaten ein (Host: 127.0.0.1, Port: 5432, DB: synapse, Benutzer: synapse_user und Passwort), um Benutzer und Räume aus PostgreSQL abzufragen.",
+    stepAdminTitle: "2. Synapse-Admin-Benutzer registrieren & Admin-Zugangsdaten speichern",
+    stepAdminDesc: "Gehen Sie im Panel-Menü zu 'Benutzerverwaltung' (oder Matrix Admin) und nutzen Sie 'Neuen Benutzer registrieren', um ein Konto mit Synapse-Admin-Rechten zu erstellen. Kehren Sie dann zu 'Serververbindungen' zurück, bearbeiten Sie das aktive Profil, klappen Sie 'Admin-Token-Einstellungen anzeigen' auf und speichern Sie die Zugangsdaten oder das Token."
   },
   ru: {
     title: "Настройка пакета Matrix Enterprise",
@@ -600,7 +624,15 @@ const translations = {
     errDomain: "Пожалуйста, введите корректный формат домена.",
     errIp: "Пожалуйста, введите корректный IPv4-адрес.",
     errEmail: "Пожалуйста, введите корректный адрес электронной почты.",
-    errRequired: "Это поле обязательно для заполнения."
+    errRequired: "Это поле обязательно для заполнения.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Обязательные шаги после завершения установки",
+    postInstallGuideSub: "Выполните эти важные шаги после установки, чтобы подключить панель к PostgreSQL и включить возможности Matrix API:",
+    stepDbTitle: "1. Ввод учетных данных БД в 'Подключениях к серверу'",
+    stepDbDesc: "Скопируйте пароль из карточки 'Информация о подключении к БД PostgreSQL'. Затем перейдите в 'Подключения к серверу' в боковом меню, отредактируйте активный профиль сервера и заполните данные БД (Хост: 127.0.0.1, Порт: 5432, БД: synapse, Пользователь: synapse_user и Пароль) для запроса пользователей и комнат напрямую из PostgreSQL.",
+    stepAdminTitle: "2. Регистрация администратора Synapse и сохранение данных",
+    stepAdminDesc: "Перейдите в 'Управление пользователями' (или Администрирование Matrix) в меню панели и используйте 'Зарегистрировать нового пользователя', чтобы создать аккаунт с правами администратора Synapse. Затем вернитесь в 'Подключения к серверу', отредактируйте профиль сервера, раскройте 'Показать настройки токена администратора' и сохраните данные аккаунта."
   }
 };
 
@@ -1663,10 +1695,10 @@ export function InstallWizardModal({
                       </div>
                       <div>
                         <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-indigo-950' : 'text-indigo-300'}`}>
-                          {t.postInstallGuideTitle || 'اقدام‌های ضروری پس از اتمام نصب'}
+                          {t.postInstallGuideTitle}
                         </h4>
                         <p className={`text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
-                          {t.postInstallGuideSub || 'جهت فعال‌سازی کامل امکانات پنل، پس از نصب دو گام زیر را انجام دهید:'}
+                          {t.postInstallGuideSub}
                         </p>
                       </div>
                     </div>
@@ -1678,10 +1710,10 @@ export function InstallWizardModal({
                       }`}>
                         <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-emerald-700' : 'text-emerald-400'}`}>
                           <Database className="w-4 h-4 shrink-0" />
-                          <span>{t.stepDbTitle || '۱. ورود مشخصات دیتابیس در بخش «ارتباط با سرور»'}</span>
+                          <span>{t.stepDbTitle}</span>
                         </div>
                         <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
-                          {t.stepDbDesc || 'در منوی «ارتباط با سرور»، مشخصات دیتابیس (پورت 5432، نام دیتابیس synapse، نام کاربری synapse_user و پسورد) را وارد کنید تا لیست کاربران و اتاق‌ها خوانده شود.'}
+                          {t.stepDbDesc}
                         </p>
                       </div>
 
@@ -1691,10 +1723,10 @@ export function InstallWizardModal({
                       }`}>
                         <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-indigo-700' : 'text-indigo-400'}`}>
                           <UserCheck className="w-4 h-4 shrink-0" />
-                          <span>{t.stepAdminTitle || '۲. ساخت کاربر ادمین برای APIها'}</span>
+                          <span>{t.stepAdminTitle}</span>
                         </div>
                         <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
-                          {t.stepAdminDesc || 'در «مدیریت کاربران» یا گزینه ۲ ترمینال، یک کاربر مدیرکل (@admin:domain) بسازید تا فراخوانی APIها امکان‌پذیر گردد.'}
+                          {t.stepAdminDesc}
                         </p>
                       </div>
                     </div>

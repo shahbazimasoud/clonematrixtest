@@ -171,7 +171,26 @@ const terminalTranslations: Record<string, any> = {
     systemUpToDate: 'Sistema Actualizado',
     systemUpToDateDesc: 'Su panel de administración de Matrix está ejecutando el código más reciente del repositorio remoto.',
     readyMsg: '# Administrador de actualizaciones listo.',
-    clickToQuery: '# Haga clic en "Buscar actualizaciones" para consultar el estado del repositorio.'
+    clickToQuery: '# Haga clic en "Buscar actualizaciones" para consultar el estado del repositorio.',
+
+    // Post-Install & Config Info
+    installInfoTitle: 'Resumen de Instalación y Configuración del Sistema (Opción 8 -> Opción 2)',
+    postInstallGuideTitle: 'Guía Obligatoria Posterior a la Instalación (Base de Datos y Administrador)',
+    postInstallGuideSub: 'Para habilitar todas las funciones del panel (consultar lista de usuarios, estadísticas de salas y ejecutar API de Matrix), complete estos dos pasos fundamentales:',
+    stepDbTitle: '1. Configurar credenciales de PostgreSQL en Conexiones del Servidor',
+    stepDbDesc: "Copie la contraseña de la tarjeta 'Información de Conexión a la Base de Datos PostgreSQL' a continuación. Luego vaya a 'Conexiones del Servidor' en el menú lateral, edite su perfil de servidor activo e ingrese las credenciales de la base de datos (Host: 127.0.0.1, Puerto: 5432, BD: synapse, Usuario: synapse_user y Contraseña). Esto permite que el panel consulte usuarios y salas directamente desde PostgreSQL.",
+    stepAdminTitle: '2. Registrar usuario administrador de Synapse y guardar el token',
+    stepAdminDesc: "Vaya a 'Gestión de Usuarios' (o Matrix Admin) en el menú del panel y use 'Registrar Nuevo Usuario' para crear una cuenta con privilegios de Administrador de Synapse. Luego, regrese a 'Conexiones del Servidor', edite su perfil activo, despliegue 'Mostrar Configuración de Token de Admin' y guarde las credenciales o el token de acceso de este usuario.",
+    dbDetailsTitle: 'Información de Conexión a la Base de Datos PostgreSQL',
+    dbHost: 'Host de Base de Datos:',
+    dbPort: 'Puerto de Base de Datos:',
+    dbName: 'Nombre de Base de Datos:',
+    dbUser: 'Usuario de Base de Datos:',
+    dbPass: 'Contraseña de Base de Datos:',
+    pathsTitle: 'Rutas Importantes de Archivos y Configuración del Sistema',
+    copySuccess: '¡Copiado al portapapeles!',
+    showPass: 'Mostrar contraseña',
+    hidePass: 'Ocultar contraseña'
   },
   ar: {
     quickTasks: 'المهام السريعة',
@@ -207,7 +226,26 @@ const terminalTranslations: Record<string, any> = {
     systemUpToDate: 'النظام محدث بالكامل',
     systemUpToDateDesc: 'لوحة تحكم ماتركس تعمل بأحدث كود من المستودع البعيد.',
     readyMsg: '# مدير التحديثات جاهز.',
-    clickToQuery: '# انقر على "التحقق من التحديثات" للاستعلام عن حالة المستودع.'
+    clickToQuery: '# انقر على "التحقق من التحديثات" للاستعلام عن حالة المستودع.',
+
+    // Post-Install & Config Info
+    installInfoTitle: 'ملخص التثبيت وتكوين النظام (الخيار 8 -> الخيار 2)',
+    postInstallGuideTitle: 'إرشادات إلزامية بعد التثبيت (إعداد قاعدة البيانات والمسؤول)',
+    postInstallGuideSub: 'لتمكين جميع قدرات اللوحة (قراءة قائمة المستخدمين وإحصائيات الغرف وتنفيذ واجهات برمجة تطبيقات ماتركس)، أكمل الخُطوتين التاليتين:',
+    stepDbTitle: '1. تكوين بيانات اعتماد PostgreSQL في إعدادات الاتصال بالخادم',
+    stepDbDesc: "انسخ كلمة المرور من بطاقة 'معلومات الاتصال بقاعدة بيانات PostgreSQL' أدناه. ثم انتقل إلى 'اتصالات الخادم' في القائمة الجانبية، وحرر ملف الخادم النشط، واملأ بيانات قاعدة البيانات (المضيف: 127.0.0.1، المنفذ: 5432، قاعدة البيانات: synapse، المستخدم: synapse_user وكلمة المرور). يتيح ذلك للوحة الاستعلام عن المستخدمين والغرف مباشرة من PostgreSQL.",
+    stepAdminTitle: '2. تسجيل مستخدم مسؤول Synapse وحفظ توكن المسؤول في اللوحة',
+    stepAdminDesc: "انتقل إلى 'إدارة المستخدمين' (أو مسؤول ماتركس) في قائمة اللوحة واستخدم 'تسجيل مستخدم جديد' لإنشاء حساب مع تفعيل صلاحيات مسؤول Synapse. بعد ذلك، ارجع إلى 'اتصالات الخادم'، وحرر ملف الخادم النشط، ووسع 'عرض إعدادات توكن المسؤول'، واحفظ بيانات الاعتماد أو توكن الوصول لهذا الحساب.",
+    dbDetailsTitle: 'معلومات الاتصال بقاعدة بيانات PostgreSQL',
+    dbHost: 'مضيف قاعدة البيانات:',
+    dbPort: 'منفذ قاعدة البيانات:',
+    dbName: 'اسم قاعدة البيانات:',
+    dbUser: 'مستخدم قاعدة البيانات:',
+    dbPass: 'كلمة مرور قاعدة البيانات:',
+    pathsTitle: 'مسارات الملفات والتكوين الهامة للنظام',
+    copySuccess: 'تم النسخ إلى الحافظة!',
+    showPass: 'إظهار كلمة المرور',
+    hidePass: 'إخفاء كلمة المرور'
   },
   de: {
     quickTasks: 'Schnelle Aufgaben',
@@ -243,7 +281,26 @@ const terminalTranslations: Record<string, any> = {
     systemUpToDate: 'System auf dem neuesten Stand',
     systemUpToDateDesc: 'Ihr Matrix-Admin-Panel läuft mit dem neuesten Code aus dem Remote-Repository.',
     readyMsg: '# Update-Manager bereit.',
-    clickToQuery: '# Klicken Sie auf „Updates prüfen“, um den Repository-Status abzufragen.'
+    clickToQuery: '# Klicken Sie auf „Updates prüfen“, um den Repository-Status abzufragen.',
+
+    // Post-Install & Config Info
+    installInfoTitle: 'Zusammenfassung der Installation & Systemkonfiguration (Option 8 -> Option 2)',
+    postInstallGuideTitle: 'Obligatorische Anleitung nach der Installation (Datenbank & Admin-Einrichtung)',
+    postInstallGuideSub: 'Um die vollständigen Funktionen des Panels zu aktivieren (Benutzerlisten lesen, Raumstatistiken und Matrix-APIs ausführen), führen Sie diese zwei Schritte aus:',
+    stepDbTitle: '1. PostgreSQL-Zugangsdaten in den Serververbindungseinstellungen konfigurieren',
+    stepDbDesc: "Kopieren Sie das Passwort aus der Karte 'PostgreSQL-Datenbankverbindungsinformationen' unten. Navigieren Sie dann im Seitenmenü zu 'Serververbindungen', bearbeiten Sie Ihr aktives Serverprofil und tragen Sie die Datenbankzugangsdaten ein (Host: 127.0.0.1, Port: 5432, DB: synapse, Benutzer: synapse_user und Passwort). Dadurch kann das Panel Benutzer und Räume direkt aus PostgreSQL abfragen.",
+    stepAdminTitle: '2. Synapse-Admin-Benutzer registrieren & Admin-Token im Panel speichern',
+    stepAdminDesc: "Gehen Sie im Panel-Menü zu 'Benutzerverwaltung' (oder Matrix Admin) und nutzen Sie 'Neuen Benutzer registrieren', um ein Konto mit Synapse-Admin-Rechten zu erstellen. Kehren Sie dann zu 'Serververbindungen' zurück, bearbeiten Sie das Serverprofil, klappen Sie 'Admin-Token-Einstellungen anzeigen' auf und speichern Sie die Zugangsdaten oder das Zugriffs-Token dieses Admin-Kontos.",
+    dbDetailsTitle: 'PostgreSQL-Datenbankverbindungsinformationen',
+    dbHost: 'Datenbank-Host:',
+    dbPort: 'Datenbank-Port:',
+    dbName: 'Datenbank-Name:',
+    dbUser: 'Datenbank-Benutzer:',
+    dbPass: 'Datenbank-Passwort:',
+    pathsTitle: 'Wichtige Systemdatei- & Konfigurationspfade',
+    copySuccess: 'In die Zwischenablage kopiert!',
+    showPass: 'Passwort anzeigen',
+    hidePass: 'Passwort verbergen'
   },
   ru: {
     quickTasks: 'Быстрые задачи',
@@ -279,7 +336,26 @@ const terminalTranslations: Record<string, any> = {
     systemUpToDate: 'Система обновлена',
     systemUpToDateDesc: 'Ваша панель управления Matrix работает на последней версии кода из удаленного репозитория.',
     readyMsg: '# Менеджер обновлений готов к работе.',
-    clickToQuery: '# Нажмите «Проверить обновления», чтобы запросить статус репозитория.'
+    clickToQuery: '# Нажмите «Проверить обновления», чтобы запросить статус репозитория.',
+
+    // Post-Install & Config Info
+    installInfoTitle: 'Сводка об установке и конфигурации системы (Опция 8 -> Опция 2)',
+    postInstallGuideTitle: 'Обязательное руководство после установки (База данных и Админ)',
+    postInstallGuideSub: 'Чтобы включить все возможности панели (чтение списка пользователей, статистики комнат и выполнение API Matrix), выполните следующие два шага:',
+    stepDbTitle: '1. Настройка учетных данных PostgreSQL в подключениях к серверу',
+    stepDbDesc: "Скопируйте пароль из карточки 'Информация о подключении к БД PostgreSQL' ниже. Затем перейдите в 'Подключения к серверу' в боковом меню, отредактируйте активный профиль сервера и заполните данные БД (Хост: 127.0.0.1, Порт: 5432, БД: synapse, Пользователь: synapse_user и Пароль). Это позволит панели запрашивать пользователей и комнаты напрямую из PostgreSQL.",
+    stepAdminTitle: '2. Регистрация администратора Synapse и сохранение токена в панели',
+    stepAdminDesc: "Перейдите в 'Управление пользователями' (или Администрирование Matrix) в меню панели и используйте 'Зарегистрировать нового пользователя', чтобы создать аккаунт с правами администратора Synapse. Затем вернитесь в 'Подключения к серверу', отредактируйте профиль сервера, раскройте 'Показать настройки токена администратора' и сохраните данные или токен доступа.",
+    dbDetailsTitle: 'Информация о подключении к базе данных PostgreSQL',
+    dbHost: 'Хост базы данных:',
+    dbPort: 'Порт базы данных:',
+    dbName: 'Имя базы данных:',
+    dbUser: 'Пользователь базы данных:',
+    dbPass: 'Пароль базы данных:',
+    pathsTitle: 'Важные пути к системным файлам и конфигурациям',
+    copySuccess: 'Скопировано в буфер обмена!',
+    showPass: 'Показать пароль',
+    hidePass: 'Скрыть пароль'
   }
 };
 
