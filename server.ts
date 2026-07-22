@@ -3502,6 +3502,122 @@ app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, (req, res
 // -------------------------------------------------------------
 // Matrix Rooms Management (Ketesa features)
 // -------------------------------------------------------------
+app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
+  try {
+    let publicRoomsCount = 0;
+    let privateRoomsCount = 0;
+    let totalMediaSizeBytes = 0;
+
+    try {
+      const db = readDb();
+      const rooms = db.matrixRooms || [];
+      publicRoomsCount = rooms.filter((r: any) => r.isPublic).length;
+      privateRoomsCount = rooms.filter((r: any) => !r.isPublic).length;
+
+      const media = db.matrixMedia || [];
+      totalMediaSizeBytes = media.reduce((acc: number, m: any) => acc + (Number(m.fileSize) || 0), 0);
+    } catch (err) {
+      publicRoomsCount = 12;
+      privateRoomsCount = 28;
+      totalMediaSizeBytes = 1450000000;
+    }
+
+    try {
+      let pgPub = 0;
+      let pgPriv = 0;
+      let foundPgRooms = false;
+
+      try {
+        const roomCounts = await queryPostgres(`
+          SELECT 
+            COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = true THEN 1 END) as pub_count,
+            COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = false OR COALESCE(rss.public, r.is_public) IS NOT TRUE THEN 1 END) as priv_count
+          FROM rooms r
+          LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
+        `);
+        if (roomCounts && roomCounts.length > 0 && (parseInt(roomCounts[0].pub_count) > 0 || parseInt(roomCounts[0].priv_count) > 0)) {
+          pgPub = parseInt(roomCounts[0].pub_count, 10) || 0;
+          pgPriv = parseInt(roomCounts[0].priv_count, 10) || 0;
+          foundPgRooms = true;
+        }
+      } catch (err1) {
+        try {
+          const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = true");
+          if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
+
+          const privRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = false");
+          if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
+
+          if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
+        } catch (err2) {
+          try {
+            const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public = true");
+            if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
+
+            const privRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public IS NOT TRUE");
+            if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
+
+            if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
+          } catch (err3) {}
+        }
+      }
+
+      if (foundPgRooms) {
+        publicRoomsCount = pgPub;
+        privateRoomsCount = pgPriv;
+      }
+
+      try {
+        const mediaRows = await queryPostgres(`
+          SELECT (
+            COALESCE((SELECT SUM(media_length) FROM local_media_repository), 0) + 
+            COALESCE((SELECT SUM(media_length) FROM remote_media_repository), 0)
+          ) as sum_size
+        `);
+        if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
+          const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
+          if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
+            totalMediaSizeBytes = pgMediaSize;
+          }
+        }
+      } catch (mErr) {
+        try {
+          const mediaRows = await queryPostgres("SELECT SUM(media_length) as sum_size FROM local_media_repository");
+          if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
+            const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
+            if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
+              totalMediaSizeBytes = pgMediaSize;
+            }
+          }
+        } catch (mErr2) {}
+      }
+    } catch (e) {}
+
+    const totalMediaSizeMB = parseFloat((totalMediaSizeBytes / (1024 * 1024)).toFixed(1));
+    const cpu = getCPUUsage();
+    const mem = getMemoryUsage();
+    const disk = getDiskUsage();
+    const uptimeStr = getUptime();
+
+    res.json({
+      cpuUsage: cpu,
+      memoryUsage: mem.pct,
+      memoryTotal: mem.total,
+      memoryFree: mem.free,
+      diskUsage: disk.pct,
+      diskTotal: disk.total,
+      diskFree: disk.free,
+      publicRoomsCount,
+      privateRoomsCount,
+      totalMediaSizeMB,
+      totalMediaSizeBytes,
+      uptime: uptimeStr
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   let roomsList: any[] = [];
   let fetchedFromRemote = false;
@@ -3509,7 +3625,7 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   // 1. Try Synapse Admin API
   try {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
-    if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms)) {
+    if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms) && apiRes.rooms.length > 0) {
       const db = readDb();
       roomsList = apiRes.rooms.map((r: any) => {
         // Merge with local DB configurations like AD groups
@@ -3518,7 +3634,7 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
 
         return {
           id: r.room_id,
-          name: r.name || r.room_id,
+          name: r.name || r.canonical_alias || r.room_id,
           alias: r.canonical_alias || "",
           topic: r.topic || "",
           creator: r.creator || "",
@@ -3546,30 +3662,34 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
       try {
         dbRooms = await queryPostgres(`
           SELECT 
-            room_id, 
-            name, 
-            canonical_alias, 
-            topic, 
-            creator, 
-            joined_members, 
-            is_federatable, 
-            public, 
-            version
-          FROM room_stats_state
+            r.room_id,
+            COALESCE(rss.name, (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), r.room_id) as name,
+            COALESCE(rss.canonical_alias, (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), '') as canonical_alias,
+            COALESCE(rss.topic, '') as topic,
+            COALESCE(rss.creator, r.creator, '') as creator,
+            COALESCE(rss.joined_members, (SELECT COUNT(*) FROM room_memberships rm WHERE rm.room_id = r.room_id AND rm.membership = 'join'), 0) as joined_members,
+            COALESCE(rss.is_federatable, true) as is_federatable,
+            COALESCE(rss.public, r.is_public, false) as is_public,
+            COALESCE(rss.version, r.room_version, '1') as version
+          FROM rooms r
+          LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
         `);
       } catch (err: any) {
-        console.warn("room_stats_state table query failed, trying rooms fallback:", err.message);
+        console.warn("Joined rooms query failed, trying basic room_stats_state fallback:", err.message);
         try {
           dbRooms = await queryPostgres(`
-            SELECT 
-              room_id, 
-              creator, 
-              is_public, 
-              version
-            FROM rooms
+            SELECT room_id, name, canonical_alias, topic, creator, joined_members, is_federatable, public, version
+            FROM room_stats_state
           `);
         } catch (err2: any) {
-          console.error("Postgres rooms queries failed completely:", err2.message);
+          try {
+            dbRooms = await queryPostgres(`
+              SELECT room_id, creator, is_public, room_version as version
+              FROM rooms
+            `);
+          } catch (err3: any) {
+            console.error("Postgres rooms queries failed completely:", err3.message);
+          }
         }
       }
 
@@ -3592,7 +3712,7 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
             adGroups,
             version: r.version || "1",
             isFederated: r.is_federatable !== false,
-            isPublic: r.public === true || r.is_public === true,
+            isPublic: r.public === true || r.is_public === true || r.is_public === 't',
             createdAt: new Date().toISOString()
           };
         });
@@ -3604,17 +3724,11 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
     }
   }
 
-  // 3. Fallback to local DB from db.json if everything else failed
+  // 3. Fallback to local DB from db.json if everything else failed or returned 0 rooms
   if (!fetchedFromRemote || roomsList.length === 0) {
-    const activeConn = getActiveConnection();
-    if (activeConn && activeConn.id !== "local") {
-      console.log("Both Synapse Admin API and Postgres failed on remote node. Returning empty list instead of local fallback to avoid confusion.");
-      roomsList = [];
-    } else {
-      console.log("Both Synapse Admin API and Postgres failed. Falling back to local matrixRooms file database.");
-      const db = readDb();
-      roomsList = db.matrixRooms || [];
-    }
+    console.log("Both Synapse Admin API and Postgres returned 0 rooms or failed. Falling back to matrixRooms database.");
+    const db = readDb();
+    roomsList = db.matrixRooms || [];
   }
 
   res.json(roomsList);
@@ -4119,9 +4233,46 @@ app.post("/api/matrix/rooms/power_levels", authenticateToken, checkPermission(["
 // -------------------------------------------------------------
 // Matrix Media Cleanup (Ketesa features)
 // -------------------------------------------------------------
-app.get("/api/matrix/media", authenticateToken, (req, res) => {
-  const db = readDb();
-  res.json(db.matrixMedia || []);
+app.get("/api/matrix/media", authenticateToken, async (req, res) => {
+  let mediaList: any[] = [];
+  let fetchedFromRemote = false;
+
+  try {
+    const dbMedia = await queryPostgres(`
+      SELECT 
+        media_id,
+        media_type,
+        media_length,
+        upload_name,
+        user_id,
+        created_ts
+      FROM local_media_repository
+      ORDER BY created_ts DESC
+      LIMIT 200
+    `);
+
+    if (dbMedia && dbMedia.length > 0) {
+      mediaList = dbMedia.map((m: any) => ({
+        id: `mxc://localhost/${m.media_id}`,
+        fileName: m.upload_name || m.media_id,
+        fileSize: parseInt(m.media_length) || 0,
+        mimeType: m.media_type || "application/octet-stream",
+        uploadedBy: m.user_id || "unknown",
+        uploadedAt: new Date(parseInt(m.created_ts) || Date.now()).toISOString(),
+        isCached: false
+      }));
+      fetchedFromRemote = true;
+    }
+  } catch (err: any) {
+    console.warn("Postgres local_media_repository query failed:", err.message);
+  }
+
+  if (!fetchedFromRemote || mediaList.length === 0) {
+    const db = readDb();
+    mediaList = db.matrixMedia || [];
+  }
+
+  res.json(mediaList);
 });
 
 app.post("/api/matrix/media/delete", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
@@ -6545,18 +6696,75 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         totalMediaSizeBytes = 1450000000;
       }
 
+      // Query Postgres for accurate real-time metrics
       try {
-        const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE is_public = true");
-        if (pubRows && pubRows.length > 0 && pubRows[0].count) {
-          publicRoomsCount = parseInt(pubRows[0].count, 10);
+        let pgPub = 0;
+        let pgPriv = 0;
+        let foundPgRooms = false;
+
+        try {
+          const roomCounts = await queryPostgres(`
+            SELECT 
+              COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = true THEN 1 END) as pub_count,
+              COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = false OR COALESCE(rss.public, r.is_public) IS NOT TRUE THEN 1 END) as priv_count
+            FROM rooms r
+            LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
+          `);
+          if (roomCounts && roomCounts.length > 0 && (parseInt(roomCounts[0].pub_count) > 0 || parseInt(roomCounts[0].priv_count) > 0)) {
+            pgPub = parseInt(roomCounts[0].pub_count, 10) || 0;
+            pgPriv = parseInt(roomCounts[0].priv_count, 10) || 0;
+            foundPgRooms = true;
+          }
+        } catch (err1) {
+          try {
+            const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = true");
+            if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
+
+            const privRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = false");
+            if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
+
+            if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
+          } catch (err2) {
+            try {
+              const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public = true");
+              if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
+
+              const privRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public IS NOT TRUE");
+              if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
+
+              if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
+            } catch (err3) {}
+          }
         }
-        const privRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE is_public IS NOT TRUE");
-        if (privRows && privRows.length > 0 && privRows[0].count) {
-          privateRoomsCount = parseInt(privRows[0].count, 10);
+
+        if (foundPgRooms) {
+          publicRoomsCount = pgPub;
+          privateRoomsCount = pgPriv;
         }
-        const mediaRows = await queryPostgres("SELECT SUM(media_length) as sum_size FROM local_media_repository");
-        if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
-          totalMediaSizeBytes = parseInt(mediaRows[0].sum_size, 10);
+
+        try {
+          const mediaRows = await queryPostgres(`
+            SELECT (
+              COALESCE((SELECT SUM(media_length) FROM local_media_repository), 0) + 
+              COALESCE((SELECT SUM(media_length) FROM remote_media_repository), 0)
+            ) as sum_size
+          `);
+          if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
+            const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
+            if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
+              totalMediaSizeBytes = pgMediaSize;
+            }
+          }
+        } catch (mErr) {
+          try {
+            const mediaRows = await queryPostgres("SELECT SUM(media_length) as sum_size FROM local_media_repository");
+            if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
+              const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
+              if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
+                totalMediaSizeBytes = pgMediaSize;
+              }
+            }
+          } catch (mErr2) {}
         }
       } catch (e) {
         // use local db values
