@@ -126,9 +126,9 @@ const translations = {
     postInstallGuideTitle: "Mandatory Steps After Installation Completes",
     postInstallGuideSub: "Follow these essential steps after installation to connect the panel to PostgreSQL and enable Matrix API capabilities:",
     stepDbTitle: "1. Enter Database Credentials in 'Server Connections'",
-    stepDbDesc: "Navigate to 'Server Connections' in the side menu, edit your server profile, and fill in the PostgreSQL parameters (Host: 127.0.0.1/IP, Port: 5432, DB: synapse, User: synapse_user, and Password) so the panel can query users and rooms.",
-    stepAdminTitle: "2. Create an Admin Account for Management & APIs",
-    stepAdminDesc: "Go to 'User Management' or run Option 2 in the SSH CLI terminal to create an Administrator account (@admin:domain.com) and save the Access Token / Credentials in the panel to enable API calls."
+    stepDbDesc: "Copy the password from the 'PostgreSQL Database Connection Info' card below. Then navigate to 'Server Connections' in the side menu, edit your active server profile, and fill in the database credentials (Host: 127.0.0.1, Port: 5432, DB: synapse, User: synapse_user, and Password). This allows the panel to query users and rooms directly from PostgreSQL.",
+    stepAdminTitle: "2. Register Synapse Admin User & Save Admin Credentials",
+    stepAdminDesc: "Go to 'User Management' (or Matrix Admin) in the panel menu and use 'Register New User' to create an account with Synapse Admin privileges enabled. Next, return to 'Server Connections', edit your active server profile, expand 'Show Admin Token Settings', and save this admin account's credentials/token so API requests can be executed."
   },
   fa: {
     title: "پیکربندی هوشمند پکیج ماتریکس (Stack)",
@@ -238,9 +238,9 @@ const translations = {
     postInstallGuideTitle: "اقدام‌های ضروری بلافاصله پس از اتمام نصب پکیج",
     postInstallGuideSub: "پس از پایان فرآیند نصب، جهت اتصال پنل به دیتابیس و فعال‌سازی کامل امکانات مدیریت و API موارد زیر را انجام دهید:",
     stepDbTitle: "۱. ورود مشخصات دیتابیس در بخش «ارتباط با سرور»",
-    stepDbDesc: "به صفحه «ارتباط با سرور» (Server Connections) مراجعه نموده، سرور مربوطه را ویرایش کنید و اطلاعات دیتابیس (میزبان: 127.0.0.1 / آی‌پی سرور، پورت: 5432، نام دیتابیس: synapse، نام کاربری: synapse_user و رمز عبور) را وارد کنید تا پنل بتواند اطلاعات کاربران و لیست اتاق‌ها را مستقیماً بخواند.",
-    stepAdminTitle: "۲. ساخت کاربر ادمین برای مدیریت و APIها",
-    stepAdminDesc: "به بخش «مدیریت کاربران» (User Management) مراجعه کرده یا از گزینه ۲ منوی اصلی ترمینال استفاده کنید تا یک کاربر ادمین (@admin:domain.com) بسازید و مشخصات آن را در پنل ذخیره کنید تا امکان زدن APIها فراهم شود."
+    stepDbDesc: "رمز عبور دیتابیس را از کارت «مشخصات اتصال به دیتابیس PostgreSQL» در همین صفحه کپی کنید. سپس به صفحه «ارتباط با سرور» در منوی کناری رفته، سرور مربوطه را ویرایش کنید و اطلاعات دیتابیس (میزبان: 127.0.0.1، پورت: 5432، نام دیتابیس: synapse، نام کاربری: synapse_user و رمز عبور کپی‌شده) را وارد کنید تا پنل بتواند اطلاعات کاربران و لیست اتاق‌ها را مستقیماً بخواند.",
+    stepAdminTitle: "۲. ساخت کاربر ادمین و ثبت مشخصات در «ارتباط با سرور»",
+    stepAdminDesc: "به بخش «مدیریت کاربران» مراجعه کرده و در بخش «ایجاد کاربر جدید» (Register New User) یک کاربر با دسترسی مدیرکل Synapse بسازید. سپس به بخش «ارتباط با سرور» بازگشته، سرور فعال را ویرایش کرده، بخش «Show Admin Token Settings» را باز کنید و مشخصات یا توکن دسترسی این کاربر ادمین را وارد نمایید تا امکان اجرای APIهای ماتریکس فراهم شود."
   },
   es: {
     title: "Configurar Pila de Matrix Enterprise",
