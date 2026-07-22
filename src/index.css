@@ -31,6 +31,61 @@
   background-color: #f1f5f9 !important;
 }
 
+/* Emerald Cyber Neon Theme Overrides */
+.theme-emerald {
+  --color-spatial-bg: #022c22;
+  --color-spatial-glass: rgba(6, 78, 59, 0.75);
+  --color-spatial-glass-hover: rgba(4, 120, 87, 0.85);
+  --color-spatial-glow-cyan: #10b981;
+  --color-spatial-glow-purple: #06b6d4;
+  --color-spatial-glow-amber: #10b981;
+  color: #f0fdf4 !important;
+  background-color: #022c22 !important;
+}
+
+.theme-emerald .ambient-glow-background {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.18) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.08) 0%, transparent 60%),
+    #022c22 !important;
+}
+
+.theme-emerald .spatial-glass {
+  background: rgba(4, 47, 38, 0.75) !important;
+  border-color: rgba(52, 211, 153, 0.25) !important;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.6),
+    0 0 15px rgba(16, 185, 129, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.theme-emerald .spatial-glass-hover:hover {
+  background: rgba(6, 78, 59, 0.85) !important;
+  border-color: rgba(52, 211, 153, 0.5) !important;
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.7),
+    0 0 25px rgba(16, 185, 129, 0.25) !important;
+}
+
+.theme-emerald .glow-text-cyan {
+  text-shadow: 0 0 12px rgba(16, 185, 129, 0.6) !important;
+  color: #34d399 !important;
+}
+
+.theme-emerald .glow-text-purple {
+  text-shadow: 0 0 12px rgba(6, 182, 212, 0.6) !important;
+  color: #22d3ee !important;
+}
+
+.theme-emerald .text-indigo-400 { color: #34d399 !important; }
+.theme-emerald .text-indigo-500 { color: #10b981 !important; }
+.theme-emerald .text-indigo-600 { color: #059669 !important; }
+.theme-emerald .bg-indigo-600 { background-color: #059669 !important; }
+.theme-emerald .bg-indigo-500 { background-color: #10b981 !important; }
+.theme-emerald .border-indigo-500\/30 { border-color: rgba(16, 185, 129, 0.3) !important; }
+.theme-emerald .hover\:bg-indigo-500\/10:hover { background-color: rgba(16, 185, 129, 0.12) !important; }
+
 .theme-light .spatial-glass {
   background: #ffffff !important;
   border-color: #cbd5e1 !important;

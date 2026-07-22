@@ -33,7 +33,8 @@ import {
   Moon,
   ArrowRight,
   LogOut,
-  BookOpen
+  BookOpen,
+  Palette
 } from 'lucide-react';
 import SpatialDock from './components/SpatialDock';
 import MetricCard from './components/MetricCard';
@@ -310,15 +311,26 @@ export default function App() {
     document.documentElement.lang = lang;
   }, [lang, isRtl]);
 
-  // Theme State
-  const [isLightMode, setIsLightMode] = useState<boolean>(localStorage.getItem('theme_mode') === 'light');
+  // Theme State (obsidian, emerald, light)
+  const [panelTheme, setPanelTheme] = useState<'obsidian' | 'emerald' | 'light'>(() => {
+    const saved = localStorage.getItem('panel_theme');
+    if (saved === 'emerald' || saved === 'light' || saved === 'obsidian') return saved;
+    if (localStorage.getItem('theme_mode') === 'light') return 'light';
+    return 'obsidian';
+  });
+
+  const isLightMode = panelTheme === 'light';
+
+  const changeTheme = (newTheme: 'obsidian' | 'emerald' | 'light') => {
+    setPanelTheme(newTheme);
+    localStorage.setItem('panel_theme', newTheme);
+    localStorage.setItem('theme_mode', newTheme === 'light' ? 'light' : 'dark');
+  };
 
   const toggleTheme = () => {
-    setIsLightMode(prev => {
-      const next = !prev;
-      localStorage.setItem('theme_mode', next ? 'light' : 'dark');
-      return next;
-    });
+    if (panelTheme === 'light') changeTheme('obsidian');
+    else if (panelTheme === 'obsidian') changeTheme('emerald');
+    else changeTheme('light');
   };
 
   // Auth States
@@ -867,7 +879,7 @@ export default function App() {
 
   return (
     <div 
-      className={`min-h-screen relative flex flex-col justify-between ${isLightMode ? 'theme-light' : ''} ${isRtl ? 'dir-rtl' : 'dir-ltr'}`} 
+      className={`min-h-screen relative flex flex-col justify-between theme-${panelTheme} ${isRtl ? 'dir-rtl' : 'dir-ltr'}`} 
       dir={isRtl ? "rtl" : "ltr"}
     >
       {/* Background neon visual noise */}
@@ -1244,6 +1256,83 @@ export default function App() {
                             </span>
                           </div>
                         )}
+
+                        {/* Theme Selector Section */}
+                        <div className={`mb-3 pb-3 border-b ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <div className="flex items-center justify-between mb-2 px-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold">
+                              <Palette className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                              <span>
+                                {lang === 'fa' ? 'تم رنگی پنل' :
+                                 lang === 'es' ? 'Tema del panel' :
+                                 lang === 'ar' ? 'مظهر اللوحة' :
+                                 lang === 'de' ? 'Panel-Design' :
+                                 lang === 'ru' ? 'Тема панели' : 'Panel Theme'}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className={`grid grid-cols-3 gap-1.5 p-1 rounded-xl border ${
+                            isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'
+                          }`}>
+                            {/* Obsidian Theme */}
+                            <button
+                              type="button"
+                              onClick={() => changeTheme('obsidian')}
+                              className={`p-2 rounded-lg text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                                panelTheme === 'obsidian'
+                                  ? 'bg-indigo-600 text-white shadow-md ring-1 ring-indigo-400'
+                                  : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
+                              }`}
+                              title="Obsidian Dark"
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full bg-slate-900 border border-indigo-400 flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                              </div>
+                              <span className="truncate">
+                                {lang === 'fa' ? 'آبسیډین' : 'Obsidian'}
+                              </span>
+                            </button>
+
+                            {/* Emerald Theme */}
+                            <button
+                              type="button"
+                              onClick={() => changeTheme('emerald')}
+                              className={`p-2 rounded-lg text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                                panelTheme === 'emerald'
+                                  ? 'bg-emerald-600 text-white shadow-md ring-1 ring-emerald-400'
+                                  : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
+                              }`}
+                              title="Matrix Emerald"
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full bg-emerald-950 border border-emerald-400 flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              </div>
+                              <span className="truncate">
+                                {lang === 'fa' ? 'زمردی' : 'Emerald'}
+                              </span>
+                            </button>
+
+                            {/* Light Theme */}
+                            <button
+                              type="button"
+                              onClick={() => changeTheme('light')}
+                              className={`p-2 rounded-lg text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                                panelTheme === 'light'
+                                  ? 'bg-slate-200 text-slate-900 shadow-md ring-1 ring-slate-400'
+                                  : isLightMode ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-white/5'
+                              }`}
+                              title="Nordic Light"
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full bg-white border border-slate-300 flex items-center justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                              </div>
+                              <span className="truncate">
+                                {lang === 'fa' ? 'روشن' : 'Light'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
 
                         <div className="space-y-1">
                           <button

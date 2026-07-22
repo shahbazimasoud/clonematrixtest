@@ -12,7 +12,11 @@ import {
   LogOut,
   Users,
   Globe,
-  GripVertical
+  GripVertical,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 
 interface SpatialDockProps {
@@ -120,6 +124,13 @@ export default function SpatialDock({ activeView, onViewChange, onLogout, userRo
 
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dock_collapsed') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.setData('text/plain', id);
@@ -163,9 +174,40 @@ export default function SpatialDock({ activeView, onViewChange, onLogout, userRo
     setDragOverItemId(null);
   };
 
+  const toggleCollapse = (state: boolean) => {
+    setIsCollapsed(state);
+    try {
+      localStorage.setItem('dock_collapsed', String(state));
+    } catch (e) {
+      // ignore
+    }
+  };
+
   const orderedNavItems = order
     .map(id => defaultItems.find(item => item.id === id))
     .filter(Boolean) as typeof defaultItems;
+
+  if (isCollapsed) {
+    const activeItem = defaultItems.find(i => i.id === activeView) || defaultItems[0];
+    const ActiveIcon = activeItem.icon;
+    return (
+      <div className="fixed bottom-6 right-6 z-50 select-none animate-in fade-in zoom-in-95 duration-200">
+        <button
+          onClick={() => toggleCollapse(false)}
+          className="spatial-glass px-4 py-2.5 rounded-full flex items-center gap-2.5 shadow-[0_15px_40px_rgba(0,0,0,0.5)] border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 text-white group cursor-pointer"
+          title={t.expandDock || 'Expand Dock'}
+          id="expand-dock-btn"
+        >
+          <ActiveIcon className={`w-4 h-4 ${activeItem.color}`} />
+          <span className="text-xs font-semibold text-slate-200 group-hover:text-white transition-colors">
+            {activeItem.label}
+          </span>
+          <div className="w-[1px] h-4 bg-white/10 my-auto" />
+          <ChevronUp className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 select-none">
@@ -188,7 +230,7 @@ export default function SpatialDock({ activeView, onViewChange, onLogout, userRo
               onDrop={(e) => handleDrop(e, item.id)}
               onDragEnd={handleDragEnd}
               onClick={() => onViewChange(item.id)}
-              className={`relative p-3 rounded-full transition-all duration-200 group flex flex-col items-center cursor-grab active:cursor-grabbing hover:scale-110 ${
+              className={`relative p-3 rounded-full transition-all duration-200 group flex flex-col items-center cursor-pointer active:cursor-grabbing hover:scale-110 ${
                 isDragging ? 'opacity-30 scale-95' : ''
               } ${
                 isDragOver ? 'ring-2 ring-indigo-400 bg-indigo-500/20 scale-105' : ''
@@ -217,10 +259,23 @@ export default function SpatialDock({ activeView, onViewChange, onLogout, userRo
 
         <div className="h-6 w-[1px] bg-white/10 mx-1" />
 
+        {/* Collapse Dock Button */}
+        <button
+          onClick={() => toggleCollapse(true)}
+          className="p-3 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-all duration-300 group relative hover:scale-110 cursor-pointer"
+          title={t.collapseDock || 'Minimize Dock'}
+          id="collapse-dock-btn"
+        >
+          <ChevronDown className="w-5 h-5 transition-transform duration-300 group-hover:translate-y-0.5 text-indigo-400" />
+          <span className="absolute bottom-14 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none bg-slate-950/90 text-white text-xs px-2.5 py-1 rounded-md border border-white/10 whitespace-nowrap shadow-xl">
+            {t.collapseDock || 'Minimize Dock'}
+          </span>
+        </button>
+
         {/* Logout Button */}
         <button
           onClick={onLogout}
-          className="p-3 rounded-full text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-300 group relative hover:scale-110"
+          className="p-3 rounded-full text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-300 group relative hover:scale-110 cursor-pointer"
           title="Exit Panel"
           id="logout-btn"
         >
