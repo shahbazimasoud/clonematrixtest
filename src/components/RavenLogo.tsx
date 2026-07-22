@@ -10,7 +10,7 @@ export function RavenLogo({ className = "w-8 h-8", size = 32, showGlow = true }:
   return (
     <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`}>
       {showGlow && (
-        <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-md animate-pulse pointer-events-none" />
+        <div className="absolute inset-0 bg-indigo-500/25 rounded-full blur-md animate-pulse pointer-events-none" />
       )}
       <svg
         width={size}
@@ -18,68 +18,97 @@ export function RavenLogo({ className = "w-8 h-8", size = 32, showGlow = true }:
         viewBox="0 0 100 100"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className="relative z-10 transition-transform duration-300 hover:scale-105"
+        className="relative z-10 transition-transform duration-300 hover:scale-105 overflow-visible"
       >
         <defs>
-          <linearGradient id="ravenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="ravenCircleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#818cf8" />
-            <stop offset="40%" stopColor="#6366f1" />
+            <stop offset="50%" stopColor="#6366f1" />
             <stop offset="100%" stopColor="#3b82f6" />
           </linearGradient>
-          <linearGradient id="ravenBeak" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#38bdf8" />
-            <stop offset="100%" stopColor="#818cf8" />
+
+          <linearGradient id="ravenHeadGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#a5b4fc" />
+            <stop offset="40%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#1e1b4b" />
           </linearGradient>
-          <linearGradient id="ravenWing" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#a855f7" />
+
+          <linearGradient id="ravenBeakGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#38bdf8" />
+            <stop offset="60%" stopColor="#818cf8" />
             <stop offset="100%" stopColor="#6366f1" />
+          </linearGradient>
+
+          <linearGradient id="ravenCircleBg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#1e1b4b" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#0f172a" stopOpacity="0.95" />
           </linearGradient>
         </defs>
 
-        {/* Outer Intelligent Shield Contour */}
-        <path
-          d="M 50 8 C 72 8 88 18 88 42 C 88 68 50 92 50 92 C 50 92 12 68 12 42 C 12 18 28 8 50 8 Z"
-          fill="url(#ravenGrad)"
-          fillOpacity="0.12"
-          stroke="url(#ravenGrad)"
-          strokeWidth="2.5"
-          strokeDasharray="180"
-          strokeDashoffset="0"
+        {/* Circular Frame - Center at (42, 50), Radius 34 (Right Edge at x=76) */}
+        <circle
+          cx="42"
+          cy="50"
+          r="34"
+          fill="url(#ravenCircleBg)"
+          stroke="url(#ravenCircleGrad)"
+          strokeWidth="3.5"
         />
 
-        {/* Raven Geometric Head & Neck */}
+        {/* Raven Head & Neck Profile */}
         <path
-          d="M 28 70 C 24 52 30 36 44 24 C 56 14 72 12 86 18 C 80 23 74 26 68 25 C 76 29 82 36 85 43 C 76 40 67 40 60 44 C 70 51 75 62 75 74 C 63 68 51 66 38 68 Z"
-          fill="url(#ravenGrad)"
+          d="M 22 81 
+             C 18 66 18 48 26 34 
+             C 32 24 44 22 54 28 
+             C 59 31 63 35 65 39 
+             C 60 48 56 62 60 72 
+             C 52 78 40 82 22 81 Z"
+          fill="url(#ravenHeadGrad)"
         />
 
-        {/* Sharp Intelligent Beak */}
+        {/* Intelligent Feather Crown Crest */}
         <path
-          d="M 68 25 C 80 21 92 23 96 26 C 88 32 78 37 68 38 Z"
-          fill="url(#ravenBeak)"
+          d="M 28 32 L 21 23 L 32 28 L 29 18 L 38 25 L 39 16 L 46 24"
+          fill="url(#ravenCircleGrad)"
         />
 
-        {/* Cyber Feather Accent Layers */}
+        {/* Sharp Raven Beak extending OUT of the circle (Circle Edge=76, Beak Tip=96) */}
         <path
-          d="M 30 58 L 46 47 L 55 51"
-          stroke="url(#ravenWing)"
-          strokeWidth="3"
+          d="M 62 36 
+             C 71 36 84 40 96 48 
+             C 85 53 74 55 63 54 
+             C 61 48 60 41 62 36 Z"
+          fill="url(#ravenBeakGrad)"
+        />
+
+        {/* Beak Mouth Separator Line */}
+        <path
+          d="M 63 45 C 73 46 84 48 95 48"
+          stroke="#0f172a"
+          strokeWidth="1.5"
           strokeLinecap="round"
-          strokeLinejoin="round"
         />
+
+        {/* Feather Texture / Cyber Wing Accent Lines */}
         <path
-          d="M 24 67 L 40 57 L 49 60"
+          d="M 26 56 C 36 50 48 52 54 58"
           stroke="#38bdf8"
-          strokeWidth="2.5"
+          strokeWidth="2"
           strokeLinecap="round"
-          strokeLinejoin="round"
           opacity="0.8"
         />
+        <path
+          d="M 24 68 C 34 62 44 64 50 70"
+          stroke="#818cf8"
+          strokeWidth="2"
+          strokeLinecap="round"
+          opacity="0.6"
+        />
 
-        {/* Glowing Cyan Eye of Intelligence */}
-        <circle cx="56" cy="28" r="4.5" fill="#06b6d4" />
-        <circle cx="56" cy="28" r="2.5" fill="#38bdf8" />
-        <circle cx="57.5" cy="26.8" r="1.2" fill="#ffffff" />
+        {/* Glowing Eye of Intelligence */}
+        <circle cx="48" cy="37" r="4.5" fill="#06b6d4" />
+        <circle cx="48" cy="37" r="2.5" fill="#38bdf8" />
+        <circle cx="49.5" cy="35.8" r="1.2" fill="#ffffff" />
       </svg>
     </div>
   );
