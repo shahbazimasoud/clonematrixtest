@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Server, Globe, ShieldAlert, Key, Settings, 
   CheckCircle, Check, Loader2, ChevronLeft, ChevronRight, 
-  AlertCircle, FileText, CloudDownload, Folder, BookOpen, ArrowRight, Activity
+  AlertCircle, FileText, CloudDownload, Folder, BookOpen, ArrowRight, Activity,
+  Database, UserCheck
 } from 'lucide-react';
 
 interface InstallWizardModalProps {
@@ -119,7 +120,15 @@ const translations = {
     errDomain: "Please enter a valid domain format.",
     errIp: "Please enter a valid IPv4 address.",
     errEmail: "Please enter a valid email address.",
-    errRequired: "This field is required."
+    errRequired: "This field is required.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Mandatory Steps After Installation Completes",
+    postInstallGuideSub: "Follow these essential steps after installation to connect the panel to PostgreSQL and enable Matrix API capabilities:",
+    stepDbTitle: "1. Enter Database Credentials in 'Server Connections'",
+    stepDbDesc: "Navigate to 'Server Connections' in the side menu, edit your server profile, and fill in the PostgreSQL parameters (Host: 127.0.0.1/IP, Port: 5432, DB: synapse, User: synapse_user, and Password) so the panel can query users and rooms.",
+    stepAdminTitle: "2. Create an Admin Account for Management & APIs",
+    stepAdminDesc: "Go to 'User Management' or run Option 2 in the SSH CLI terminal to create an Administrator account (@admin:domain.com) and save the Access Token / Credentials in the panel to enable API calls."
   },
   fa: {
     title: "پیکربندی هوشمند پکیج ماتریکس (Stack)",
@@ -223,7 +232,15 @@ const translations = {
     errDomain: "فرمت دامنه نامعتبر است.",
     errIp: "آی‌پی وارد شده نامعتبر است (فرمت IPv4).",
     errEmail: "ایمیل وارد شده نامعتبر است.",
-    errRequired: "پر کردن این فیلد اجباری است."
+    errRequired: "پر کردن این فیلد اجباری است.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "اقدام‌های ضروری بلافاصله پس از اتمام نصب پکیج",
+    postInstallGuideSub: "پس از پایان فرآیند نصب، جهت اتصال پنل به دیتابیس و فعال‌سازی کامل امکانات مدیریت و API موارد زیر را انجام دهید:",
+    stepDbTitle: "۱. ورود مشخصات دیتابیس در بخش «ارتباط با سرور»",
+    stepDbDesc: "به صفحه «ارتباط با سرور» (Server Connections) مراجعه نموده، سرور مربوطه را ویرایش کنید و اطلاعات دیتابیس (میزبان: 127.0.0.1 / آی‌پی سرور، پورت: 5432، نام دیتابیس: synapse، نام کاربری: synapse_user و رمز عبور) را وارد کنید تا پنل بتواند اطلاعات کاربران و لیست اتاق‌ها را مستقیماً بخواند.",
+    stepAdminTitle: "۲. ساخت کاربر ادمین برای مدیریت و APIها",
+    stepAdminDesc: "به بخش «مدیریت کاربران» (User Management) مراجعه کرده یا از گزینه ۲ منوی اصلی ترمینال استفاده کنید تا یک کاربر ادمین (@admin:domain.com) بسازید و مشخصات آن را در پنل ذخیره کنید تا امکان زدن APIها فراهم شود."
   },
   es: {
     title: "Configurar Pila de Matrix Enterprise",
@@ -1626,6 +1643,59 @@ export function InstallWizardModal({
                       <div className={`flex items-center gap-2 text-sm ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
                         <span className={`w-2 h-2 rounded-full ${ldapConfigureNow ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                         <span className="font-semibold">{ldapConfigureNow ? t.yes : t.no}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Post-Installation Guidance Box */}
+                  <div className={`p-4 rounded-2xl border space-y-3 transition-colors ${
+                    isLightMode 
+                      ? 'bg-amber-50/80 border-amber-200 text-slate-800' 
+                      : 'bg-gradient-to-br from-amber-500/10 via-amber-950/20 to-slate-950 border-amber-500/30 text-amber-100'
+                  }`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-xl border shrink-0 ${
+                        isLightMode 
+                          ? 'bg-amber-100 border-amber-300 text-amber-700' 
+                          : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                      }`}>
+                        <ShieldAlert className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-amber-900' : 'text-amber-300'}`}>
+                          {t.postInstallGuideTitle || 'اقدام‌های ضروری پس از اتمام نصب'}
+                        </h4>
+                        <p className={`text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-amber-800' : 'text-amber-200/80'}`}>
+                          {t.postInstallGuideSub || 'جهت فعال‌سازی کامل امکانات پنل، پس از نصب دو گام زیر را انجام دهید:'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      {/* Step 1: DB connection */}
+                      <div className={`p-3 rounded-xl border space-y-1.5 ${
+                        isLightMode ? 'bg-white border-amber-200/60' : 'bg-black/40 border-amber-500/20'
+                      }`}>
+                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-amber-900' : 'text-amber-300'}`}>
+                          <Database className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <span>{t.stepDbTitle || '۱. ورود مشخصات دیتابیس در بخش «ارتباط با سرور»'}</span>
+                        </div>
+                        <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                          {t.stepDbDesc || 'در منوی «ارتباط با سرور»، مشخصات دیتابیس (پورت 5432، نام دیتابیس synapse، نام کاربری synapse_user و پسورد) را وارد کنید تا لیست کاربران و اتاق‌ها خوانده شود.'}
+                        </p>
+                      </div>
+
+                      {/* Step 2: Admin creation */}
+                      <div className={`p-3 rounded-xl border space-y-1.5 ${
+                        isLightMode ? 'bg-white border-amber-200/60' : 'bg-black/40 border-amber-500/20'
+                      }`}>
+                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-amber-900' : 'text-amber-300'}`}>
+                          <UserCheck className="w-4 h-4 text-indigo-500 shrink-0" />
+                          <span>{t.stepAdminTitle || '۲. ساخت کاربر ادمین برای APIها'}</span>
+                        </div>
+                        <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                          {t.stepAdminDesc || 'در «مدیریت کاربران» یا گزینه ۲ ترمینال، یک کاربر مدیرکل (@admin:domain) بسازید تا فراخوانی APIها امکان‌پذیر گردد.'}
+                        </p>
                       </div>
                     </div>
                   </div>

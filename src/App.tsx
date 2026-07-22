@@ -1570,6 +1570,8 @@ export default function App() {
                 showToast={showToast}
                 initialTab={terminalInitialTab}
                 onTabChange={(tab) => setTerminalInitialTab(tab)}
+                config={config}
+                activeConnection={activeConnection}
               />
             )}
 

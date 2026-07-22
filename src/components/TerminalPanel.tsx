@@ -4,7 +4,12 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Terminal, Play, ShieldAlert, Circle, RefreshCw, Trash2, ArrowUpRight, Download, Eye, FileText } from 'lucide-react';
+import { 
+  Terminal, Play, ShieldAlert, Circle, RefreshCw, Trash2, ArrowUpRight, 
+  Download, Eye, FileText, Database, UserCheck, ShieldCheck, Globe, Key, 
+  Folder, Copy, Check, Info, Lock
+} from 'lucide-react';
+import { MatrixConfig } from '../types';
 
 interface TerminalPanelProps {
   logs: string[];
@@ -17,6 +22,8 @@ interface TerminalPanelProps {
   showToast: (type: 'success' | 'error', text: string) => void;
   initialTab?: 'console' | 'install' | 'updates';
   onTabChange?: (tab: 'console' | 'install' | 'updates') => void;
+  config?: MatrixConfig;
+  activeConnection?: any;
 }
 
 const terminalTranslations: Record<string, any> = {
@@ -54,7 +61,26 @@ const terminalTranslations: Record<string, any> = {
     systemUpToDate: 'System Up to Date',
     systemUpToDateDesc: 'Your Matrix Admin panel is running the latest code from the remote repository.',
     readyMsg: '# Update Manager ready.',
-    clickToQuery: '# Click "Check for Updates" to query the repository status.'
+    clickToQuery: '# Click "Check for Updates" to query the repository status.',
+
+    // Post-Install & Config Info
+    installInfoTitle: 'Installation & System Configuration Summary (Option 8 -> Option 2)',
+    postInstallGuideTitle: 'Mandatory Post-Installation Guidance (Database & Admin Setup)',
+    postInstallGuideSub: 'To enable complete panel capabilities (reading user lists, room statistics, and executing Matrix APIs), complete these two essential steps:',
+    stepDbTitle: '1. Configure PostgreSQL Credentials in Server Connection Settings',
+    stepDbDesc: 'Navigate to "Server Connections" (ارتباط با سرور), edit this server profile, and fill in the database credentials shown below (Host: 127.0.0.1, Port: 5432, DB: synapse, User: synapse_user, and Password). This allows the panel to query users and rooms directly from PostgreSQL.',
+    stepAdminTitle: '2. Create an Admin Account for Matrix API & Management Operations',
+    stepAdminDesc: 'Go to "User Management" (مدیریت کاربران) or use CLI Option 2 in the main terminal to create an Administrator account (@admin:domain.com). Save the Access Token / Admin Credentials in the panel so API requests can be executed.',
+    dbDetailsTitle: 'PostgreSQL Database Connection Info',
+    dbHost: 'Database Host:',
+    dbPort: 'Database Port:',
+    dbName: 'Database Name:',
+    dbUser: 'Database User:',
+    dbPass: 'Database Password:',
+    pathsTitle: 'Important System File & Config Paths',
+    copySuccess: 'Copied to clipboard!',
+    showPass: 'Show password',
+    hidePass: 'Hide password'
   },
   fa: {
     quickTasks: 'عملیات سریع سیستمی',
@@ -90,7 +116,26 @@ const terminalTranslations: Record<string, any> = {
     systemUpToDate: 'سیستم کاملاً بروز است',
     systemUpToDateDesc: 'پنل مدیریت ماتریکس شما در حال حاضر از آخرین کد‌های مخزن اصلی استفاده می‌کند.',
     readyMsg: '# مدیر بروزرسانی آماده است.',
-    clickToQuery: '# جهت دریافت آخرین وضعیت سرور روی "بررسی بروزرسانی" کلیک کنید.'
+    clickToQuery: '# جهت دریافت آخرین وضعیت سرور روی "بررسی بروزرسانی" کلیک کنید.',
+
+    // Post-Install & Config Info
+    installInfoTitle: 'اطلاعات کامل نصب و پیکربندی سیستم (منوی اطلاعات - گزینه ۸ -> گزینه ۲)',
+    postInstallGuideTitle: 'راهنمای اقدام‌های ضروری پس از اتمام نصب (اتصال دیتابیس و ساخت ادمین)',
+    postInstallGuideSub: 'جهت کارکرد صحیح تمام بخش‌های پنل (مانند لیست کاربران، اتاق‌ها و ای‌پی‌آی‌های ماتریکس)، حتماً دو مرحله زیر را انجام دهید:',
+    stepDbTitle: '۱. ثبت مشخصات دیتابیس در بخش «ارتباط با سرور» (Server Connections)',
+    stepDbDesc: 'به صفحه «ارتباط با سرور» در منوی اصلی رفته، این سرور را ویرایش کنید و اطلاعات اتصال PostgreSQL زیر (میزبان: 127.0.0.1 / آی‌پی سرور، پورت: 5432، نام دیتابیس: synapse، نام کاربری: synapse_user و رمز عبور) را وارد و ذخیره کنید تا پنل بتواند لیست کاربران و اتاق‌ها را مستقیم از PostgreSQL بخواند.',
+    stepAdminTitle: '۲. ساخت کاربر ادمین جهت مدیریت و فراخوانی APIها',
+    stepAdminDesc: 'به بخش «مدیریت کاربران» (User Management) مراجعه کرده یا از گزینه ۲ در منوی اصلی ترمینال استفاده کنید تا یک کاربر با دسترسی مدیرکل (@admin:domain.com) بسازید و مشخصات / توکن دسترسی آن را در پنل ذخیره کنید تا امکان زدن APIها فراهم شود.',
+    dbDetailsTitle: 'مشخصات اتصال به دیتابیس PostgreSQL',
+    dbHost: 'میزبان دیتابیس:',
+    dbPort: 'پورت دیتابیس:',
+    dbName: 'نام دیتابیس:',
+    dbUser: 'نام کاربری دیتابیس:',
+    dbPass: 'رمز عبور دیتابیس:',
+    pathsTitle: 'مسیرهای مهم فایل‌ها و پیکربندی‌های سیستم',
+    copySuccess: 'در حافظه کپی شد!',
+    showPass: 'نمایش رمز عبور',
+    hidePass: 'مخفی کردن رمز عبور'
   },
   es: {
     quickTasks: 'Tareas Rápidas',
@@ -248,10 +293,26 @@ export default function TerminalPanel({
   isLightMode = false,
   showToast,
   initialTab,
-  onTabChange
+  onTabChange,
+  config,
+  activeConnection
 }: TerminalPanelProps) {
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'console' | 'install' | 'updates'>('console');
+  const [showDbPass, setShowDbPass] = useState<boolean>(false);
+
+  // Derive connection & config values matching option 8 -> 2 in matrix-installer.sh
+  const hsDomain = config?.HS_DOMAIN || (activeConnection?.id !== 'local' && activeConnection?.host ? `matrix.${activeConnection?.host}` : 'matrix.company.local');
+  const elementDomain = config?.ELEMENT_DOMAIN || (activeConnection?.id !== 'local' && activeConnection?.host ? `chat.${activeConnection?.host}` : 'chat.company.local');
+  const baseDomain = config?.BASE_DOMAIN || (activeConnection?.id !== 'local' && activeConnection?.host ? activeConnection?.host : 'company.local');
+  const publicIp = config?.PUBLIC_IP || (activeConnection?.id !== 'local' && activeConnection?.host ? activeConnection?.host : '127.0.0.1');
+  const sslMode = (config?.SSL_MODE || 'selfsigned').toUpperCase();
+
+  const pgHost = config?.PG_HOST || activeConnection?.dbHost || '127.0.0.1';
+  const pgPort = config?.PG_PORT || activeConnection?.dbPort || '5432';
+  const pgDb = config?.PG_DB || activeConnection?.dbName || 'synapse';
+  const pgUser = config?.PG_USER || activeConnection?.dbUser || 'synapse_user';
+  const pgPass = config?.PG_PASS || activeConnection?.dbPassword || '••••••••';
 
   useEffect(() => {
     if (initialTab) {
@@ -689,31 +750,238 @@ export default function TerminalPanel({
               <div ref={terminalEndRef} />
             </div>
           ) : activeTab === 'install' ? (
-            <div className="space-y-1">
-              <p className="text-slate-500 mb-2"># Reading live installer log /var/log/matrix_stack_install.log</p>
-              {logs.length > 1 ? (
-                <>
-                  {logs.map((log, index) => (
-                    <div key={index} className="whitespace-pre-wrap">
-                      {formatLogLine(log)}
-                    </div>
-                  ))}
-                  {isExecuting && (
-                    <div className="flex items-center gap-2 text-rose-400 mt-2">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Streaming installation stdout/stderr in real-time...</span>
+            <div className="space-y-6 text-slate-300 font-sans">
+              {/* Terminal / Log Output Header */}
+              <div className="p-4 rounded-2xl bg-black/80 border border-white/10 font-mono text-xs shadow-inner">
+                <div className="flex items-center justify-between text-slate-400 border-b border-white/10 pb-2 mb-3">
+                  <span className="flex items-center gap-2 text-emerald-400 font-semibold">
+                    <FileText className="w-4 h-4" />
+                    # Reading live installer log: /var/log/matrix_stack_install.log
+                  </span>
+                  <span className="text-[10px] text-slate-500">Matrix Installer Stack</span>
+                </div>
+
+                <div className="space-y-1 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
+                  {logs.length > 1 ? (
+                    <>
+                      {logs.map((log, index) => (
+                        <div key={index} className="whitespace-pre-wrap font-mono">
+                          {formatLogLine(log)}
+                        </div>
+                      ))}
+                      {isExecuting && (
+                        <div className="flex items-center gap-2 text-rose-400 mt-2">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Streaming installation stdout/stderr in real-time...</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-1 text-slate-400">
+                      <p className="text-slate-300">Initial preflight checks successfully completed.</p>
+                      <p className="text-slate-300">Database setup finalized with Postgres user role.</p>
+                      <p className="text-emerald-400">✅ Synapse package initialized and launched on port 8008.</p>
+                      <p className="text-emerald-400">✅ Element Web client configured with SSL profiles.</p>
+                      <p className="text-slate-500 mt-2 text-[11px] italic">💡 Tip: Run installation from wizard to view step-by-step live output here.</p>
                     </div>
                   )}
-                </>
-              ) : (
-                <div className="space-y-1 text-slate-400">
-                  <p className="text-slate-300">Initial preflight checks successfully completed.</p>
-                  <p className="text-slate-300">Database setup finalized with Postgres user role.</p>
-                  <p className="text-emerald-400">✅ Synapse package v1.98.0 initialized and launched on port 8008.</p>
-                  <p className="text-emerald-400">✅ Element Web client configured with self-signed TLS profiles.</p>
-                  <p className="text-slate-500 mt-4 text-xs italic">💡 Tip: Start the installation from the wizard modal to see real-time output here.</p>
                 </div>
-              )}
+              </div>
+
+              {/* MANDATORY POST-INSTALLATION GUIDANCE BOX */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-950/20 to-slate-900 border border-amber-500/30 text-amber-100 shadow-xl space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 shrink-0">
+                    <ShieldCheck className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold font-display uppercase tracking-wider text-amber-300">
+                      {t.postInstallGuideTitle}
+                    </h3>
+                    <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
+                      {t.postInstallGuideSub}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  {/* Step 1: Database Setup */}
+                  <div className="p-4 rounded-xl bg-black/40 border border-amber-500/20 space-y-2">
+                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                      <Database className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>{t.stepDbTitle}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      {t.stepDbDesc}
+                    </p>
+                  </div>
+
+                  {/* Step 2: Admin Creation */}
+                  <div className="p-4 rounded-xl bg-black/40 border border-amber-500/20 space-y-2">
+                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                      <UserCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                      <span>{t.stepAdminTitle}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      {t.stepAdminDesc}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* INSTALLATION & CONFIGURATION INFO (MIRRORED FROM OPTION 8 -> OPTION 2) */}
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-white/10 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
+                    <Info className="w-5 h-5 text-indigo-400" />
+                    <span>{t.installInfoTitle}</span>
+                  </div>
+                  <span className="text-[10px] uppercase font-mono px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0 self-start sm:self-auto">
+                    matrix-installer.sh Option 8 → 2
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Domains & URLs */}
+                  <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2.5">
+                    <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                      Domains & Network URLs
+                    </span>
+                    <div className="space-y-1.5 text-xs font-mono">
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Matrix Server:</span>
+                        <span className="text-indigo-400 font-semibold truncate max-w-[170px]">https://{hsDomain}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Element Web:</span>
+                        <span className="text-purple-400 font-semibold truncate max-w-[170px]">https://{elementDomain}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Well-Known Base:</span>
+                        <span className="text-slate-200 truncate max-w-[170px]">https://{baseDomain}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Public IP:</span>
+                        <span className="text-emerald-400 font-semibold">{publicIp}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Database Info */}
+                  <div className="p-4 rounded-xl bg-black/40 border border-emerald-500/20 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
+                        <Database className="w-3.5 h-3.5 text-emerald-400" />
+                        {t.dbDetailsTitle}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDbPass(!showDbPass)}
+                        className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer bg-white/5 px-2 py-0.5 rounded border border-white/10"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>{showDbPass ? t.hidePass : t.showPass}</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs font-mono">
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">{t.dbHost}</span>
+                        <span className="text-slate-200 font-bold">{pgHost}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">{t.dbPort}</span>
+                        <span className="text-slate-200">{pgPort}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">{t.dbName}</span>
+                        <span className="text-emerald-300 font-bold">{pgDb}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">{t.dbUser}</span>
+                        <span className="text-emerald-300 font-bold">{pgUser}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400">{t.dbPass}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-300 font-bold font-mono">
+                            {showDbPass ? pgPass : '••••••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(pgPass);
+                              showToast('success', t.copySuccess);
+                            }}
+                            className="p-1 text-slate-400 hover:text-white rounded hover:bg-white/10 cursor-pointer"
+                            title="Copy password"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SSL & Security */}
+                  <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2.5">
+                    <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-amber-400" />
+                      SSL Certificate & Security
+                    </span>
+                    <div className="space-y-1.5 text-xs font-mono">
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">SSL Profile:</span>
+                        <span className="text-amber-400 font-bold uppercase">{sslMode}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Cert Path:</span>
+                        <span className="text-slate-300 truncate max-w-[170px]">/etc/letsencrypt/live/{hsDomain}/</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Reg Secret:</span>
+                        <span className="text-slate-400 text-[10px]">In /etc/matrix-synapse/homeserver.yaml</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">TURN Secret:</span>
+                        <span className="text-slate-400 text-[10px]">In /etc/coturn/turnserver.conf</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* File & Config Paths */}
+                  <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2.5">
+                    <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                      <Folder className="w-3.5 h-3.5 text-indigo-400" />
+                      {t.pathsTitle}
+                    </span>
+                    <div className="space-y-1 text-[11px] font-mono text-slate-300">
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Stack Config:</span>
+                        <span className="text-indigo-300">/etc/matrix_stack_config.env</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Install Log:</span>
+                        <span className="text-indigo-300">/var/log/matrix_stack_install.log</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Synapse Config:</span>
+                        <span className="text-indigo-300">/etc/matrix-synapse/</span>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-slate-400">Element Client:</span>
+                        <span className="text-indigo-300">/var/www/element/</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Backups Dir:</span>
+                        <span className="text-indigo-300">/root/matrix-backups/</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div ref={terminalEndRef} />
             </div>
           ) : (
