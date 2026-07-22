@@ -42,8 +42,8 @@ const terminalTranslations: Record<string, any> = {
     updatePanelSub: 'Check status and pull latest commits from git',
     activeSsh: 'Active SSH Terminal',
     activeSshSub: 'Interact with live service CLI terminal',
-    checkLogs: 'Check Installation Logs',
-    checkLogsSub: 'Read /var/log/matrix_stack_install.log',
+    checkLogs: 'Show Configuration & Log',
+    checkLogsSub: 'View database credentials, post-install guidance & /var/log/matrix_stack_install.log',
     accessRestricted: 'Access Restricted',
     accessRestrictedDesc: (role: string) => `Your role is ${role}. Some commands require Super Admin or Owner privileges.`,
     consoleModeActive: 'Console Mode Active',
@@ -97,8 +97,8 @@ const terminalTranslations: Record<string, any> = {
     updatePanelSub: 'بررسی وضعیت و دریافت جدیدترین کامیت‌ها از مخزن گیت‌هاب',
     activeSsh: 'ترمینال تعاملی SSH روت',
     activeSshSub: 'تعامل زنده با خط فرمان سرور مجازی ماتریکس',
-    checkLogs: 'گزارش‌های راه‌اندازی اولیه',
-    checkLogsSub: 'مشاهده فایل گزارش نصب سیستم /var/log/matrix_stack_install.log',
+    checkLogs: 'نمایش پیکربندی و راهنما',
+    checkLogsSub: 'مشاهده اطلاعات دیتابیس، راهنمای راه‌اندازی و لوگ‌های نصب /var/log/matrix_stack_install.log',
     accessRestricted: 'محدودیت دسترسی امنیتی',
     accessRestrictedDesc: (role: string) => `نقش شما ${role} است. برخی دستورات نیاز به دسترسی Super Admin یا مالک دارند.`,
     consoleModeActive: 'حالت کنسول فعال است',
@@ -152,8 +152,8 @@ const terminalTranslations: Record<string, any> = {
     updatePanelSub: 'Comprobar estado y descargar últimos commits de git',
     activeSsh: 'Terminal SSH Activa',
     activeSshSub: 'Interactuar con la CLI del servicio en vivo',
-    checkLogs: 'Ver Registros de Instalación',
-    checkLogsSub: 'Leer /var/log/matrix_stack_install.log',
+    checkLogs: 'Mostrar Configuración y Registro',
+    checkLogsSub: 'Ver credenciales de BD, guía posterior y /var/log/matrix_stack_install.log',
     accessRestricted: 'Acceso Restringido',
     accessRestrictedDesc: (role: string) => `Su rol es ${role}. Algunos comandos requieren privilegios de Super Admin o Propietario.`,
     consoleModeActive: 'Modo Consola Activo',
@@ -207,8 +207,8 @@ const terminalTranslations: Record<string, any> = {
     updatePanelSub: 'التحقق من الحالة وجلب آخر التغييرات من غيت',
     activeSsh: 'محطة SSH نشطة',
     activeSshSub: 'التفاعل مع واجهة أوامر الخدمة الحية',
-    checkLogs: 'التحقق من سجلات التثبيت',
-    checkLogsSub: 'قراءة الملف /var/log/matrix_stack_install.log',
+    checkLogs: 'عرض التكوين والسجل',
+    checkLogsSub: 'عرض بيانات قاعدة البيانات وإرشادات ما بعد التثبيت و /var/log/matrix_stack_install.log',
     accessRestricted: 'الوصول مقيد',
     accessRestrictedDesc: (role: string) => `دورك هو ${role}. تتطلب بعض الأوامر امتيازات Super Admin أو المالك.`,
     consoleModeActive: 'وضع وحدة التحكم نشط',
@@ -262,8 +262,8 @@ const terminalTranslations: Record<string, any> = {
     updatePanelSub: 'Status prüfen und neueste Commits von Git abrufen',
     activeSsh: 'Aktives SSH-Terminal',
     activeSshSub: 'Interagieren Sie mit der Live-Dienst-CLI',
-    checkLogs: 'Installationsprotokolle prüfen',
-    checkLogsSub: 'Lesen von /var/log/matrix_stack_install.log',
+    checkLogs: 'Konfiguration & Protokoll anzeigen',
+    checkLogsSub: 'DB-Zugangsdaten, Setup-Anleitung & /var/log/matrix_stack_install.log anzeigen',
     accessRestricted: 'Zugriff eingeschränkt',
     accessRestrictedDesc: (role: string) => `Ihre Rolle ist ${role}. Einige Befehle erfordern Super-Admin- oder Besitzerrechte.`,
     consoleModeActive: 'Konsolenmodus aktiv',
@@ -317,8 +317,8 @@ const terminalTranslations: Record<string, any> = {
     updatePanelSub: 'Проверить статус и загрузить последние коммиты из git',
     activeSsh: 'Активный SSH-терминал',
     activeSshSub: 'Прямое взаимодействие с консолью CLI',
-    checkLogs: 'Логи установки стека',
-    checkLogsSub: 'Прочитать /var/log/matrix_stack_install.log',
+    checkLogs: 'Показать конфигурацию и лог',
+    checkLogsSub: 'Просмотр данных БД, инструкций و /var/log/matrix_stack_install.log',
     accessRestricted: 'Доступ ограничен',
     accessRestrictedDesc: (role: string) => `Ваша роль — ${role}. Некоторые команды требуют прав Super Admin или Владельца.`,
     consoleModeActive: 'Режим консоли активен',
@@ -527,6 +527,7 @@ export default function TerminalPanel({
 
   const handleRunCommand = (cmd: string) => {
     if (isExecuting) return;
+    handleTabChange('console');
     onExecuteCommand(cmd);
   };
 
@@ -608,72 +609,6 @@ export default function TerminalPanel({
               <Play className="w-4 h-4 text-rose-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
-            {/* Turn on Workers Scaling */}
-            <button
-              onClick={() => handleRunCommand('workers_enable')}
-              disabled={isExecuting || isViewer || isModerator}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
-                isExecuting 
-                  ? 'bg-white/5 border-white/5 text-gray-500' 
-                  : isViewer || isModerator
-                    ? 'border-red-500/10 bg-red-500/5 text-gray-400 cursor-not-allowed'
-                    : 'border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200'
-              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
-            >
-              <div>
-                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                  {t.enableWorkers}
-                  {isModerator && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-mono font-normal">SuperAdmin+</span>}
-                </h4>
-                <p className="text-[11px] text-slate-400 mt-1">{t.enableWorkersSub}</p>
-              </div>
-              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125 shrink-0" />
-            </button>
-
-            {/* Trigger E2EE Lockdown */}
-            <button
-              onClick={() => handleRunCommand('e2ee_disable')}
-              disabled={isExecuting || isViewer || isModerator}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
-                isExecuting 
-                  ? 'bg-white/5 border-white/5 text-gray-500' 
-                  : isViewer || isModerator
-                    ? 'border-red-500/10 bg-red-500/5 text-gray-400 cursor-not-allowed'
-                    : 'border-white/5 bg-white/5 hover:bg-purple-500/10 hover:border-purple-500/20 text-slate-200'
-              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
-            >
-              <div>
-                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                  {t.disableE2ee}
-                  {isModerator && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-mono font-normal">SuperAdmin+</span>}
-                </h4>
-                <p className="text-[11px] text-slate-400 mt-1">{t.disableE2eeSub}</p>
-              </div>
-              <Play className="w-4 h-4 text-purple-400 transition-transform group-hover:scale-125 shrink-0" />
-            </button>
-
-            {/* Execute System Backup */}
-            <button
-              onClick={() => handleRunCommand('backup')}
-              disabled={isExecuting || isViewer}
-              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
-                isExecuting 
-                  ? 'bg-white/5 border-white/5 text-gray-500' 
-                  : isViewer
-                    ? 'border-red-500/10 bg-red-500/5 text-gray-400 cursor-not-allowed'
-                    : 'border-white/5 bg-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/20 text-slate-200'
-              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
-            >
-              <div>
-                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                  {t.triggerBackup}
-                  {isViewer && <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-mono font-normal">Admin+</span>}
-                </h4>
-                <p className="text-[11px] text-slate-400 mt-1">{t.triggerBackupSub}</p>
-              </div>
-              <Play className="w-4 h-4 text-emerald-400 transition-transform group-hover:scale-125 shrink-0" />
-            </button>
-
             {/* Update Matrix Panel */}
             <button
               type="button"
@@ -685,21 +620,21 @@ export default function TerminalPanel({
               className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
                 isCheckingUpdate || isApplyingUpdate
                   ? 'bg-white/5 border-white/5 text-gray-500' 
-                  : 'border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200'
+                  : 'border-white/5 bg-white/5 hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-200'
               } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
             >
               <div>
                 <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
                   {t.updatePanel}
                   {updateAvailable && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                    <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
                   )}
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-1">
                   {t.updatePanelSub}
                 </p>
               </div>
-              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125 shrink-0" />
+              <Play className="w-4 h-4 text-rose-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
             {/* Active SSH Terminal Navigation Shortcut */}
@@ -796,7 +731,7 @@ export default function TerminalPanel({
               <RefreshCw className={`h-3 w-3 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
               <span>panel-updates</span>
               {updateAvailable && (
-                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
               )}
             </button>
           </div>
@@ -1144,7 +1079,7 @@ export default function TerminalPanel({
                         : isViewer
                           ? 'border-red-500/10 text-red-400 bg-red-500/5 cursor-not-allowed'
                           : updateAvailable
-                            ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white border-transparent hover:brightness-110 active:scale-[0.99] shadow-lg shadow-indigo-500/20 cursor-pointer'
+                            ? 'bg-gradient-to-r from-rose-500 to-rose-600 text-white border-transparent hover:brightness-110 active:scale-[0.99] shadow-lg shadow-rose-500/20 cursor-pointer'
                             : 'border-white/5 bg-white/5 text-gray-500 cursor-not-allowed'
                     }`}
                   >

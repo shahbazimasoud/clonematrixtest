@@ -1130,8 +1130,8 @@ export default function App() {
                     />
                     {updateAvailable && (
                       <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500 border border-slate-900"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border border-slate-900"></span>
                       </span>
                     )}
                   </button>
@@ -1164,8 +1164,8 @@ export default function App() {
                         {updateAvailable ? (
                           <div className={`mb-3 p-3 rounded-xl text-xs flex flex-col gap-2 border ${
                             isLightMode 
-                              ? 'bg-indigo-50 border-indigo-100 text-indigo-600' 
-                              : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400'
+                              ? 'bg-rose-50 border-rose-100 text-rose-600' 
+                              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                           }`}>
                             <div className="flex items-center gap-1.5 font-bold animate-pulse">
                               <RefreshCw className="w-3.5 h-3.5 animate-spin animate-infinite" style={{ animationDuration: '4s' }} />
