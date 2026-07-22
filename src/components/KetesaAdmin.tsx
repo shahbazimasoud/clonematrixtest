@@ -911,6 +911,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
 
   // Modals
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [isRegisteringUser, setIsRegisteringUser] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', display_name: '', password: '', isAdmin: false });
 
   const [showReactivateModal, setShowReactivateModal] = useState<string | null>(null); // mxid
@@ -1756,6 +1757,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
     if (!newUser.username || !newUser.password) return;
 
+    setIsRegisteringUser(true);
     try {
       const res = await fetch('/api/matrix/users/register', {
         method: 'POST',
@@ -1783,6 +1785,8 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       }
     } catch (e) {
       showToast('error', t.errorAction);
+    } finally {
+      setIsRegisteringUser(false);
     }
   };
 
@@ -3726,7 +3730,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showAddUserModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -3817,9 +3821,17 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs transition-colors duration-200 shadow-md"
+                    disabled={isRegisteringUser}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs transition-colors duration-200 shadow-md flex items-center gap-2 font-medium"
                   >
-                    {t.addUserBtn.split(' ')[0]}
+                    {isRegisteringUser ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>{isRtl ? 'در حال ثبت...' : 'Registering...'}</span>
+                      </>
+                    ) : (
+                      <span>{t.addUserBtn}</span>
+                    )}
                   </button>
                 </div>
               </form>
@@ -3833,7 +3845,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showReactivateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -3935,7 +3947,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showCreateRoomModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -4078,7 +4090,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showRoomMembersModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -4291,7 +4303,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showShutdownRoomModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -4441,7 +4453,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showAddPrivilegedModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -4580,7 +4592,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showAddMemberModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -4934,7 +4946,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {showCreateTokenModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -5035,7 +5047,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {selectedUserMxid && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -6070,7 +6082,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
       {/* ========================================== */}
       <AnimatePresence>
         {activeRoomChatId && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
