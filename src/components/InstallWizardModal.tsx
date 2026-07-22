@@ -671,11 +671,11 @@ export function InstallWizardModal({
   const [offlineElementPath, setOfflineElementPath] = useState('');
   const [offlineSynapseDebDir, setOfflineSynapseDebDir] = useState('');
 
-  const [hsDomain, setHsDomain] = useState(defaultDomain ? `matrix.${defaultDomain}` : 'matrix.company.local');
-  const [elementDomain, setElementDomain] = useState(defaultDomain ? `chat.${defaultDomain}` : 'chat.company.local');
-  const [baseDomain, setBaseDomain] = useState(defaultDomain || 'company.local');
-  const [publicIp, setPublicIp] = useState(defaultHost || '127.0.0.1');
-  const [leEmail, setLeEmail] = useState(`admin@${defaultDomain || 'company.local'}`);
+  const [hsDomain, setHsDomain] = useState('');
+  const [elementDomain, setElementDomain] = useState('');
+  const [baseDomain, setBaseDomain] = useState('');
+  const [publicIp, setPublicIp] = useState('');
+  const [leEmail, setLeEmail] = useState('');
 
   const [sslMode, setSslMode] = useState<'auto' | 'selfsigned' | 'custom'>('auto');
   const [customCertPem, setCustomCertPem] = useState('');
@@ -688,10 +688,10 @@ export function InstallWizardModal({
   const [elementOfflineVersionLabel, setElementOfflineVersionLabel] = useState('');
 
   const [ldapConfigureNow, setLdapConfigureNow] = useState(false);
-  const [ldapUri, setLdapUri] = useState('ldap://localhost:389');
-  const [ldapBindDn, setLdapBindDn] = useState('cn=admin,dc=company,dc=local');
+  const [ldapUri, setLdapUri] = useState('');
+  const [ldapBindDn, setLdapBindDn] = useState('');
   const [ldapBindPassword, setLdapBindPassword] = useState('');
-  const [ldapBaseDn, setLdapBaseDn] = useState('ou=users,dc=company,dc=local');
+  const [ldapBaseDn, setLdapBaseDn] = useState('');
 
   if (!isOpen) return null;
 
@@ -702,20 +702,11 @@ export function InstallWizardModal({
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (step === 2) {
-      if (!hsDomain.trim()) errors.hsDomain = t.errRequired;
-      else if (!domainRegex.test(hsDomain)) errors.hsDomain = t.errDomain;
-
-      if (!elementDomain.trim()) errors.elementDomain = t.errRequired;
-      else if (!domainRegex.test(elementDomain)) errors.elementDomain = t.errDomain;
-
-      if (!baseDomain.trim()) errors.baseDomain = t.errRequired;
-      else if (!domainRegex.test(baseDomain)) errors.baseDomain = t.errDomain;
-
-      if (!publicIp.trim()) errors.publicIp = t.errRequired;
-      else if (!ipRegex.test(publicIp)) errors.publicIp = t.errIp;
-
-      if (!leEmail.trim()) errors.leEmail = t.errRequired;
-      else if (!emailRegex.test(leEmail)) errors.leEmail = t.errEmail;
+      if (hsDomain.trim() && !domainRegex.test(hsDomain.trim())) errors.hsDomain = t.errDomain;
+      if (elementDomain.trim() && !domainRegex.test(elementDomain.trim())) errors.elementDomain = t.errDomain;
+      if (baseDomain.trim() && !domainRegex.test(baseDomain.trim())) errors.baseDomain = t.errDomain;
+      if (publicIp.trim() && !ipRegex.test(publicIp.trim())) errors.publicIp = t.errIp;
+      if (leEmail.trim() && !emailRegex.test(leEmail.trim())) errors.leEmail = t.errEmail;
     }
 
     if (step === 3 && sslMode === 'custom') {
@@ -725,13 +716,6 @@ export function InstallWizardModal({
 
     if (step === 4 && elementInstallMode === 'offline') {
       if (!elementOfflinePath.trim()) errors.elementOfflinePath = t.errRequired;
-    }
-
-    if (step === 5 && ldapConfigureNow) {
-      if (!ldapUri.trim()) errors.ldapUri = t.errRequired;
-      if (!ldapBindDn.trim()) errors.ldapBindDn = t.errRequired;
-      if (!ldapBindPassword.trim()) errors.ldapBindPassword = t.errRequired;
-      if (!ldapBaseDn.trim()) errors.ldapBaseDn = t.errRequired;
     }
 
     setFormErrors(errors);
@@ -753,20 +737,28 @@ export function InstallWizardModal({
       return;
     }
 
+    const effectiveHsDomain = hsDomain.trim() || (defaultDomain ? `matrix.${defaultDomain}` : 'matrix.company.local');
+    const effectiveElementDomain = elementDomain.trim() || (defaultDomain ? `chat.${defaultDomain}` : 'chat.company.local');
+    const effectiveBaseDomain = baseDomain.trim() || defaultDomain || 'company.local';
+    const effectivePublicIp = publicIp.trim() || defaultHost || '127.0.0.1';
+    const effectiveLeEmail = leEmail.trim() || `admin@${defaultDomain || 'company.local'}`;
+
+    const effectiveLdapUri = ldapUri.trim() || 'ldap://localhost:389';
+    const effectiveLdapBindDn = ldapBindDn.trim() || 'cn=admin,dc=company,dc=local';
+    const effectiveLdapBaseDn = ldapBaseDn.trim() || 'ou=users,dc=company,dc=local';
+
     // Prepare config object for backend installation
     const finalConfig: any = {
-      HS_DOMAIN: hsDomain.trim(),
-      ELEMENT_DOMAIN: elementDomain.trim(),
-      BASE_DOMAIN: baseDomain.trim(),
-      PUBLIC_IP: publicIp.trim(),
-      LE_EMAIL: leEmail.trim(),
+      HS_DOMAIN: effectiveHsDomain,
+      ELEMENT_DOMAIN: effectiveElementDomain,
+      BASE_DOMAIN: effectiveBaseDomain,
+      PUBLIC_IP: effectivePublicIp,
+      LE_EMAIL: effectiveLeEmail,
     };
 
     // Mapping SSL Mode
     if (sslMode === 'auto') {
-      // Auto-detection logic passed down as SSL_MODE=letsencrypt if it has public domain, else selfsigned
-      // Let script auto detect or pass direct. We will pass SSL_MODE='auto' or 'letsencrypt' based on domain format.
-      const isLocal = hsDomain.includes('.local') || hsDomain.includes('.lan') || hsDomain.includes('.internal') || hsDomain.includes('localhost');
+      const isLocal = effectiveHsDomain.includes('.local') || effectiveHsDomain.includes('.lan') || effectiveHsDomain.includes('.internal') || effectiveHsDomain.includes('localhost');
       finalConfig.SSL_MODE = isLocal ? 'selfsigned' : 'letsencrypt';
     } else if (sslMode === 'selfsigned') {
       finalConfig.SSL_MODE = 'selfsigned';
@@ -807,10 +799,10 @@ export function InstallWizardModal({
     // LDAP switch
     if (ldapConfigureNow) {
       finalConfig.LDAP_NOW = 'y';
-      finalConfig.LDAP_URI = ldapUri.trim();
-      finalConfig.LDAP_BIND_DN = ldapBindDn.trim();
+      finalConfig.LDAP_URI = effectiveLdapUri;
+      finalConfig.LDAP_BIND_DN = effectiveLdapBindDn;
       finalConfig.LDAP_BIND_PASS = ldapBindPassword.trim();
-      finalConfig.LDAP_BASE_DC = ldapBaseDn.trim();
+      finalConfig.LDAP_BASE_DC = effectiveLdapBaseDn;
     } else {
       finalConfig.LDAP_NOW = 'n';
     }
@@ -1626,23 +1618,23 @@ export function InstallWizardModal({
                       <div className={`grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                         <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                           <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Homeserver:</span>
-                          <span className={`${isLightMode ? 'text-indigo-600' : 'text-indigo-400'} font-bold`}>https://{hsDomain}</span>
+                          <span className={`${isLightMode ? 'text-indigo-600' : 'text-indigo-400'} font-bold`}>https://{hsDomain || (defaultDomain ? `matrix.${defaultDomain}` : 'matrix.company.local')}</span>
                         </div>
                         <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                           <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Element:</span>
-                          <span className={`${isLightMode ? 'text-purple-600' : 'text-purple-400'} font-bold`}>https://{elementDomain}</span>
+                          <span className={`${isLightMode ? 'text-purple-600' : 'text-purple-400'} font-bold`}>https://{elementDomain || (defaultDomain ? `chat.${defaultDomain}` : 'chat.company.local')}</span>
                         </div>
                         <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                           <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Base Domain:</span>
-                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{baseDomain}</span>
+                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{baseDomain || defaultDomain || 'company.local'}</span>
                         </div>
                         <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                           <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Public IP:</span>
-                          <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} font-bold`}>{publicIp}</span>
+                          <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} font-bold`}>{publicIp || defaultHost || '127.0.0.1'}</span>
                         </div>
                         <div className={`flex justify-between sm:col-span-2 border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                           <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Email:</span>
-                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{leEmail}</span>
+                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{leEmail || `admin@${defaultDomain || 'company.local'}`}</span>
                         </div>
                       </div>
                     </div>
