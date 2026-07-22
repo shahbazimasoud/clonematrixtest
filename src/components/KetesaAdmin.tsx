@@ -2921,7 +2921,7 @@ export default function KetesaAdmin({ lang, authToken, currentUser, showToast, i
                                     setActiveRoomDropdown(null);
                                   }} 
                                 />
-                                <div className={`absolute right-0 mt-1 w-56 rounded-xl border p-1.5 shadow-xl z-30 animate-in fade-in slide-in-from-top-1 duration-150 ${
+                                <div className={`absolute ${isRtl ? 'left-0' : 'right-0'} mt-1 w-56 rounded-xl border p-1.5 shadow-xl z-30 animate-in fade-in slide-in-from-top-1 duration-150 ${
                                   isLightMode 
                                     ? 'bg-white border-slate-200 text-slate-700 shadow-slate-200/60' 
                                     : 'bg-slate-950 border-white/10 text-gray-200 shadow-black/80'

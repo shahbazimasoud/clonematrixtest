@@ -892,7 +892,7 @@ export default function App() {
         <div className="flex-1 flex items-center justify-center p-6 min-h-[80vh]">
           <div className="spatial-glass max-w-md w-full rounded-3xl p-8 border border-white/10 shadow-[0_30px_70px_rgba(0,0,0,0.6)] spatial-depth-card relative overflow-hidden">
             {/* Upper Right Quick Controls */}
-            <div className="absolute top-6 right-6 flex items-center gap-2 z-10">
+            <div className={`absolute top-6 ${isRtl ? 'left-6' : 'right-6'} flex items-center gap-2 z-10`}>
               <div className="relative">
                 <button
                   type="button"
@@ -905,7 +905,7 @@ export default function App() {
                 {isLangMenuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsLangMenuOpen(false)} />
-                    <div className={`absolute right-0 top-10 mt-1 w-32 rounded-xl p-1 shadow-2xl backdrop-blur-md z-50 border ${
+                    <div className={`absolute ${isRtl ? 'left-0' : 'right-0'} top-10 mt-1 w-32 rounded-xl p-1 shadow-2xl backdrop-blur-md z-50 border ${
                       isLightMode 
                         ? 'bg-white border-slate-200 text-slate-800' 
                         : 'bg-slate-900 border-white/10 text-white'
@@ -1073,7 +1073,7 @@ export default function App() {
                 {isLangMenuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsLangMenuOpen(false)} />
-                    <div className={`absolute right-0 top-10 mt-1 w-36 rounded-xl p-1 shadow-2xl backdrop-blur-md z-50 border ${
+                    <div className={`absolute ${isRtl ? 'left-0' : 'right-0'} top-10 mt-1 w-36 rounded-xl p-1 shadow-2xl backdrop-blur-md z-50 border ${
                       isLightMode 
                         ? 'bg-white border-slate-200 text-slate-800' 
                         : 'bg-slate-900 border-white/10 text-white'
@@ -1123,8 +1123,8 @@ export default function App() {
 
               {/* User Avatar & Dropdown */}
               {currentUser && (
-                <div className="flex items-center gap-3 border-l border-white/10 pl-4 relative">
-                  <div className="text-right hidden sm:block">
+                <div className={`flex items-center gap-3 ${isRtl ? 'border-r pr-4' : 'border-l pl-4'} border-white/10 relative`}>
+                  <div className={`${isRtl ? 'text-left' : 'text-right'} hidden sm:block`}>
                     <span className="text-xs font-semibold text-white block">@{currentUser.username}</span>
                     <span className="text-[10px] text-slate-400 block font-mono">{currentUser.role}</span>
                   </div>
@@ -1155,11 +1155,11 @@ export default function App() {
                         className="fixed inset-0 z-40" 
                         onClick={() => setUserDropdownOpen(false)} 
                       />
-                      <div className={`absolute right-0 top-12 mt-2 w-64 rounded-2xl p-4 shadow-2xl backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-3 duration-200 border ${
+                      <div className={`absolute ${isRtl ? 'left-0' : 'right-0'} top-12 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-4 shadow-2xl backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-3 duration-200 border ${
                         isLightMode 
                           ? 'bg-white border-slate-200 text-slate-800' 
                           : 'bg-slate-950/95 border-white/10 text-white'
-                      }`}>
+                      }`} dir={isRtl ? 'rtl' : 'ltr'}>
                         <div className={`flex items-center gap-3 border-b pb-3 mb-3 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
                           <img 
                             src={currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.username}`} 
