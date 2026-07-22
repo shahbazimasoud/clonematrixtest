@@ -750,15 +750,17 @@ export default function TerminalPanel({
               <div ref={terminalEndRef} />
             </div>
           ) : activeTab === 'install' ? (
-            <div className="space-y-6 text-slate-300 font-sans">
+            <div className={`space-y-6 font-sans ${isLightMode ? 'text-slate-800' : 'text-slate-300'}`}>
               {/* Terminal / Log Output Header */}
-              <div className="p-4 rounded-2xl bg-black/80 border border-white/10 font-mono text-xs shadow-inner">
+              <div className={`p-4 rounded-2xl border font-mono text-xs shadow-inner ${
+                isLightMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-950/90 border-white/10 text-slate-200'
+              }`}>
                 <div className="flex items-center justify-between text-slate-400 border-b border-white/10 pb-2 mb-3">
                   <span className="flex items-center gap-2 text-emerald-400 font-semibold">
                     <FileText className="w-4 h-4" />
                     # Reading live installer log: /var/log/matrix_stack_install.log
                   </span>
-                  <span className="text-[10px] text-slate-500">Matrix Installer Stack</span>
+                  <span className="text-[10px] text-slate-400">Matrix Installer Stack</span>
                 </div>
 
                 <div className="space-y-1 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
@@ -777,9 +779,9 @@ export default function TerminalPanel({
                       )}
                     </>
                   ) : (
-                    <div className="space-y-1 text-slate-400">
-                      <p className="text-slate-300">Initial preflight checks successfully completed.</p>
-                      <p className="text-slate-300">Database setup finalized with Postgres user role.</p>
+                    <div className="space-y-1 text-slate-300">
+                      <p>Initial preflight checks successfully completed.</p>
+                      <p>Database setup finalized with Postgres user role.</p>
                       <p className="text-emerald-400">✅ Synapse package initialized and launched on port 8008.</p>
                       <p className="text-emerald-400">✅ Element Web client configured with SSL profiles.</p>
                       <p className="text-slate-500 mt-2 text-[11px] italic">💡 Tip: Run installation from wizard to view step-by-step live output here.</p>
@@ -789,16 +791,24 @@ export default function TerminalPanel({
               </div>
 
               {/* MANDATORY POST-INSTALLATION GUIDANCE BOX */}
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-950/20 to-slate-900 border border-amber-500/30 text-amber-100 shadow-xl space-y-4">
+              <div className={`p-5 rounded-2xl border shadow-xl space-y-4 transition-all ${
+                isLightMode 
+                  ? 'bg-indigo-50/90 border-indigo-200 text-slate-800' 
+                  : 'bg-gradient-to-br from-indigo-950/60 via-slate-900/90 to-purple-950/40 border-indigo-500/30 text-slate-100'
+              }`}>
                 <div className="flex items-start gap-3">
-                  <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 shrink-0">
+                  <div className={`p-2.5 rounded-xl border shrink-0 ${
+                    isLightMode 
+                      ? 'bg-indigo-100 border-indigo-300 text-indigo-700' 
+                      : 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400'
+                  }`}>
                     <ShieldCheck className="w-6 h-6 animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold font-display uppercase tracking-wider text-amber-300">
+                    <h3 className={`text-sm font-bold font-display uppercase tracking-wider ${isLightMode ? 'text-indigo-950' : 'text-indigo-300'}`}>
                       {t.postInstallGuideTitle}
                     </h3>
-                    <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
+                    <p className={`text-xs mt-1 leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                       {t.postInstallGuideSub}
                     </p>
                   </div>
@@ -806,23 +816,27 @@ export default function TerminalPanel({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                   {/* Step 1: Database Setup */}
-                  <div className="p-4 rounded-xl bg-black/40 border border-amber-500/20 space-y-2">
-                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
-                      <Database className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className={`p-4 rounded-xl border space-y-2 ${
+                    isLightMode ? 'bg-white border-indigo-200/80 shadow-sm' : 'bg-slate-950/60 border-indigo-500/20'
+                  }`}>
+                    <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-emerald-700' : 'text-emerald-400'}`}>
+                      <Database className="w-4 h-4 shrink-0" />
                       <span>{t.stepDbTitle}</span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                    <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                       {t.stepDbDesc}
                     </p>
                   </div>
 
                   {/* Step 2: Admin Creation */}
-                  <div className="p-4 rounded-xl bg-black/40 border border-amber-500/20 space-y-2">
-                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
-                      <UserCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <div className={`p-4 rounded-xl border space-y-2 ${
+                    isLightMode ? 'bg-white border-indigo-200/80 shadow-sm' : 'bg-slate-950/60 border-indigo-500/20'
+                  }`}>
+                    <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-indigo-700' : 'text-indigo-400'}`}>
+                      <UserCheck className="w-4 h-4 shrink-0" />
                       <span>{t.stepAdminTitle}</span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                    <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                       {t.stepAdminDesc}
                     </p>
                   </div>
@@ -830,55 +844,75 @@ export default function TerminalPanel({
               </div>
 
               {/* INSTALLATION & CONFIGURATION INFO (MIRRORED FROM OPTION 8 -> OPTION 2) */}
-              <div className="p-5 rounded-2xl bg-slate-900/90 border border-white/10 space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
-                    <Info className="w-5 h-5 text-indigo-400" />
+              <div className={`p-5 rounded-2xl border space-y-5 transition-all ${
+                isLightMode 
+                  ? 'bg-white border-slate-200 shadow-md text-slate-800' 
+                  : 'bg-slate-900/90 border-white/10 shadow-xl text-slate-200'
+              }`}>
+                <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3 ${
+                  isLightMode ? 'border-slate-200' : 'border-white/10'
+                }`}>
+                  <div className={`flex items-center gap-2 font-bold text-sm ${isLightMode ? 'text-indigo-800' : 'text-indigo-400'}`}>
+                    <Info className="w-5 h-5 shrink-0" />
                     <span>{t.installInfoTitle}</span>
                   </div>
-                  <span className="text-[10px] uppercase font-mono px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0 self-start sm:self-auto">
+                  <span className={`text-[10px] uppercase font-mono px-2.5 py-1 rounded-full border shrink-0 self-start sm:self-auto ${
+                    isLightMode ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20'
+                  }`}>
                     matrix-installer.sh Option 8 → 2
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Domains & URLs */}
-                  <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2.5">
-                    <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
-                      <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                  <div className={`p-4 rounded-xl border space-y-2.5 ${
+                    isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'
+                  }`}>
+                    <span className={`text-[11px] uppercase font-bold tracking-wider flex items-center gap-1.5 ${
+                      isLightMode ? 'text-slate-600' : 'text-slate-400'
+                    }`}>
+                      <Globe className="w-3.5 h-3.5 text-indigo-500" />
                       Domains & Network URLs
                     </span>
                     <div className="space-y-1.5 text-xs font-mono">
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Matrix Server:</span>
-                        <span className="text-indigo-400 font-semibold truncate max-w-[170px]">https://{hsDomain}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Matrix Server:</span>
+                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold truncate max-w-[170px]">https://{hsDomain}</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Element Web:</span>
-                        <span className="text-purple-400 font-semibold truncate max-w-[170px]">https://{elementDomain}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Element Web:</span>
+                        <span className="text-purple-600 dark:text-purple-400 font-semibold truncate max-w-[170px]">https://{elementDomain}</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Well-Known Base:</span>
-                        <span className="text-slate-200 truncate max-w-[170px]">https://{baseDomain}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Well-Known Base:</span>
+                        <span className={isLightMode ? 'text-slate-800' : 'text-slate-200'}>https://{baseDomain}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Public IP:</span>
-                        <span className="text-emerald-400 font-semibold">{publicIp}</span>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Public IP:</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{publicIp}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Database Info */}
-                  <div className="p-4 rounded-xl bg-black/40 border border-emerald-500/20 space-y-2.5">
+                  <div className={`p-4 rounded-xl border space-y-2.5 ${
+                    isLightMode ? 'bg-slate-50 border-emerald-200/80' : 'bg-slate-950/50 border-emerald-500/20'
+                  }`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
-                        <Database className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className={`text-[11px] uppercase font-bold tracking-wider flex items-center gap-1.5 ${
+                        isLightMode ? 'text-emerald-800' : 'text-emerald-400'
+                      }`}>
+                        <Database className="w-3.5 h-3.5 text-emerald-500" />
                         {t.dbDetailsTitle}
                       </span>
                       <button
                         type="button"
                         onClick={() => setShowDbPass(!showDbPass)}
-                        className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer bg-white/5 px-2 py-0.5 rounded border border-white/10"
+                        className={`text-[10px] flex items-center gap-1 cursor-pointer px-2 py-0.5 rounded border ${
+                          isLightMode 
+                            ? 'bg-white text-slate-600 border-slate-300 hover:text-slate-900' 
+                            : 'bg-white/5 text-slate-400 hover:text-white border-white/10'
+                        }`}
                       >
                         <Eye className="w-3 h-3" />
                         <span>{showDbPass ? t.hidePass : t.showPass}</span>
@@ -886,26 +920,26 @@ export default function TerminalPanel({
                     </div>
 
                     <div className="space-y-1.5 text-xs font-mono">
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">{t.dbHost}</span>
-                        <span className="text-slate-200 font-bold">{pgHost}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{t.dbHost}</span>
+                        <span className={`font-bold ${isLightMode ? 'text-slate-900' : 'text-slate-200'}`}>{pgHost}</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">{t.dbPort}</span>
-                        <span className="text-slate-200">{pgPort}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{t.dbPort}</span>
+                        <span className={isLightMode ? 'text-slate-800' : 'text-slate-200'}>{pgPort}</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">{t.dbName}</span>
-                        <span className="text-emerald-300 font-bold">{pgDb}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{t.dbName}</span>
+                        <span className="text-emerald-700 dark:text-emerald-300 font-bold">{pgDb}</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">{t.dbUser}</span>
-                        <span className="text-emerald-300 font-bold">{pgUser}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{t.dbUser}</span>
+                        <span className="text-emerald-700 dark:text-emerald-300 font-bold">{pgUser}</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-400">{t.dbPass}</span>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{t.dbPass}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-amber-300 font-bold font-mono">
+                          <span className={`font-bold font-mono ${isLightMode ? 'text-indigo-700' : 'text-indigo-300'}`}>
                             {showDbPass ? pgPass : '••••••••••••'}
                           </span>
                           <button
@@ -914,7 +948,9 @@ export default function TerminalPanel({
                               navigator.clipboard.writeText(pgPass);
                               showToast('success', t.copySuccess);
                             }}
-                            className="p-1 text-slate-400 hover:text-white rounded hover:bg-white/10 cursor-pointer"
+                            className={`p-1 rounded cursor-pointer ${
+                              isLightMode ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-white/10'
+                            }`}
                             title="Copy password"
                           >
                             <Copy className="w-3 h-3" />
@@ -925,57 +961,65 @@ export default function TerminalPanel({
                   </div>
 
                   {/* SSL & Security */}
-                  <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2.5">
-                    <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-amber-400" />
+                  <div className={`p-4 rounded-xl border space-y-2.5 ${
+                    isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'
+                  }`}>
+                    <span className={`text-[11px] uppercase font-bold tracking-wider flex items-center gap-1.5 ${
+                      isLightMode ? 'text-slate-600' : 'text-slate-400'
+                    }`}>
+                      <Key className="w-3.5 h-3.5 text-amber-500" />
                       SSL Certificate & Security
                     </span>
                     <div className="space-y-1.5 text-xs font-mono">
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">SSL Profile:</span>
-                        <span className="text-amber-400 font-bold uppercase">{sslMode}</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>SSL Profile:</span>
+                        <span className="text-amber-600 dark:text-amber-400 font-bold uppercase">{sslMode}</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Cert Path:</span>
-                        <span className="text-slate-300 truncate max-w-[170px]">/etc/letsencrypt/live/{hsDomain}/</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Cert Path:</span>
+                        <span className={`truncate max-w-[170px] ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>/etc/letsencrypt/live/{hsDomain}/</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Reg Secret:</span>
-                        <span className="text-slate-400 text-[10px]">In /etc/matrix-synapse/homeserver.yaml</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Reg Secret:</span>
+                        <span className="text-slate-500 text-[10px]">In /etc/matrix-synapse/homeserver.yaml</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">TURN Secret:</span>
-                        <span className="text-slate-400 text-[10px]">In /etc/coturn/turnserver.conf</span>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>TURN Secret:</span>
+                        <span className="text-slate-500 text-[10px]">In /etc/coturn/turnserver.conf</span>
                       </div>
                     </div>
                   </div>
 
                   {/* File & Config Paths */}
-                  <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2.5">
-                    <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
-                      <Folder className="w-3.5 h-3.5 text-indigo-400" />
+                  <div className={`p-4 rounded-xl border space-y-2.5 ${
+                    isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/50 border-white/5'
+                  }`}>
+                    <span className={`text-[11px] uppercase font-bold tracking-wider flex items-center gap-1.5 ${
+                      isLightMode ? 'text-slate-600' : 'text-slate-400'
+                    }`}>
+                      <Folder className="w-3.5 h-3.5 text-indigo-500" />
                       {t.pathsTitle}
                     </span>
-                    <div className="space-y-1 text-[11px] font-mono text-slate-300">
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Stack Config:</span>
-                        <span className="text-indigo-300">/etc/matrix_stack_config.env</span>
+                    <div className="space-y-1 text-[11px] font-mono">
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Stack Config:</span>
+                        <span className="text-indigo-600 dark:text-indigo-300">/etc/matrix_stack_config.env</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Install Log:</span>
-                        <span className="text-indigo-300">/var/log/matrix_stack_install.log</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Install Log:</span>
+                        <span className="text-indigo-600 dark:text-indigo-300">/var/log/matrix_stack_install.log</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Synapse Config:</span>
-                        <span className="text-indigo-300">/etc/matrix-synapse/</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Synapse Config:</span>
+                        <span className="text-indigo-600 dark:text-indigo-300">/etc/matrix-synapse/</span>
                       </div>
-                      <div className="flex justify-between border-b border-white/5 pb-1">
-                        <span className="text-slate-400">Element Client:</span>
-                        <span className="text-indigo-300">/var/www/element/</span>
+                      <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Element Client:</span>
+                        <span className="text-indigo-600 dark:text-indigo-300">/var/www/element/</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Backups Dir:</span>
-                        <span className="text-indigo-300">/root/matrix-backups/</span>
+                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Backups Dir:</span>
+                        <span className="text-indigo-600 dark:text-indigo-300">/root/matrix-backups/</span>
                       </div>
                     </div>
                   </div>

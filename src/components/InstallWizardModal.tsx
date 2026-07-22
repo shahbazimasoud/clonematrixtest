@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  X, Server, Globe, ShieldAlert, Key, Settings, 
+  X, Server, Globe, ShieldAlert, ShieldCheck, Key, Settings, 
   CheckCircle, Check, Loader2, ChevronLeft, ChevronRight, 
   AlertCircle, FileText, CloudDownload, Folder, BookOpen, ArrowRight, Activity,
   Database, UserCheck
@@ -1650,22 +1650,22 @@ export function InstallWizardModal({
                   {/* Post-Installation Guidance Box */}
                   <div className={`p-4 rounded-2xl border space-y-3 transition-colors ${
                     isLightMode 
-                      ? 'bg-amber-50/80 border-amber-200 text-slate-800' 
-                      : 'bg-gradient-to-br from-amber-500/10 via-amber-950/20 to-slate-950 border-amber-500/30 text-amber-100'
+                      ? 'bg-indigo-50/80 border-indigo-200 text-slate-800' 
+                      : 'bg-gradient-to-br from-indigo-950/50 via-slate-900/90 to-purple-950/40 border-indigo-500/30 text-slate-100 shadow-xl'
                   }`}>
                     <div className="flex items-start gap-3">
                       <div className={`p-2 rounded-xl border shrink-0 ${
                         isLightMode 
-                          ? 'bg-amber-100 border-amber-300 text-amber-700' 
-                          : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                          ? 'bg-indigo-100 border-indigo-300 text-indigo-700' 
+                          : 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400'
                       }`}>
-                        <ShieldAlert className="w-5 h-5 animate-pulse" />
+                        <ShieldCheck className="w-5 h-5 animate-pulse" />
                       </div>
                       <div>
-                        <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-amber-900' : 'text-amber-300'}`}>
+                        <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-indigo-950' : 'text-indigo-300'}`}>
                           {t.postInstallGuideTitle || 'اقدام‌های ضروری پس از اتمام نصب'}
                         </h4>
-                        <p className={`text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-amber-800' : 'text-amber-200/80'}`}>
+                        <p className={`text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                           {t.postInstallGuideSub || 'جهت فعال‌سازی کامل امکانات پنل، پس از نصب دو گام زیر را انجام دهید:'}
                         </p>
                       </div>
@@ -1674,10 +1674,10 @@ export function InstallWizardModal({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                       {/* Step 1: DB connection */}
                       <div className={`p-3 rounded-xl border space-y-1.5 ${
-                        isLightMode ? 'bg-white border-amber-200/60' : 'bg-black/40 border-amber-500/20'
+                        isLightMode ? 'bg-white border-indigo-200/80 shadow-sm' : 'bg-slate-950/60 border-indigo-500/20'
                       }`}>
-                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-amber-900' : 'text-amber-300'}`}>
-                          <Database className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-emerald-700' : 'text-emerald-400'}`}>
+                          <Database className="w-4 h-4 shrink-0" />
                           <span>{t.stepDbTitle || '۱. ورود مشخصات دیتابیس در بخش «ارتباط با سرور»'}</span>
                         </div>
                         <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
@@ -1687,10 +1687,10 @@ export function InstallWizardModal({
 
                       {/* Step 2: Admin creation */}
                       <div className={`p-3 rounded-xl border space-y-1.5 ${
-                        isLightMode ? 'bg-white border-amber-200/60' : 'bg-black/40 border-amber-500/20'
+                        isLightMode ? 'bg-white border-indigo-200/80 shadow-sm' : 'bg-slate-950/60 border-indigo-500/20'
                       }`}>
-                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-amber-900' : 'text-amber-300'}`}>
-                          <UserCheck className="w-4 h-4 text-indigo-500 shrink-0" />
+                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-indigo-700' : 'text-indigo-400'}`}>
+                          <UserCheck className="w-4 h-4 shrink-0" />
                           <span>{t.stepAdminTitle || '۲. ساخت کاربر ادمین برای APIها'}</span>
                         </div>
                         <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
