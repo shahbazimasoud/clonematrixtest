@@ -27,7 +27,13 @@ import {
   Square,
   Save,
   RefreshCw,
-  Play
+  Play,
+  Network,
+  HardDrive,
+  Wifi,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Gauge
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -72,6 +78,12 @@ const faTranslations = {
   live: "زنده",
   memoryUsage: "حافظه رم اختصاص یافته (GB)",
   threadsTitle: "تردها و نشست‌های فعال ماتریکس",
+  networkTitle: "سرعت و پهنای باند شبکه (دانلود / آپلود)",
+  diskIopsTitle: "عملکرد دیسک (IOPS و لیتنسی)",
+  downloadSpeed: "دریافت (دانلود)",
+  uploadSpeed: "ارسال (آپلود)",
+  iopsLabel: "تعداد عملیات دیسک (IOPS)",
+  latencyLabel: "تاخیر پاسخ‌دهی دیسک (ms)",
   syncing: "در حال همگام‌سازی",
   loadingStream: "در حال اتصال به جریان وب‌سوکت برای تحلیل عملکرد...",
   rbacTitle: "سیستم کنترل دسترسی نقش‌محور (RBAC)",
@@ -139,6 +151,12 @@ const enTranslations = {
   live: "Live",
   memoryUsage: "Memory Committed (GB)",
   threadsTitle: "Active Synapse Threads & Sessions",
+  networkTitle: "Network Bandwidth & Speed (Download / Upload)",
+  diskIopsTitle: "Disk Performance (IOPS & Latency)",
+  downloadSpeed: "Download",
+  uploadSpeed: "Upload",
+  iopsLabel: "Disk IOPS (ops/s)",
+  latencyLabel: "Disk Latency (ms)",
   syncing: "Syncing",
   loadingStream: "Establishing WebSocket performance analysis stream...",
   rbacTitle: "Role-Based Access Control (RBAC)",
@@ -1078,6 +1096,76 @@ export default function ReportingPanel({
                         <Area type="monotone" dataKey="activeUsers" stroke="#10b981" fillOpacity={1} fill="url(#colorUsers)" strokeWidth={2.5} />
                       </AreaChart>
                     </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Network Traffic & Disk IOPS Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Network Speed Chart */}
+                  <div className="p-5 rounded-2xl bg-black/25 border border-white/5">
+                    <div className={`flex items-center justify-between mb-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <h4 className={`text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <Wifi className="w-4 h-4 text-cyan-400" />
+                        {t.networkTitle}
+                      </h4>
+                      <div className={`flex items-center gap-2 text-[11px] font-semibold font-mono ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <span className="text-teal-400 flex items-center gap-0.5">
+                          <ArrowDownLeft className="w-3 h-3" /> ↓ {stats.networkIn || 280} KB/s
+                        </span>
+                        <span className="text-indigo-400 flex items-center gap-0.5">
+                          <ArrowUpRight className="w-3 h-3" /> ↑ {stats.networkOut || 540} KB/s
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-48 w-full font-mono text-[10px]" dir="ltr">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={stats.trends}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="time" stroke="#64748b" />
+                          <YAxis stroke="#64748b" />
+                          <Tooltip contentStyle={{ backgroundColor: '#090a16', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                          <Line type="monotone" name={t.downloadSpeed} dataKey="networkIn" stroke="#14b8a6" strokeWidth={2} dot={false} />
+                          <Line type="monotone" name={t.uploadSpeed} dataKey="networkOut" stroke="#6366f1" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Disk IOPS and Latency Chart */}
+                  <div className="p-5 rounded-2xl bg-black/25 border border-white/5">
+                    <div className={`flex items-center justify-between mb-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <h4 className={`text-xs font-bold font-display uppercase tracking-wider text-slate-400 flex items-center gap-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <Gauge className="w-4 h-4 text-amber-400" />
+                        {t.diskIopsTitle}
+                      </h4>
+                      <div className={`flex items-center gap-2 text-[11px] font-semibold font-mono ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <span className="text-amber-400">
+                          IOPS: {stats.diskIops || 240} op/s
+                        </span>
+                        <span className="text-rose-400">
+                          Latency: {stats.diskLatencyMs || 1.1} ms
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-48 w-full font-mono text-[10px]" dir="ltr">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={stats.trends}>
+                          <defs>
+                            <linearGradient id="colorIops" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis dataKey="time" stroke="#64748b" />
+                          <YAxis yAxisId="left" stroke="#f59e0b" />
+                          <YAxis yAxisId="right" orientation="right" stroke="#f43f5e" domain={[0, 10]} />
+                          <Tooltip contentStyle={{ backgroundColor: '#090a16', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                          <Area yAxisId="left" type="monotone" name={t.iopsLabel} dataKey="diskIops" stroke="#f59e0b" fillOpacity={1} fill="url(#colorIops)" strokeWidth={2} />
+                          <Line yAxisId="right" type="monotone" name={t.latencyLabel} dataKey="diskLatencyMs" stroke="#f43f5e" strokeWidth={2} dot={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
               </div>

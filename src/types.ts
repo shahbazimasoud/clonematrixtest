@@ -20,6 +20,10 @@ export interface MetricTrend {
   memory: number;
   activeUsers: number;
   disk: number;
+  networkIn?: number;
+  networkOut?: number;
+  diskIops?: number;
+  diskLatencyMs?: number;
 }
 
 export interface SystemStats {
@@ -37,6 +41,12 @@ export interface SystemStats {
   messageVolume24h: number;
   uptime: string;
   trends: MetricTrend[];
+  publicRoomsCount?: number;
+  privateRoomsCount?: number;
+  totalMediaSizeMB?: number;
+  diskIops?: number;
+  diskLatencyMs?: number;
+  services?: ServiceState[];
 }
 
 export interface ServiceState {

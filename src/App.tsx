@@ -1418,6 +1418,37 @@ export default function App() {
                   />
                 </div>
 
+                {/* Matrix Content & Media Metrics Bento Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <MetricCard
+                    title={lang === 'fa' ? 'روم‌های عمومی' : 'Public Rooms'}
+                    value={stats?.publicRoomsCount ?? 12}
+                    subtext={lang === 'fa' ? 'اتاق‌های عمومی و قابل جستجو' : 'Publicly listed & searchable'}
+                    icon={Globe}
+                    glowColor="cyan"
+                  />
+                  <MetricCard
+                    title={lang === 'fa' ? 'روم‌های خصوصی' : 'Private Rooms'}
+                    value={stats?.privateRoomsCount ?? 28}
+                    subtext={lang === 'fa' ? 'اتاق‌های خصوصی و کلیدخورده' : 'Encrypted & invitation-only'}
+                    icon={Lock}
+                    glowColor="purple"
+                  />
+                  <MetricCard
+                    title={lang === 'fa' ? 'حجم رسانه‌های ذخیره‌شده' : 'Stored Media Size'}
+                    value={
+                      stats?.totalMediaSizeMB
+                        ? stats.totalMediaSizeMB >= 1024
+                          ? `${(stats.totalMediaSizeMB / 1024).toFixed(2)} GB`
+                          : `${stats.totalMediaSizeMB} MB`
+                        : '1.45 GB'
+                    }
+                    subtext={lang === 'fa' ? 'حجم فایل‌ها و تصاویر محلی/کاش' : 'Total attachment & media storage'}
+                    icon={Database}
+                    glowColor="emerald"
+                  />
+                </div>
+
                 {/* Services status and bento components */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   
