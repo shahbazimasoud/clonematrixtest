@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+export NEEDRESTART_MODE=a
+export UCF_FORCE_CONFFOLD=1
+
 if [[ $EUID -ne 0 ]]; then
   if command -v sudo >/dev/null 2>&1; then
     echo "⚠️  Root privileges are required. Re-running with sudo..."
@@ -5739,9 +5744,9 @@ install_stack() {
     if [[ -n "${OFFLINE_SYNAPSE_DEB_DIR:-}" ]]; then
       echo "📂 Installing Synapse from local .deb packages in: ${OFFLINE_SYNAPSE_DEB_DIR}"
       dpkg -i "${OFFLINE_SYNAPSE_DEB_DIR}"/*.deb 2>/dev/null || true
-      apt install -f -y   # fix any missing dependencies
+      DEBIAN_FRONTEND=noninteractive apt install -f -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"   # fix any missing dependencies
     else
-      apt install -y matrix-synapse-py3
+      DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" matrix-synapse-py3
     fi
   }
   run_step "⬇️  Installing Matrix Synapse" _step_install_synapse

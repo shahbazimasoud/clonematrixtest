@@ -9,6 +9,8 @@ set -eo pipefail
 # Make script completely non-interactive for package managers
 export DEBIAN_FRONTEND=noninteractive
 export APT_LISTCHANGES_FRONTEND=none
+export NEEDRESTART_MODE=a
+export UCF_FORCE_CONFFOLD=1
 
 # Colors for terminal output
 RED='\033[0;31m'
@@ -61,19 +63,47 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 1. Interactive Questions
+# 1. Interactive Questions (Safe for curl | bash execution)
 # ------------------------------------------------------------------------------
+prompt_read() {
+  local prompt_msg="$1"
+  local var_name="$2"
+  local default_val="$3"
+  local is_secret="${4:-false}"
+  local user_input=""
+
+  if [ -t 0 ]; then
+    if [ "$is_secret" = "true" ]; then
+      read -s -p "$prompt_msg" user_input
+      echo "" >&2
+    else
+      read -p "$prompt_msg" user_input
+    fi
+  elif [ -c /dev/tty ] && exec 3</dev/tty 2>/dev/null; then
+    if [ "$is_secret" = "true" ]; then
+      read -s -p "$prompt_msg" user_input <&3
+      echo "" >&2
+    else
+      read -p "$prompt_msg" user_input <&3
+    fi
+    exec 3<&-
+  else
+    user_input="$default_val"
+    echo "$prompt_msg [Non-interactive mode, using default: $default_val]" >&2
+  fi
+
+  eval "$var_name=\"\${user_input:-\$default_val}\""
+}
+
 echo -e "\n${YELLOW}>>> Please provide the network and administrative configurations below:${NC}\n"
 
 # Domain or IP
 echo -e "${BLUE}ℹ️  Note: The Admin Panel domain should be different from your Matrix homeserver domain (e.g. matrix.kheilisabz.local) and Element Web domain (e.g. matrixapp.kheilisabz.local) to avoid Nginx domain conflicts.${NC}"
-read -p "Enter Domain Name or Public IP for this Admin Panel [Default: localhost]: " PANEL_DOMAIN < /dev/tty
-PANEL_DOMAIN=${PANEL_DOMAIN:-localhost}
+prompt_read "Enter Domain Name or Public IP for this Admin Panel [Default: localhost]: " PANEL_DOMAIN "localhost"
 
 # Port
 while true; do
-  read -p "Enter Port to run the Admin Panel on [Default: 3000]: " PANEL_PORT < /dev/tty
-  PANEL_PORT=${PANEL_PORT:-3000}
+  prompt_read "Enter Port to run the Admin Panel on [Default: 3000]: " PANEL_PORT "3000"
   if [[ "$PANEL_PORT" =~ ^[0-9]+$ ]] && [ "$PANEL_PORT" -ge 1 ] && [ "$PANEL_PORT" -le 65535 ]; then
     break
   else
@@ -83,8 +113,7 @@ done
 
 # Owner Username
 while true; do
-  read -p "Enter Initial Owner Username [Default: admin]: " OWNER_USER < /dev/tty
-  OWNER_USER=${OWNER_USER:-admin}
+  prompt_read "Enter Initial Owner Username [Default: admin]: " OWNER_USER "admin"
   if [[ "$OWNER_USER" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     break
   else
@@ -94,8 +123,7 @@ done
 
 # Owner Email
 while true; do
-  read -p "Enter Initial Owner Email Address [Default: admin@company.local]: " OWNER_EMAIL < /dev/tty
-  OWNER_EMAIL=${OWNER_EMAIL:-admin@company.local}
+  prompt_read "Enter Initial Owner Email Address [Default: admin@company.local]: " OWNER_EMAIL "admin@company.local"
   if [[ "$OWNER_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
     break
   else
@@ -105,10 +133,15 @@ done
 
 # Owner Password
 while true; do
-  read -s -p "Enter Secure Password for Owner ($OWNER_USER) [min 6 chars]: " OWNER_PASS < /dev/tty
-  echo ""
-  read -s -p "Confirm Secure Password: " OWNER_PASS_CONFIRM < /dev/tty
-  echo ""
+  prompt_read "Enter Secure Password for Owner ($OWNER_USER) [min 6 chars]: " OWNER_PASS "" "true"
+  if [ -z "$OWNER_PASS" ]; then
+    OWNER_PASS="admin123456"
+    OWNER_PASS_CONFIRM="admin123456"
+    log_info "No password provided. Defaulting to: admin123456"
+    break
+  fi
+
+  prompt_read "Confirm Secure Password: " OWNER_PASS_CONFIRM "" "true"
   
   if [ ${#OWNER_PASS} -lt 6 ]; then
     log_error "Password is too short. It must be at least 6 characters."
@@ -123,20 +156,22 @@ done
 # 2. System Dependency Installation
 # ------------------------------------------------------------------------------
 log_step "Checking and repairing package database state (if interrupted)..."
-DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>/dev/null || true
-DEBIAN_FRONTEND=noninteractive apt-get install -f -y 2>/dev/null || true
+DEBIAN_FRONTEND=noninteractive dpkg --configure -a < /dev/null 2>/dev/null || true
+DEBIAN_FRONTEND=noninteractive apt-get install -f -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" < /dev/null 2>/dev/null || true
 
 log_step "Updating local package list..."
-apt-get update -y || log_warning "Some package repositories could not be updated (e.g. offline or forbidden). Continuing with remaining catalogs..."
+DEBIAN_FRONTEND=noninteractive apt-get update -y < /dev/null || log_warning "Some package repositories could not be updated (e.g. offline or forbidden). Continuing with remaining catalogs..."
 
 log_step "Installing general system tools (git, curl, build-essential, python3, pip, venv)..."
-DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git curl build-essential python3 python3-pip python3-venv python3-dev
+DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git curl build-essential python3 python3-pip python3-venv python3-dev < /dev/null
 
 # Node.js and NPM detection and installation
-if ! command -v node &> /dev/null || [ $(node -v | cut -d. -f1 | tr -d 'v') -lt 20 ]; then
+NODE_VER=$(node -v 2>/dev/null | cut -d. -f1 | tr -d 'v' || echo "0")
+NODE_VER=${NODE_VER:-0}
+if ! command -v node &> /dev/null || [ "$NODE_VER" -lt 20 ]; then
   log_step "Installing Node.js 22 LTS repository (NodeSource)..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs
+  curl -fsSL https://deb.nodesource.com/setup_22.x | DEBIAN_FRONTEND=noninteractive bash - < /dev/null
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs < /dev/null
 else
   log_info "Node.js is already installed ($(node -v)). Skipping installation."
 fi
