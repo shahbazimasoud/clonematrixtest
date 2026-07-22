@@ -374,6 +374,8 @@ export default function TerminalPanel({
   activeConnection
 }: TerminalPanelProps) {
   const terminalEndRef = useRef<HTMLDivElement>(null);
+  const consoleContainerRef = useRef<HTMLDivElement>(null);
+  const installContainerRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'console' | 'install' | 'updates'>('console');
   const [showDbPass, setShowDbPass] = useState<boolean>(false);
 
@@ -518,12 +520,16 @@ export default function TerminalPanel({
   }, []);
 
   const scrollToBottom = () => {
-    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (activeTab === 'console' && consoleContainerRef.current) {
+      consoleContainerRef.current.scrollTop = consoleContainerRef.current.scrollHeight;
+    } else if (activeTab === 'install' && installContainerRef.current) {
+      installContainerRef.current.scrollTop = installContainerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [logs]);
+  }, [logs, activeTab]);
 
   const handleRunCommand = (cmd: string) => {
     if (isExecuting) return;
@@ -738,7 +744,7 @@ export default function TerminalPanel({
         </div>
 
         {/* Terminal screen */}
-        <div className="flex-1 p-5 bg-black/60 font-mono text-xs overflow-y-auto leading-relaxed select-text min-h-[300px]">
+        <div ref={consoleContainerRef} className="flex-1 p-5 bg-black/60 font-mono text-xs overflow-y-auto leading-relaxed select-text min-h-[300px]">
           {activeTab === 'console' ? (
             <div className="space-y-1">
               <p className="text-slate-500 font-semibold mb-2">
@@ -774,7 +780,7 @@ export default function TerminalPanel({
                   <span className="text-[10px] text-slate-400">Matrix Installer Stack</span>
                 </div>
 
-                <div className="space-y-1 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
+                <div ref={installContainerRef} className="space-y-1 max-h-96 overflow-y-auto pr-2 scrollbar-thin">
                   {logs.length > 1 ? (
                     <>
                       {logs.map((log, index) => (
