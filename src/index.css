@@ -1,9 +1,14 @@
+@import "@fontsource/vazirmatn/300.css";
+@import "@fontsource/vazirmatn/400.css";
+@import "@fontsource/vazirmatn/500.css";
+@import "@fontsource/vazirmatn/600.css";
+@import "@fontsource/vazirmatn/700.css";
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Space Grotesk", sans-serif;
+  --font-sans: "Vazirmatn", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Vazirmatn", "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   
   --color-spatial-bg: #030712;
@@ -197,8 +202,12 @@
   body {
     background-color: var(--color-spatial-bg);
     color: #e2e8f0;
-    font-family: var(--font-sans);
+    font-family: 'Vazirmatn', var(--font-sans);
     overflow-x: hidden;
+  }
+
+  [dir="rtl"], [lang="fa"], .dir-rtl {
+    font-family: 'Vazirmatn', system-ui, sans-serif !important;
   }
 }
 
