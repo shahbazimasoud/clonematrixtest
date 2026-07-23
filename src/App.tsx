@@ -1505,34 +1505,38 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   <MetricCard
                     title={t.cpuLoad}
-                    value={`${stats ? stats.cpuUsage : 0}%`}
+                    value={stats ? `${stats.cpuUsage}%` : null}
                     subtext={lang === 'fa' ? 'بار پردازشی هسته سرور' : 'Core CPU processing load'}
                     icon={Cpu}
                     glowColor="cyan"
+                    isLoading={!stats}
                     onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
                     title={t.ramUsage}
-                    value={`${stats ? stats.memoryUsage : 0}%`}
+                    value={stats ? `${stats.memoryUsage}%` : null}
                     subtext={lang === 'fa' ? `تخصیص‌یافته: ${stats ? (stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1) : 0} GB` : `Allocated: ${stats ? (stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1) : 0} GB`}
                     icon={Activity}
                     glowColor="purple"
+                    isLoading={!stats}
                     onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
                     title={t.diskUsage}
-                    value={`${stats ? stats.diskUsage : 0}%`}
+                    value={stats ? `${stats.diskUsage}%` : null}
                     subtext={lang === 'fa' ? `فضای آزاد: ${stats ? stats.diskFree.toFixed(1) : 0} GB` : `Available: ${stats ? stats.diskFree.toFixed(1) : 0} GB`}
                     icon={HardDrive}
                     glowColor="amber"
+                    isLoading={!stats}
                     onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
                     title={t.activeSessions}
-                    value={stats ? stats.activeUsers : 0}
+                    value={stats ? stats.activeUsers : null}
                     subtext={lang === 'fa' ? 'کاربران آنلاین و فعال سرور ماتریکس' : 'Active Matrix server users'}
                     icon={Users}
                     glowColor="emerald"
+                    isLoading={!stats}
                     onClick={() => {
                       setKetesaAdminTab('users');
                       setActiveView('admin');
@@ -1544,10 +1548,11 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <MetricCard
                     title={lang === 'fa' ? 'روم‌های عمومی' : 'Public Rooms'}
-                    value={stats?.publicRoomsCount ?? 0}
+                    value={stats ? (stats.publicRoomsCount ?? 0) : null}
                     subtext={lang === 'fa' ? 'برای مدیریت روم‌ها کلیک کنید' : 'Click to manage public rooms'}
                     icon={Globe}
                     glowColor="cyan"
+                    isLoading={!stats}
                     onClick={() => {
                       setKetesaAdminTab('rooms');
                       setActiveView('admin');
@@ -1555,10 +1560,11 @@ export default function App() {
                   />
                   <MetricCard
                     title={lang === 'fa' ? 'روم‌های خصوصی' : 'Private Rooms'}
-                    value={stats?.privateRoomsCount ?? 0}
+                    value={stats ? (stats.privateRoomsCount ?? 0) : null}
                     subtext={lang === 'fa' ? 'برای مدیریت روم‌ها کلیک کنید' : 'Click to manage private rooms'}
                     icon={Lock}
                     glowColor="purple"
+                    isLoading={!stats}
                     onClick={() => {
                       setKetesaAdminTab('rooms');
                       setActiveView('admin');
@@ -1567,15 +1573,16 @@ export default function App() {
                   <MetricCard
                     title={lang === 'fa' ? 'حجم رسانه‌های ذخیره‌شده' : 'Stored Media Size'}
                     value={
-                      stats?.totalMediaSizeMB
+                      stats
                         ? stats.totalMediaSizeMB >= 1024
                           ? `${(stats.totalMediaSizeMB / 1024).toFixed(2)} GB`
                           : `${stats.totalMediaSizeMB} MB`
-                        : '0 MB'
+                        : null
                     }
                     subtext={lang === 'fa' ? 'برای پاکسازی کش رسانه‌ها کلیک کنید' : 'Click to manage & clean media cache'}
                     icon={Database}
                     glowColor="emerald"
+                    isLoading={!stats}
                     onClick={() => {
                       setKetesaAdminTab('media');
                       setActiveView('admin');

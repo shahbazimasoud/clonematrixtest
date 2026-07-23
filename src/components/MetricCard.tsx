@@ -8,7 +8,7 @@ import { LucideIcon, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface MetricCardProps {
   title: string;
-  value: string | number;
+  value?: string | number | null;
   subtext?: string;
   icon: LucideIcon;
   trend?: {
@@ -18,6 +18,7 @@ interface MetricCardProps {
   glowColor?: 'cyan' | 'purple' | 'amber' | 'emerald';
   id?: string;
   onClick?: () => void;
+  isLoading?: boolean;
 }
 
 export default function MetricCard({ 
@@ -28,7 +29,8 @@ export default function MetricCard({
   trend, 
   glowColor = 'cyan',
   id,
-  onClick
+  onClick,
+  isLoading
 }: MetricCardProps) {
   
   const glowClasses = {
@@ -44,6 +46,35 @@ export default function MetricCard({
     amber: 'bg-amber-500/5',
     emerald: 'bg-emerald-500/5'
   };
+
+  if (isLoading || value === undefined || value === null) {
+    return (
+      <div 
+        id={id || `metric-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
+        className={`spatial-glass rounded-2xl p-5 flex flex-col justify-between border ${glowClasses[glowColor]} relative overflow-hidden`}
+      >
+        <div className="flex items-start justify-between">
+          <div className="space-y-3 w-full">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">{title}</span>
+            {/* Value Shimmer Box */}
+            <div className="h-8 w-28 rounded-lg bg-slate-800/80 relative overflow-hidden">
+              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            </div>
+          </div>
+          <div className={`p-3 rounded-xl ${ambientGlowBg[glowColor]} border border-white/5 shrink-0`}>
+            <Icon className="w-6 h-6 text-slate-500 animate-pulse" />
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-white/5">
+          {/* Subtext Shimmer Box */}
+          <div className="h-3.5 w-36 rounded bg-slate-800/80 relative overflow-hidden">
+            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
