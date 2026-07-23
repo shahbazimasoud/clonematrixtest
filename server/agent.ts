@@ -240,7 +240,7 @@ def get_system_telemetry():
 
 def get_services_status():
     """Checks matrix-related systemd services"""
-    services = ['matrix-synapse', 'nginx', 'postgresql', 'coturn', 'redis-server', 'fail2ban']
+    services = ['matrix-synapse', 'nginx', 'postgresql', 'coturn', 'redis-server', 'fail2ban', 'matrix-manager']
     results = []
     for s in services:
         status = 'inactive'
@@ -253,7 +253,7 @@ def get_services_status():
                 status = 'failed'
         except Exception:
             # Fallback if no systemctl
-            status = 'active' if s in ['matrix-synapse', 'nginx', 'postgresql'] else 'inactive'
+            status = 'active' if s in ['matrix-synapse', 'nginx', 'postgresql', 'matrix-manager'] else 'inactive'
         results.append({'id': s.replace('matrix-', '').replace('-server', ''), 'status': status})
     return results
 
@@ -267,9 +267,11 @@ def execute_local_command(action, params):
             elif svc_name == 'element' or svc_name == 'nginx': svc_name = 'nginx'
             elif svc_name == 'postgres': svc_name = 'postgresql'
             elif svc_name == 'redis': svc_name = 'redis-server'
+            elif svc_name == 'manager' or svc_name == 'matrix-manager': svc_name = 'matrix-manager'
             
-            subprocess.run(['sudo', 'systemctl', 'restart', svc_name], check=True)
-            return {'success': True, 'output': f"Service {svc_name} restarted successfully."}
+            act = params.get('action', 'restart')
+            subprocess.run(['sudo', 'systemctl', act, svc_name], check=True)
+            return {'success': True, 'output': f"Service {svc_name} {act}ed successfully."}
 
         elif action == 'read_file':
             path = params.get('path')

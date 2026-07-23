@@ -357,7 +357,9 @@ function getServicesStatus() {
     nginx: "nginx",
     redis: "redis-server",
     fail2ban: "fail2ban",
-    prometheus: "prometheus"
+    prometheus: "prometheus",
+    manager: "matrix-manager",
+    "matrix-manager": "matrix-manager"
   };
   
   const hasSystemctl = fs.existsSync("/bin/systemctl") || fs.existsSync("/usr/bin/systemctl");
@@ -375,7 +377,8 @@ function getServicesStatus() {
         nginx: "active",
         redis: "inactive",
         fail2ban: "active",
-        prometheus: "inactive"
+        prometheus: "inactive",
+        manager: "active"
       };
     } catch (e) {
       // ignore
@@ -386,7 +389,7 @@ function getServicesStatus() {
     let status = "inactive";
     if (hasSystemctl) {
       try {
-        const out = execSync(`systemctl is-active ${systemdName}`).toString().trim();
+        const out = execSync(`sudo systemctl is-active ${systemdName} 2>/dev/null || systemctl is-active ${systemdName}`).toString().trim();
         if (out === "active") status = "active";
         else if (out === "failed") status = "failed";
       } catch (e) {
@@ -1294,8 +1297,19 @@ app.post("/api/auth/login", (req, res) => {
   });
 });
 
-app.get("/api/auth/verify", authenticateToken, (req, res) => {
-  res.json({ valid: true, user: req.user });
+app.get("/api/auth/verify", (req, res) => {
+  const authHeader = req.headers["authorization"];
+  let token = authHeader && authHeader.split(" ")[1];
+  if ((!token || token === "null" || token === "undefined") && req.query && req.query.token) {
+    token = req.query.token as string;
+  }
+  if (!token || token === "null" || token === "undefined") {
+    return res.json({ valid: false, error: "No token provided" });
+  }
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    if (err) return res.json({ valid: false, error: "Invalid or expired token" });
+    return res.json({ valid: true, user });
+  });
 });
 
 // Connection Profiles management
@@ -1463,7 +1477,7 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
         apiError: apiErrMsg || undefined
       });
     } else {
-      return res.status(400).json({ error: "Agent is offline, pending, or not yet registered." });
+      return res.json({ success: false, error: "Agent is offline, pending, or not yet registered." });
     }
   }
 
@@ -1471,7 +1485,7 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
     // 1. Test SSH Connection
     const testResult = await executeSSHCommand(profile, "echo 'SSH_OK'");
     if (!testResult.includes("SSH_OK")) {
-      return res.status(400).json({ error: "SSH verification failed. Invalid credentials or unreachable host." });
+      return res.json({ success: false, ssh: false, db: false, api: false, error: "SSH verification failed. Invalid credentials or unreachable host." });
     }
     
     // 2. Test PostgreSQL Connection over SSH
@@ -1547,7 +1561,7 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
       apiError: apiErrMsg || undefined
     });
   } catch (err: any) {
-    res.status(400).json({ error: `SSH Connection Failed: ${err.message}` });
+    res.json({ success: false, ssh: false, db: false, api: false, error: `SSH Connection Failed: ${err.message}` });
   }
 });
 
@@ -4144,13 +4158,20 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
     }
   }
 
-  // 3. Fallback to local DB
-  if (!fetched) {
-    const db = readDb();
-    const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
-    if (localRoom) {
+  // 3. Fallback or merge with local DB
+  const db = readDb();
+  const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
+  if (localRoom) {
+    if (!fetched) {
       joinedMembers = localRoom.joinedMembers || [];
       bannedMembers = localRoom.bannedMembers || [];
+    } else if (localRoom.joinedMembers && Array.isArray(localRoom.joinedMembers)) {
+      localRoom.joinedMembers.forEach((lm: any) => {
+        const mxid = typeof lm === 'string' ? lm : lm.mxid;
+        if (mxid && !joinedMembers.some((m: any) => (m.mxid || m).toLowerCase() === mxid.toLowerCase())) {
+          joinedMembers.push(typeof lm === 'string' ? { mxid, displayName: mxid, role: 'Member', powerLevel: 0 } : lm);
+        }
+      });
     }
   }
 
@@ -4328,12 +4349,34 @@ app.post("/api/matrix/rooms/members/join", authenticateToken, checkPermission(["
   if (activeConn && activeConn.id !== "local") {
     try {
       console.log(`Forcing user ${mxid} to join room ${roomId}...`);
-      await callSynapseAdminAPI("POST", `/_synapse/admin/v1/join/${encodeURIComponent(roomId)}`, {
+      // Try 1: Synapse Admin Join API v1
+      let apiRes = await callSynapseAdminAPI("POST", `/_synapse/admin/v1/join/${encodeURIComponent(roomId)}`, {
         user_id: mxid
       });
-      apiSuccess = true;
+
+      if (apiRes && !apiRes.errcode && !apiRes.error) {
+        apiSuccess = true;
+      } else {
+        console.log(`Synapse Admin Join 1 failed (${apiRes?.error || apiRes?.errcode}), trying path endpoint variation...`);
+        // Try 2: Synapse Admin Join API with user in path
+        let apiRes2 = await callSynapseAdminAPI("POST", `/_synapse/admin/v1/join/${encodeURIComponent(roomId)}/${encodeURIComponent(mxid)}`);
+        if (apiRes2 && !apiRes2.errcode && !apiRes2.error) {
+          apiSuccess = true;
+        } else {
+          console.log(`Synapse Admin Join 2 failed, trying client invite API fallback...`);
+          // Try 3: Client Invite API
+          let apiRes3 = await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`, {
+            user_id: mxid
+          });
+          if (apiRes3 && !apiRes3.errcode && !apiRes3.error) {
+            apiSuccess = true;
+          } else {
+            apiError = apiRes?.error || apiRes2?.error || apiRes3?.error || apiRes?.errcode || "Synapse join API call failed";
+          }
+        }
+      }
     } catch (err: any) {
-      apiError = err.message || err;
+      apiError = err.message || String(err);
       console.error("Synapse force join error:", apiError);
     }
   } else {
@@ -4341,16 +4384,27 @@ app.post("/api/matrix/rooms/members/join", authenticateToken, checkPermission(["
   }
 
   const db = readDb();
-  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
-  if (room) {
-    if (!room.joinedMembers) room.joinedMembers = [];
-    const exists = room.joinedMembers.some((m: any) => m.mxid === mxid);
-    if (!exists) {
-      room.joinedMembers.push({ mxid, role: "Member", powerLevel: 0 });
-      room.membersCount = room.joinedMembers.length;
-    }
-    writeDb(db);
+  if (!db.matrixRooms) db.matrixRooms = [];
+  let room = db.matrixRooms.find((r: any) => r.id === roomId);
+  if (!room) {
+    room = {
+      id: roomId,
+      name: roomId,
+      joinedMembers: [],
+      membersCount: 0
+    };
+    db.matrixRooms.push(room);
   }
+
+  if (!room.joinedMembers) room.joinedMembers = [];
+  const rawLocal = mxid.split(":")[0].replace("@", "");
+  const dName = rawLocal ? (rawLocal.charAt(0).toUpperCase() + rawLocal.slice(1)) : mxid;
+  const exists = room.joinedMembers.some((m: any) => (m.mxid || m).toLowerCase() === mxid.toLowerCase());
+  if (!exists) {
+    room.joinedMembers.push({ mxid, displayName: dName, role: "Member", powerLevel: 0 });
+    room.membersCount = room.joinedMembers.length;
+  }
+  writeDb(db);
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
@@ -4358,16 +4412,12 @@ app.post("/api/matrix/rooms/members/join", authenticateToken, checkPermission(["
     username: req.user.username,
     action: "Add Room Member",
     target: mxid,
-    status: apiSuccess ? "success" : "failed",
-    details: `Added user ${mxid} to room ${room ? room.name : roomId}. API Status: ${apiSuccess ? "Success" : "Failed (" + apiError + ")"}`
+    status: apiSuccess ? "success" : "warning",
+    details: `Added user ${mxid} to room ${room.name || roomId}. Synapse API Status: ${apiSuccess ? "Success" : "Warning (" + apiError + ")"}`
   });
   writeDb(db);
 
-  if (!apiSuccess) {
-    return res.status(500).json({ error: `Could not add user via Synapse Admin API: ${apiError}` });
-  }
-
-  res.json({ success: true, room });
+  res.json({ success: true, apiSuccess, apiError: apiError || undefined, room });
 });
 
 app.post("/api/matrix/rooms/:roomId/ad-groups", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
@@ -7407,10 +7457,11 @@ app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "S
     nginx: "nginx",
     redis: "redis-server",
     fail2ban: "fail2ban",
-    prometheus: "prometheus"
+    prometheus: "prometheus",
+    manager: "matrix-manager",
+    "matrix-manager": "matrix-manager"
   };
-  const systemdName = serviceMap[serviceId];
-  if (!systemdName) return res.status(400).json({ error: "Unknown service" });
+  const systemdName = serviceMap[serviceId] || serviceId;
 
   const activeConn = getActiveConnection();
   let success = true;
@@ -7444,7 +7495,7 @@ app.post("/api/services/action", authenticateToken, checkPermission(["Owner", "S
     const hasSystemctl = fs.existsSync("/bin/systemctl") || fs.existsSync("/usr/bin/systemctl");
     if (hasSystemctl) {
       try {
-        execSync(`systemctl ${action} ${systemdName}`);
+        execSync(`sudo systemctl ${action} ${systemdName} || systemctl ${action} ${systemdName}`);
       } catch (e: any) {
         success = false;
         errMsg = e.message || "Execution error";

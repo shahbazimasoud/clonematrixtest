@@ -995,6 +995,22 @@ export default function KetesaAdmin({
     return window.confirm(msg);
   };
 
+  const getRoomDisplayName = (r?: any) => {
+    if (!r) return '';
+    if (r.name && r.name !== r.id && !r.name.startsWith('!')) return r.name;
+    if (r.alias) {
+      if (r.alias.startsWith('#')) {
+        const clean = r.alias.split(':')[0].replace('#', '');
+        if (clean) return clean.charAt(0).toUpperCase() + clean.slice(1);
+        return r.alias;
+      }
+      return r.alias;
+    }
+    if (r.name && !r.name.startsWith('!')) return r.name;
+    const rawId = r.id ? r.id.split(':')[0].replace('!', '') : '';
+    return rawId ? (isRtl ? `اتاق ${rawId}` : `Room ${rawId}`) : (r.id || '');
+  };
+
   // New States for Room Member Search and Active Directory Integration
   const [memberSearch, setMemberSearch] = useState('');
   const [addMemberSearch, setAddMemberSearch] = useState('');
@@ -3202,11 +3218,7 @@ export default function KetesaAdmin({
                                 ? 'text-slate-800 group-hover:text-purple-600' 
                                 : 'text-gray-100 group-hover:text-purple-300'
                             }`}>
-                              {r.name && !r.name.startsWith('!') 
-                                ? r.name 
-                                : (r.alias && !r.alias.startsWith('!') 
-                                    ? r.alias 
-                                    : (isRtl ? `اتاق ${r.id.split(':')[0].replace('!', '')}` : `Room ${r.id.split(':')[0].replace('!', '')}`))}
+                              {getRoomDisplayName(r)}
                             </h4>
                           </div>
                           <span className={`text-[10px] font-mono block truncate select-all mt-1 ${
@@ -3284,7 +3296,7 @@ export default function KetesaAdmin({
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setActiveRoomDropdown(null);
-                                      handleOpenRoomChat(r.id, r.name || r.alias || r.id);
+                                      handleOpenRoomChat(r.id, getRoomDisplayName(r));
                                     }}
                                     className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all cursor-pointer ${
                                       isLightMode ? 'hover:bg-slate-50 text-slate-800' : 'hover:bg-white/5 text-white'
@@ -5087,7 +5099,7 @@ export default function KetesaAdmin({
               <div className={`text-xs space-y-1 p-3 rounded-lg border ${
                 isLightMode ? 'bg-emerald-50 border-emerald-100 text-emerald-900' : 'text-gray-400 bg-black/40 border-white/5'
               }`}>
-                <p>Room: <span className="font-semibold">{showAddMemberModal.name}</span></p>
+                <p>Room: <span className="font-semibold">{getRoomDisplayName(showAddMemberModal)}</span></p>
                 <p className="font-mono text-[10px] truncate">ID: {showAddMemberModal.id}</p>
               </div>
 
@@ -5144,8 +5156,8 @@ export default function KetesaAdmin({
                     {users
                       .filter(u => {
                         // Not already in room
-                        const isAlreadyMember = showAddMemberModal.joinedMembers.some(
-                          m => m.mxid.toLowerCase() === u.mxid.toLowerCase()
+                        const isAlreadyMember = (showAddMemberModal.joinedMembers || []).some(
+                          m => ((typeof m === 'string' ? m : m.mxid) || '').toLowerCase() === u.mxid.toLowerCase()
                         );
                         // Matches search
                         const matchesSearch = u.mxid.toLowerCase().includes(addMemberSearch.toLowerCase()) || 
@@ -5160,8 +5172,8 @@ export default function KetesaAdmin({
                       ) : (
                         users
                           .filter(u => {
-                            const isAlreadyMember = showAddMemberModal.joinedMembers.some(
-                              m => m.mxid.toLowerCase() === u.mxid.toLowerCase()
+                            const isAlreadyMember = (showAddMemberModal.joinedMembers || []).some(
+                              m => ((typeof m === 'string' ? m : m.mxid) || '').toLowerCase() === u.mxid.toLowerCase()
                             );
                             const matchesSearch = u.mxid.toLowerCase().includes(addMemberSearch.toLowerCase()) || 
                               (u.displayName && u.displayName.toLowerCase().includes(addMemberSearch.toLowerCase()));
