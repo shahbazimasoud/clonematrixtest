@@ -3619,15 +3619,17 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
             const senderMxid = ev.sender || "unknown";
             const username = senderMxid.split(":")[0].replace("@", "");
             const contentObj = ev.content || {};
+            const msgType = contentObj.msgtype || "m.text";
+            const isMedia = Boolean(contentObj.url || (msgType !== "m.text" && msgType !== "m.notice"));
             return {
               id: ev.event_id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
               sender: senderMxid,
               senderDisplayName: username.charAt(0).toUpperCase() + username.slice(1),
               content: contentObj.body || "",
               timestamp: new Date(ev.origin_server_ts || Date.now()).toISOString(),
-              type: contentObj.msgtype || "m.text",
+              type: msgType,
               mxc: contentObj.url || "",
-              fileName: contentObj.body || "",
+              fileName: isMedia ? (contentObj.body || "attachment") : "",
               fileSize: contentObj.info?.size || 0,
               mimeType: contentObj.info?.mimetype || ""
             };
@@ -3666,7 +3668,8 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
             contentText = parsed?.content?.body || "";
             msgType = parsed?.content?.msgtype || "m.text";
             mxcUri = parsed?.content?.url || "";
-            fileName = parsed?.content?.body || "";
+            const isMedia = Boolean(mxcUri || (msgType !== "m.text" && msgType !== "m.notice"));
+            fileName = isMedia ? (parsed?.content?.body || "attachment") : "";
             fileSize = parsed?.content?.info?.size || 0;
             mimeType = parsed?.content?.info?.mimetype || "";
           } catch (e) {
@@ -3731,16 +3734,30 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
   res.json(allMessages);
 });
 
-// Send message to room
-app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, async (req, res) => {
+// Send message to room (Super Admin / Owner only)
+app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { roomId } = req.params;
   const { content, sender, senderDisplayName } = req.body;
   if (!content) return res.status(400).json({ error: "Content is required" });
 
   const activeConn = getActiveConnection();
   const domain = roomId.split(":")[1] || (activeConn?.domain || "localhost");
-  const senderMxid = sender || `@${req.user?.username || "admin"}:${domain}`;
-  const senderName = senderDisplayName || req.user?.username || "Admin";
+
+  // Determine sender from active connection's adminUsername if configured
+  let configuredSender = activeConn?.adminUsername?.trim();
+  let senderMxid = "";
+  if (configuredSender) {
+    if (configuredSender.startsWith("@")) {
+      senderMxid = configuredSender.includes(":") ? configuredSender : `${configuredSender}:${domain}`;
+    } else {
+      senderMxid = `@${configuredSender}:${domain}`;
+    }
+  } else {
+    senderMxid = sender || `@${req.user?.username || "admin"}:${domain}`;
+  }
+
+  const rawLocal = senderMxid.split(":")[0].replace("@", "");
+  const senderName = senderDisplayName || (rawLocal ? (rawLocal.charAt(0).toUpperCase() + rawLocal.slice(1)) : "Admin");
 
   let sentViaApi = false;
   if (activeConn && activeConn.id !== "local") {
@@ -4918,12 +4935,29 @@ app.post("/api/matrix/media/upload", authenticateToken, express.json({ limit: "5
     const db = readDb();
     if (!db.matrixMedia) db.matrixMedia = [];
 
+    const activeConn = getActiveConnection();
+    const domain = roomId ? (roomId.split(":")[1] || activeConn?.domain || "localhost") : (activeConn?.domain || "localhost");
+    let configuredSender = activeConn?.adminUsername?.trim();
+    let uploaderMxid = "";
+    if (configuredSender) {
+      if (configuredSender.startsWith("@")) {
+        uploaderMxid = configuredSender.includes(":") ? configuredSender : `${configuredSender}:${domain}`;
+      } else {
+        uploaderMxid = `@${configuredSender}:${domain}`;
+      }
+    } else {
+      uploaderMxid = req.user?.username ? `@${req.user.username}:${domain}` : `@admin:${domain}`;
+    }
+
+    const rawLocal = uploaderMxid.split(":")[0].replace("@", "");
+    const uploaderName = rawLocal ? (rawLocal.charAt(0).toUpperCase() + rawLocal.slice(1)) : "Admin";
+
     const newMediaItem = {
       id: mxcUri,
       fileName: cleanFileName,
       fileSize: buffer.length,
       mimeType: cleanMimeType,
-      uploadedBy: req.user?.username ? `@${req.user.username}:localhost` : "@admin:localhost",
+      uploadedBy: uploaderMxid,
       uploadedAt: new Date().toISOString(),
       isCached: false,
       filePath: filePath,
@@ -4933,7 +4967,10 @@ app.post("/api/matrix/media/upload", authenticateToken, express.json({ limit: "5
     db.matrixMedia.unshift(newMediaItem);
 
     if (roomId) {
-      const activeConn = getActiveConnection();
+      if (!["Owner", "Super Admin"].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Only Super Admin is authorized to attach media to room timeline" });
+      }
+
       const isImg = cleanMimeType.startsWith("image/");
 
       if (activeConn && activeConn.id !== "local") {
@@ -4966,8 +5003,8 @@ app.post("/api/matrix/media/upload", authenticateToken, express.json({ limit: "5
       if (!room.messages) room.messages = [];
       room.messages.push({
         id: "msg-" + Date.now(),
-        sender: req.user?.username ? `@${req.user.username}:${roomId.split(":")[1] || "localhost"}` : `@admin:${roomId.split(":")[1] || "localhost"}`,
-        senderDisplayName: req.user?.username || "Admin",
+        sender: uploaderMxid,
+        senderDisplayName: uploaderName,
         content: `📎 Attached file: ${cleanFileName} (${(buffer.length / 1024).toFixed(1)} KB)`,
         timestamp: new Date().toISOString(),
         type: isImg ? "m.image" : "m.file",
