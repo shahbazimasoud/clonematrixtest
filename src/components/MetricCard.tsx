@@ -17,6 +17,7 @@ interface MetricCardProps {
   };
   glowColor?: 'cyan' | 'purple' | 'amber' | 'emerald';
   id?: string;
+  onClick?: () => void;
 }
 
 export default function MetricCard({ 
@@ -26,7 +27,8 @@ export default function MetricCard({
   icon: Icon, 
   trend, 
   glowColor = 'cyan',
-  id 
+  id,
+  onClick
 }: MetricCardProps) {
   
   const glowClasses = {
@@ -46,7 +48,10 @@ export default function MetricCard({
   return (
     <div 
       id={id || `metric-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
-      className={`spatial-glass spatial-glass-hover spatial-depth-card rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 border ${glowClasses[glowColor]}`}
+      onClick={onClick}
+      className={`spatial-glass spatial-glass-hover spatial-depth-card rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 border ${glowClasses[glowColor]} ${
+        onClick ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''
+      }`}
     >
       <div className="flex items-start justify-between">
         <div>

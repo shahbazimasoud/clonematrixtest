@@ -419,6 +419,7 @@ export default function App() {
 
   // Navigation and terminal/command execution states
   const [activeView, setActiveView] = useState('dashboard');
+  const [ketesaAdminTab, setKetesaAdminTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer'>('users');
   const [showInstallWizard, setShowInstallWizard] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
     "System Shell Monitor Initialized. Welcome to Raven Matrix Stack Manager."
@@ -1505,33 +1506,37 @@ export default function App() {
                   <MetricCard
                     title={t.cpuLoad}
                     value={`${stats ? stats.cpuUsage : 0}%`}
-                    subtext="Real-time Node execution load"
+                    subtext={lang === 'fa' ? 'بار پردازشی هسته سرور' : 'Core CPU processing load'}
                     icon={Cpu}
-                    trend={{ value: 2.4, isPositive: false }}
                     glowColor="cyan"
+                    onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
                     title={t.ramUsage}
                     value={`${stats ? stats.memoryUsage : 0}%`}
-                    subtext={`Allocated: ${stats ? (stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1) : 0} GB`}
+                    subtext={lang === 'fa' ? `تخصیص‌یافته: ${stats ? (stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1) : 0} GB` : `Allocated: ${stats ? (stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1) : 0} GB`}
                     icon={Activity}
-                    trend={{ value: 0.8, isPositive: true }}
                     glowColor="purple"
+                    onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
                     title={t.diskUsage}
                     value={`${stats ? stats.diskUsage : 0}%`}
-                    subtext={`Available: ${stats ? stats.diskFree.toFixed(1) : 0} GB`}
+                    subtext={lang === 'fa' ? `فضای آزاد: ${stats ? stats.diskFree.toFixed(1) : 0} GB` : `Available: ${stats ? stats.diskFree.toFixed(1) : 0} GB`}
                     icon={HardDrive}
                     glowColor="amber"
+                    onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
                     title={t.activeSessions}
                     value={stats ? stats.activeUsers : 0}
-                    subtext="Connected matrix threads"
+                    subtext={lang === 'fa' ? 'کاربران آنلاین و فعال سرور ماتریکس' : 'Active Matrix server users'}
                     icon={Users}
-                    trend={{ value: 12.5, isPositive: true }}
                     glowColor="emerald"
+                    onClick={() => {
+                      setKetesaAdminTab('users');
+                      setActiveView('admin');
+                    }}
                   />
                 </div>
 
@@ -1539,17 +1544,25 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <MetricCard
                     title={lang === 'fa' ? 'روم‌های عمومی' : 'Public Rooms'}
-                    value={stats?.publicRoomsCount ?? 12}
-                    subtext={lang === 'fa' ? 'اتاق‌های عمومی و قابل جستجو' : 'Publicly listed & searchable'}
+                    value={stats?.publicRoomsCount ?? 0}
+                    subtext={lang === 'fa' ? 'برای مدیریت روم‌ها کلیک کنید' : 'Click to manage public rooms'}
                     icon={Globe}
                     glowColor="cyan"
+                    onClick={() => {
+                      setKetesaAdminTab('rooms');
+                      setActiveView('admin');
+                    }}
                   />
                   <MetricCard
                     title={lang === 'fa' ? 'روم‌های خصوصی' : 'Private Rooms'}
-                    value={stats?.privateRoomsCount ?? 28}
-                    subtext={lang === 'fa' ? 'اتاق‌های خصوصی و کلیدخورده' : 'Encrypted & invitation-only'}
+                    value={stats?.privateRoomsCount ?? 0}
+                    subtext={lang === 'fa' ? 'برای مدیریت روم‌ها کلیک کنید' : 'Click to manage private rooms'}
                     icon={Lock}
                     glowColor="purple"
+                    onClick={() => {
+                      setKetesaAdminTab('rooms');
+                      setActiveView('admin');
+                    }}
                   />
                   <MetricCard
                     title={lang === 'fa' ? 'حجم رسانه‌های ذخیره‌شده' : 'Stored Media Size'}
@@ -1558,11 +1571,15 @@ export default function App() {
                         ? stats.totalMediaSizeMB >= 1024
                           ? `${(stats.totalMediaSizeMB / 1024).toFixed(2)} GB`
                           : `${stats.totalMediaSizeMB} MB`
-                        : '1.45 GB'
+                        : '0 MB'
                     }
-                    subtext={lang === 'fa' ? 'حجم فایل‌ها و تصاویر محلی/کاش' : 'Total attachment & media storage'}
+                    subtext={lang === 'fa' ? 'برای پاکسازی کش رسانه‌ها کلیک کنید' : 'Click to manage & clean media cache'}
                     icon={Database}
                     glowColor="emerald"
+                    onClick={() => {
+                      setKetesaAdminTab('media');
+                      setActiveView('admin');
+                    }}
                   />
                 </div>
 
@@ -1743,6 +1760,7 @@ export default function App() {
                 onExecuteCommand={handleExecuteCommand}
                 isExecuting={isExecuting}
                 logs={terminalLogs}
+                initialTab={ketesaAdminTab}
               />
             )}
 

@@ -64,6 +64,7 @@ interface KetesaAdminProps {
   onExecuteCommand?: (command: string, args?: any) => void;
   isExecuting?: boolean;
   logs?: string[];
+  initialTab?: 'users' | 'rooms' | 'media' | 'tokens' | 'installer';
 }
 
 const faTranslations = {
@@ -789,7 +790,8 @@ export default function KetesaAdmin({
   activeConnectionId,
   onExecuteCommand,
   isExecuting = false,
-  logs = []
+  logs = [],
+  initialTab
 }: KetesaAdminProps) {
   const translationsMap = {
     fa: faTranslations,
@@ -803,7 +805,13 @@ export default function KetesaAdmin({
   const isRtl = ['fa', 'ar'].includes(lang);
   const hasWriteAccess = currentUser?.role !== 'Viewer';
 
-  const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer'>(initialTab || 'users');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -2895,15 +2903,22 @@ export default function KetesaAdmin({
                     <div>
                       {/* Name & ID row */}
                       <div className="flex justify-between items-start mb-2 gap-2 relative">
-                        <div className="flex items-center gap-2 max-w-[60%]">
-                          <Hash className={`h-4 w-4 flex-shrink-0 ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`} />
-                          <h4 className={`font-semibold leading-tight tracking-tight transition-colors duration-200 truncate ${
-                            isLightMode 
-                              ? 'text-slate-800 group-hover:text-purple-600' 
-                              : 'text-gray-200 group-hover:text-purple-300'
+                        <div className="flex flex-col max-w-[65%]">
+                          <div className="flex items-center gap-1.5">
+                            <Hash className={`h-4 w-4 flex-shrink-0 ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`} />
+                            <h4 className={`font-bold leading-tight tracking-tight transition-colors duration-200 truncate ${
+                              isLightMode 
+                                ? 'text-slate-800 group-hover:text-purple-600' 
+                                : 'text-gray-100 group-hover:text-purple-300'
+                            }`}>
+                              {r.name && !r.name.startsWith('!') ? r.name : (r.alias || r.id)}
+                            </h4>
+                          </div>
+                          <span className={`text-[10px] font-mono block truncate select-all mt-1 ${
+                            isLightMode ? 'text-slate-500' : 'text-slate-400'
                           }`}>
-                            {r.name || r.id}
-                          </h4>
+                            {r.id}
+                          </span>
                         </div>
                         
                         <div className="flex items-center gap-2">
