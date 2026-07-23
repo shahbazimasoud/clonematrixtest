@@ -301,11 +301,38 @@ def execute_local_command(action, params):
             sql = params.get('query')
             db_user = params.get('dbUser', 'synapse_user')
             db_name = params.get('dbName', 'synapse')
-            # Execute locally via psql command
-            cmd = ['psql', '-U', db_user, '-d', db_name, '-t', '-A', '-c', sql]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            db_pass = params.get('dbPass', '')
+            db_host = params.get('dbHost', '127.0.0.1')
+            db_port = str(params.get('dbPort', 5432))
+
+            # Auto-detect credentials from /etc/matrix-stack.conf if missing
+            if not db_pass and os.path.exists('/etc/matrix-stack.conf'):
+                try:
+                    with open('/etc/matrix-stack.conf') as f:
+                        for line in f:
+                            line_str = line.strip()
+                            if line_str.startswith('PG_PASS='):
+                                db_pass = line_str.split('=', 1)[1].strip()
+                            elif line_str.startswith('PG_USER='):
+                                db_user = line_str.split('=', 1)[1].strip()
+                            elif line_str.startswith('PG_DB='):
+                                db_name = line_str.split('=', 1)[1].strip()
+                except Exception:
+                    pass
+
+            env = os.environ.copy()
+            if db_pass:
+                env['PGPASSWORD'] = db_pass
+
+            cmd = ['psql', '-h', db_host, '-p', db_port, '-U', db_user, '-d', db_name, '-t', '-A', '-c', sql]
+            res = subprocess.run(cmd, capture_output=True, text=True, env=env)
             if res.returncode != 0:
-                return {'success': False, 'error': res.stderr}
+                # Fallback to local socket / sudo -u postgres psql
+                cmd2 = ['sudo', '-u', 'postgres', 'psql', '-d', db_name, '-t', '-A', '-c', sql]
+                res2 = subprocess.run(cmd2, capture_output=True, text=True)
+                if res2.returncode != 0:
+                    return {'success': False, 'error': (res.stderr or '') + '\n' + (res2.stderr or '')}
+                return {'success': True, 'output': res2.stdout.strip()}
             return {'success': True, 'output': res.stdout.strip()}
 
         else:
