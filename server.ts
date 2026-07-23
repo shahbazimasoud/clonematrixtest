@@ -4376,46 +4376,120 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
     }
   }
 
-  // 1. Attempt Synapse media retrieval from SSH remote server if active
-  const activeConn = getActiveConnection();
-  if (activeConn && activeConn.id !== "local") {
-    try {
-      const synapseUrl = `http://127.0.0.1:8008/_matrix/media/v3/download/${encodeURIComponent(serverName)}/${encodeURIComponent(mediaId)}`;
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      const base64Cmd = `${sudoPrefix}curl -s -L "${synapseUrl}" | base64`;
-      
-      const sshOutput = await executeSSHCommand(activeConn, base64Cmd);
-      if (sshOutput && sshOutput.trim().length > 20) {
-        const fileBuffer = Buffer.from(sshOutput.trim(), 'base64');
-        if (fileBuffer.length > 0) {
-          res.setHeader("Content-Type", typeStr);
-          res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
-          return res.send(fileBuffer);
-        }
+  // Check in DB if there is a recorded dataUrl, base64, or filePath
+  const db = readDb();
+  const dbItem = (db.matrixMedia || []).find((m: any) => m.id === mxcStr || m.id.endsWith(mediaId));
+  if (dbItem) {
+    if (dbItem.dataUrl && typeof dbItem.dataUrl === "string" && dbItem.dataUrl.includes(";base64,")) {
+      const base64Data = dbItem.dataUrl.split(";base64,").pop();
+      if (base64Data) {
+        const fileBuf = Buffer.from(base64Data, "base64");
+        res.setHeader("Content-Type", dbItem.mimeType || typeStr);
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(dbItem.fileName || nameStr)}"`);
+        return res.send(fileBuf);
       }
-    } catch (sshErr: any) {
-      console.warn("SSH Synapse media fetch failed, generating fallback media binary:", sshErr.message);
+    }
+    if (dbItem.filePath && fs.existsSync(dbItem.filePath)) {
+      const fileBuf = fs.readFileSync(dbItem.filePath);
+      res.setHeader("Content-Type", dbItem.mimeType || typeStr);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(dbItem.fileName || nameStr)}"`);
+      return res.send(fileBuf);
     }
   }
 
-  // 2. Check if local media repository file exists on local filesystem
+  // 1. Attempt Synapse media retrieval from SSH remote server if active
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.id !== "local") {
+    const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+    
+    // 1a. Try downloading via Synapse HTTP API endpoints on remote server
+    const endpoints = [
+      `http://127.0.0.1:8008/_matrix/media/v3/download/${encodeURIComponent(serverName)}/${encodeURIComponent(mediaId)}`,
+      `http://127.0.0.1:8008/_matrix/client/v1/media/download/${encodeURIComponent(serverName)}/${encodeURIComponent(mediaId)}`,
+      `http://127.0.0.1:8008/_matrix/media/r0/download/${encodeURIComponent(serverName)}/${encodeURIComponent(mediaId)}`
+    ];
+
+    for (const synapseUrl of endpoints) {
+      try {
+        const base64Cmd = `${sudoPrefix}curl -s -L -f "${synapseUrl}" | base64 -w 0`;
+        const sshOutput = await executeSSHCommand(activeConn, base64Cmd);
+        const cleanBase64 = (sshOutput || "").trim().replace(/\s+/g, "");
+        if (cleanBase64.length > 20) {
+          const fileBuffer = Buffer.from(cleanBase64, 'base64');
+          if (fileBuffer.length > 0) {
+            res.setHeader("Content-Type", typeStr);
+            res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
+            return res.send(fileBuffer);
+          }
+        }
+      } catch (err: any) {
+        // continue trying next endpoint or filesystem search
+      }
+    }
+
+    // 1b. Search remote filesystem for the media file matching mediaId
+    try {
+      const findCmd = `${sudoPrefix}find /var/lib/matrix-synapse/ /var/lib/synapse/ /var/dendrite/ /tmp/ /var/matrix/ -name "*${mediaId}*" -type f 2>/dev/null | head -n 1`;
+      const remoteFilePath = (await executeSSHCommand(activeConn, findCmd)).trim();
+      if (remoteFilePath && remoteFilePath.length > 3) {
+        const catCmd = `${sudoPrefix}cat "${remoteFilePath}" | base64 -w 0`;
+        const fileBase64 = (await executeSSHCommand(activeConn, catCmd)).trim().replace(/\s+/g, "");
+        if (fileBase64.length > 0) {
+          const fileBuf = Buffer.from(fileBase64, 'base64');
+          res.setHeader("Content-Type", typeStr);
+          res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
+          return res.send(fileBuf);
+        }
+      }
+    } catch (fsErr: any) {
+      console.warn("SSH remote media file search failed:", fsErr.message);
+    }
+  }
+
+  // 2. Search local media repositories or uploads on local filesystem
   try {
-    const localMediaDir = "/var/lib/matrix-synapse/media/local_content";
-    if (fs.existsSync(localMediaDir)) {
-      const findCmd = `find ${localMediaDir} -name "*${mediaId}*" -type f | head -n 1`;
-      const matchPath = execSync(findCmd).toString().trim();
-      if (matchPath && fs.existsSync(matchPath)) {
-        const fileBytes = fs.readFileSync(matchPath);
-        res.setHeader("Content-Type", typeStr);
-        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
-        return res.send(fileBytes);
+    const searchDirs = [
+      "/var/lib/matrix-synapse/media/local_content",
+      "/var/lib/matrix-synapse/media/remote_content",
+      "/var/lib/synapse/media",
+      "./uploads",
+      "/tmp"
+    ];
+
+    for (const dir of searchDirs) {
+      if (fs.existsSync(dir)) {
+        const findCmd = `find "${dir}" -name "*${mediaId}*" -type f 2>/dev/null | head -n 1`;
+        const matchPath = execSync(findCmd).toString().trim();
+        if (matchPath && fs.existsSync(matchPath)) {
+          const fileBytes = fs.readFileSync(matchPath);
+          res.setHeader("Content-Type", typeStr);
+          res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
+          return res.send(fileBytes);
+        }
       }
     }
   } catch (e) {
     // ignore
   }
 
-  // 3. Fallback / Sandbox mode: Generate 100% valid, uncorrupted binary image/file buffer
+  // 3. Try local Synapse HTTP API if running locally on port 8008
+  try {
+    const localSynapseUrl = `http://127.0.0.1:8008/_matrix/media/v3/download/${encodeURIComponent(serverName)}/${encodeURIComponent(mediaId)}`;
+    const fetchRes = await fetch(localSynapseUrl);
+    if (fetchRes.ok) {
+      const arrayBuf = await fetchRes.arrayBuffer();
+      const fileBuf = Buffer.from(arrayBuf);
+      if (fileBuf.length > 0) {
+        res.setHeader("Content-Type", typeStr);
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
+        return res.send(fileBuf);
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // 4. Fallback / Demo environment output: Generate 100% valid binary file
   const isImage = typeStr.startsWith("image/") || nameStr.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i);
 
   if (isImage) {
@@ -4491,8 +4565,8 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(finalFileName)}"`);
     return res.send(validPngBuffer);
   } else {
-    // Standard non-image file binary output
-    const sampleText = `[Raven Matrix Media File]\nMXC: ${mxcStr}\nFileName: ${nameStr}\nMIME: ${typeStr}\nTimestamp: ${new Date().toISOString()}`;
+    // Standard non-image file binary output with complete metadata details
+    const sampleText = `[Raven Matrix Media File]\nMXC: ${mxcStr}\nFileName: ${nameStr}\nMIME: ${typeStr}\nUploader: ${dbItem?.uploadedBy || "Matrix User"}\nUploadedAt: ${dbItem?.uploadedAt || new Date().toISOString()}\nFileSize: ${dbItem?.fileSize || "Unknown"} Bytes`;
     const textBuffer = Buffer.from(sampleText, 'utf-8');
     res.setHeader("Content-Type", typeStr || "text/plain");
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);

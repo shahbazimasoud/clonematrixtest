@@ -531,18 +531,18 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Shimmer Loading Animations */
+/* Shimmer Loading Animations - Soft Faint Grey Sweep */
 @keyframes lightSweep {
   0% {
-    transform: translateX(-150%) skewX(-20deg);
+    transform: translateX(-150%) skewX(-15deg);
   }
   100% {
-    transform: translateX(200%) skewX(-20deg);
+    transform: translateX(200%) skewX(-15deg);
   }
 }
 
 .animate-shimmer {
-  animation: lightSweep 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  animation: lightSweep 2.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .shimmer-light-beam {
@@ -552,12 +552,12 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.03) 25%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(129, 140, 248, 0.08) 70%,
+    rgba(255, 255, 255, 0.005) 25%,
+    rgba(255, 255, 255, 0.035) 50%,
+    rgba(255, 255, 255, 0.005) 75%,
     transparent 100%
   );
-  filter: blur(4px);
-  animation: lightSweep 2.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  filter: blur(8px);
+  animation: lightSweep 2.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
 
