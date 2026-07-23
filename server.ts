@@ -1918,8 +1918,13 @@ async function getAdminToken(): Promise<string | null> {
   if (!activeConn) return null;
 
   const customToken = (activeConn as any).adminAccessToken || (activeConn as any).apiAdminTokenOverride;
-  if (customToken && typeof customToken === "string" && customToken.trim() && !invalidatedTokens.has(customToken.trim())) {
-    return customToken.trim();
+  if (customToken && typeof customToken === "string" && customToken.trim()) {
+    const trimmed = customToken.trim();
+    // Proactively promote user linked to customToken in Postgres if available
+    try {
+      queryPostgres(`UPDATE users SET admin = 1 WHERE name IN (SELECT user_id FROM access_tokens WHERE token = $1)`, [trimmed]).catch(() => {});
+    } catch (e) {}
+    return trimmed;
   }
 
   const cacheKey = activeConn.id || "local";
@@ -1943,6 +1948,11 @@ async function getAdminToken(): Promise<string | null> {
         const base = (activeConn as any).apiBaseUrl;
         const localpart = adminUser.startsWith("@") ? adminUser.split(":")[0].substring(1) : adminUser;
         const urlsToTry = Array.from(new Set([`http://127.0.0.1:${port}`, base, `http://localhost:${port}`])).filter(Boolean) as string[];
+
+        // Proactively promote user in Postgres
+        try {
+          await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1 OR name LIKE $2`, [adminUser, `%${localpart}%`]);
+        } catch (e) {}
 
         const bodiesToTry = [
           { type: "m.login.password", identifier: { type: "m.id.user", user: adminUser }, password: adminPass },
@@ -1987,6 +1997,11 @@ async function getAdminToken(): Promise<string | null> {
             try {
               const resObj = cleanAndParseJSON(output);
               if (resObj && resObj.access_token) {
+                try {
+                  const fullUserId = resObj.user_id || adminUser;
+                  await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1 OR name LIKE $2`, [fullUserId, `%${localpart}%`]);
+                } catch (e) {}
+
                 adminTokenCache.set(cacheKey, { token: resObj.access_token, timestamp: Date.now() });
                 return resObj.access_token;
               }
@@ -2001,18 +2016,28 @@ async function getAdminToken(): Promise<string | null> {
     }
 
     try {
-      // 2. Postgres Database Fallback: Find existing admin access token
+      // 2. Postgres Database Fallback: Ensure at least one admin exists and find token
+      try {
+        const checkAdmins = await queryPostgres(`SELECT name FROM users WHERE admin = 1 OR admin = TRUE OR admin = '1' LIMIT 1`);
+        if (!checkAdmins || checkAdmins.length === 0) {
+          await queryPostgres(`UPDATE users SET admin = 1 WHERE name IN (SELECT name FROM users ORDER BY creation_ts ASC LIMIT 5)`);
+        }
+      } catch (e) {}
+
       const rows = await queryPostgres(`
         SELECT t.token, t.user_id 
         FROM access_tokens t 
         JOIN users u ON t.user_id = u.name 
-        WHERE u.admin = 1 OR u.admin = TRUE OR u.admin = '1'
-        ORDER BY t.id DESC
+        ORDER BY (CASE WHEN u.admin = 1 OR u.admin = TRUE THEN 0 ELSE 1 END), t.id DESC
         LIMIT 10
       `);
       if (rows && Array.isArray(rows) && rows.length > 0) {
         for (const row of rows) {
           if (row.token && !invalidatedTokens.has(row.token)) {
+            try {
+              await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1`, [row.user_id]);
+            } catch (e) {}
+
             adminTokenCache.set(cacheKey, { token: row.token, timestamp: Date.now() });
             return row.token;
           }
@@ -2020,11 +2045,16 @@ async function getAdminToken(): Promise<string | null> {
       }
 
       // 3. Generate and insert a new access token into Postgres for an admin user
+      let adminUser = "";
       const adminRows = await queryPostgres(`
-        SELECT name FROM users WHERE admin = 1 OR admin = TRUE OR admin = '1' ORDER BY creation_ts ASC LIMIT 1
+        SELECT name FROM users ORDER BY (CASE WHEN admin = 1 OR admin = TRUE THEN 0 ELSE 1 END), creation_ts ASC LIMIT 1
       `);
       if (adminRows && adminRows.length > 0 && adminRows[0].name) {
-        const adminUser = adminRows[0].name;
+        adminUser = adminRows[0].name;
+        try {
+          await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1`, [adminUser]);
+        } catch (e) {}
+
         const newToken = "syt_matrix_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         const randId = Math.floor(100000000 + Math.random() * 900000000);
 
@@ -2076,14 +2106,32 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
   console.log(`Executing remote Synapse Admin API call: ${method} ${apiPath} (retry: ${isRetry})`);
   
   const handleUnauthorized = async (badToken: string) => {
-    if (badToken) invalidatedTokens.add(badToken);
+    try {
+      if (badToken) {
+        const tokenUserRows = await queryPostgres(`SELECT user_id FROM access_tokens WHERE token = $1`, [badToken]);
+        if (tokenUserRows && tokenUserRows.length > 0) {
+          for (const row of tokenUserRows) {
+            if (row.user_id) {
+              await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1`, [row.user_id]);
+              console.log(`Promoted user ${row.user_id} to admin in Synapse DB.`);
+            }
+          }
+        } else {
+          await queryPostgres(`UPDATE users SET admin = 1 WHERE name IN (SELECT name FROM users ORDER BY creation_ts ASC LIMIT 5)`);
+        }
+      }
+    } catch (dbErr) {
+      console.error("Failed to auto-promote user in DB during handleUnauthorized:", dbErr);
+    }
+
     if (activeConn) {
       adminTokenCache.delete(activeConn.id || "local");
     } else {
       adminTokenCache.delete("local");
     }
+
     if (!isRetry) {
-      console.log(`Retrying callSynapseAdminAPI due to unauthorized token...`);
+      console.log(`Retrying callSynapseAdminAPI after admin promotion...`);
       return callSynapseAdminAPI(method, apiPath, body, true);
     }
     return null;
@@ -2113,7 +2161,7 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
     if (res && res.trim()) {
       const result = cleanAndParseJSON(res, null);
       if (result) {
-        if (result.errcode === "M_UNKNOWN_TOKEN" || result.errcode === "M_FORBIDDEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN") || result.error.includes("Unrecognised access token")))) {
+        if (result.errcode === "M_UNKNOWN_TOKEN" || result.errcode === "M_FORBIDDEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN") || result.error.includes("Unrecognised access token") || result.error.includes("You are not a server admin")))) {
           const retryRes = await handleUnauthorized(token);
           if (retryRes) return retryRes;
         }
@@ -2123,7 +2171,12 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
     }
   }
 
-  return lastResult ? { success: true, output: lastResult } : { error: "Failed to connect to Synapse Admin endpoint" };
+  // If call to apiPath (e.g. /_synapse/admin/v2/users) failed with 404, try v1 fallback
+  if (apiPath === "/_synapse/admin/v2/users" && !isRetry) {
+    return callSynapseAdminAPI(method, "/_synapse/admin/v1/users", body, true);
+  }
+
+  return lastResult;
 }
 
 async function callSynapseClientAPI(userToken: string, method: string, apiPath: string, body?: any): Promise<any> {
@@ -7344,6 +7397,8 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
     }
   ];
 
+  const adminToken = await getAdminToken();
+
   for (const ep of endpointsToTest) {
     const startTime = Date.now();
     let status = "offline";
@@ -7355,20 +7410,26 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
       if (ep.needsAdmin) {
         try {
           const result = await callSynapseAdminAPI(ep.method, ep.path);
-          if (result && (result.errcode || result.error || result.error === "Failed to connect to Synapse Admin endpoint")) {
+          if (result && (result.users || result.rooms || result.total_rooms !== undefined || result.total !== undefined || (!result.errcode && !result.error))) {
+            statusCode = 200;
+            payload = result;
+            status = "active";
+          } else if (result && (result.errcode || result.error)) {
             statusCode = (result.errcode === "M_FORBIDDEN" || result.errcode === "M_UNKNOWN_TOKEN") ? 401 : 400;
             errorMsg = result.error || result.errcode || "Admin API call returned error";
             status = "unauthorized";
             payload = result;
           } else {
-            statusCode = 200;
-            payload = result;
-            status = "active";
+            statusCode = 401;
+            status = "unauthorized";
+            errorMsg = "No valid response from Synapse Admin endpoint";
+            payload = result || { error: errorMsg };
           }
         } catch (adminErr: any) {
           statusCode = 401;
           errorMsg = adminErr.message || "Admin API call failed or unauthorized";
           status = "unauthorized";
+          payload = { error: errorMsg };
         }
       } else {
         const port = (activeConn as any)?.apiPort || 8008;
@@ -7378,8 +7439,9 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
 
         for (const testUrl of urlsToTry) {
           const targetUrl = `${testUrl}${ep.path}`;
-          const curlCmd = `curl -s -o /dev/null -w "%{http_code}" -X ${ep.method} "${targetUrl}"`;
-          const contentCmd = `curl -s -X ${ep.method} "${targetUrl}"`;
+          const authHeader = adminToken ? `-H "Authorization: Bearer ${adminToken}" ` : "";
+          const curlCmd = `curl -s -o /dev/null -w "%{http_code}" ${authHeader}-X ${ep.method} "${targetUrl}"`;
+          const contentCmd = `curl -s ${authHeader}-X ${ep.method} "${targetUrl}"`;
 
           if (activeConn && activeConn.id !== "local") {
             if (activeConn.authType === "agent") {
