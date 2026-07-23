@@ -1927,56 +1927,58 @@ async function getAdminToken(): Promise<string | null> {
         const adminPass = (activeConn as any).adminPassword;
         const port = (activeConn as any).apiPort || 8008;
         const base = (activeConn as any).apiBaseUrl;
-        const urlsToTry = Array.from(new Set([base, `http://127.0.0.1:${port}`, `http://localhost:${port}`])).filter(Boolean) as string[];
+        const localpart = adminUser.startsWith("@") ? adminUser.split(":")[0].substring(1) : adminUser;
+        const urlsToTry = Array.from(new Set([`http://127.0.0.1:${port}`, base, `http://localhost:${port}`])).filter(Boolean) as string[];
+
+        const bodiesToTry = [
+          { type: "m.login.password", identifier: { type: "m.id.user", user: adminUser }, password: adminPass },
+          { type: "m.login.password", identifier: { type: "m.id.user", user: localpart }, password: adminPass },
+          { type: "m.login.password", user: adminUser, password: adminPass },
+          { type: "m.login.password", user: localpart, password: adminPass }
+        ];
 
         for (const baseUrl of urlsToTry) {
-          const url = `${baseUrl.replace(/\/$/, "")}/_matrix/client/v3/login`;
-          const loginBody = {
-            type: "m.login.password",
-            user: adminUser,
-            identifier: {
-              type: "m.id.user",
-              user: adminUser
-            },
-            password: adminPass
-          };
-          const loginData = JSON.stringify(loginBody).replace(/'/g, "'\\''");
-          const curlCmd = `curl -s -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
+          const cleanBase = baseUrl.replace(/\/$/, "");
+          for (const loginBody of bodiesToTry) {
+            const url = `${cleanBase}/_matrix/client/v3/login`;
+            const loginData = JSON.stringify(loginBody).replace(/'/g, "'\\''");
+            const curlCmd = `curl -s -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
 
-          let output = "";
-          if (activeConn.id !== "local") {
-            if (activeConn.authType === "agent") {
-              try {
-                output = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
-              } catch (e) {
-                console.error("Login agent error:", e);
+            let output = "";
+            if (activeConn.id !== "local") {
+              if (activeConn.authType === "agent") {
+                try {
+                  output = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+                } catch (e) {
+                  console.error("Login agent error:", e);
+                }
+              } else {
+                try {
+                  const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+                  output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+                } catch (e) {
+                  console.error("Login SSH error:", e);
+                }
               }
             } else {
               try {
-                const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-                output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+                output = await new Promise<string>((resolve) => {
+                  exec(curlCmd, (err, stdout) => resolve(stdout || ""));
+                });
               } catch (e) {
-                console.error("Login SSH error:", e);
+                console.error("Login local error:", e);
               }
             }
-          } else {
-            try {
-              output = await new Promise<string>((resolve) => {
-                exec(curlCmd, (err, stdout) => resolve(stdout || ""));
-              });
-            } catch (e) {
-              console.error("Login local error:", e);
-            }
-          }
 
-          try {
-            const resObj = cleanAndParseJSON(output);
-            if (resObj && resObj.access_token) {
-              adminTokenCache.set(cacheKey, { token: resObj.access_token, timestamp: Date.now() });
-              return resObj.access_token;
+            try {
+              const resObj = cleanAndParseJSON(output);
+              if (resObj && resObj.access_token) {
+                adminTokenCache.set(cacheKey, { token: resObj.access_token, timestamp: Date.now() });
+                return resObj.access_token;
+              }
+            } catch (e) {
+              console.error("Failed to parse dynamic login output:", e);
             }
-          } catch (e) {
-            console.error("Failed to parse dynamic login output:", e);
           }
         }
       }
@@ -1990,18 +1992,22 @@ async function getAdminToken(): Promise<string | null> {
         SELECT t.token, t.user_id 
         FROM access_tokens t 
         JOIN users u ON t.user_id = u.name 
-        WHERE u.admin = 1 OR u.admin = TRUE 
+        WHERE u.admin = 1 OR u.admin = TRUE OR u.admin = '1'
         ORDER BY t.id DESC
-        LIMIT 1
+        LIMIT 10
       `);
-      if (rows && rows.length > 0 && rows[0].token) {
-        adminTokenCache.set(cacheKey, { token: rows[0].token, timestamp: Date.now() });
-        return rows[0].token;
+      if (rows && Array.isArray(rows) && rows.length > 0) {
+        for (const row of rows) {
+          if (row.token && !invalidatedTokens.has(row.token)) {
+            adminTokenCache.set(cacheKey, { token: row.token, timestamp: Date.now() });
+            return row.token;
+          }
+        }
       }
 
       // 3. Generate and insert a new access token into Postgres for an admin user
       const adminRows = await queryPostgres(`
-        SELECT name FROM users WHERE admin = 1 OR admin = TRUE ORDER BY creation_ts ASC LIMIT 1
+        SELECT name FROM users WHERE admin = 1 OR admin = TRUE OR admin = '1' ORDER BY creation_ts ASC LIMIT 1
       `);
       if (adminRows && adminRows.length > 0 && adminRows[0].name) {
         const adminUser = adminRows[0].name;
@@ -2050,12 +2056,8 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
   const connAny = activeConn as any;
   const port = connAny?.apiPort || 8008;
   const rawBase = connAny?.apiBaseUrl || `http://127.0.0.1:${port}`;
-  const apiBaseUrl = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
-  
-  const url = `${apiBaseUrl}${apiPath}`;
-  const headers = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
-  const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
-  const curlCmd = `curl -s -X ${method} ${headers} ${dataArg} "${url}"`;
+  const baseClean = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+  const urlsToTry = Array.from(new Set([`http://127.0.0.1:${port}`, baseClean, `http://localhost:${port}`])).filter(Boolean) as string[];
 
   console.log(`Executing remote Synapse Admin API call: ${method} ${apiPath} (retry: ${isRetry})`);
   
@@ -2073,50 +2075,41 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
     return null;
   };
 
-  if (activeConn && activeConn.id !== "local") {
-    if (activeConn.authType === "agent") {
-      const res = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
-      try {
-        const result = cleanAndParseJSON(res, {});
-        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || result.errcode === "M_FORBIDDEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN") || result.error.includes("Unrecognised access token"))))) {
-          const retryRes = await handleUnauthorized(token);
-          if (retryRes) return retryRes;
-        }
-        return result;
-      } catch (e) {
-        return { success: true, output: res };
+  let lastResult: any = null;
+  for (const baseUrl of urlsToTry) {
+    const url = `${baseUrl}${apiPath}`;
+    const headers = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
+    const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
+    const curlCmd = `curl -s -X ${method} ${headers} ${dataArg} "${url}"`;
+
+    let res = "";
+    if (activeConn && activeConn.id !== "local") {
+      if (activeConn.authType === "agent") {
+        res = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+      } else {
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        res = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
       }
     } else {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      const output = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
-      try {
-        const result = cleanAndParseJSON(output, {});
-        if (result && (result.errcode === "M_UNKNOWN_TOKEN" || result.errcode === "M_FORBIDDEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN") || result.error.includes("Unrecognised access token"))))) {
+      res = await new Promise<string>((resolve) => {
+        exec(curlCmd, (err, stdout) => resolve(stdout || ""));
+      });
+    }
+
+    if (res && res.trim()) {
+      const result = cleanAndParseJSON(res, null);
+      if (result) {
+        if (result.errcode === "M_UNKNOWN_TOKEN" || result.errcode === "M_FORBIDDEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN") || result.error.includes("Unrecognised access token")))) {
           const retryRes = await handleUnauthorized(token);
           if (retryRes) return retryRes;
         }
         return result;
-      } catch (e) {
-        return { success: true, output };
       }
+      lastResult = res;
     }
-  } else {
-    return new Promise((resolve, reject) => {
-      exec(curlCmd, async (err: any, stdout: string) => {
-        if (err) return resolve({});
-        try {
-          const result = cleanAndParseJSON(stdout, {});
-          if (result && (result.errcode === "M_UNKNOWN_TOKEN" || result.errcode === "M_FORBIDDEN" || (result.error && (result.error.includes("Unauthorized") || result.error.includes("M_UNKNOWN_TOKEN") || result.error.includes("Unrecognised access token"))))) {
-            const retryRes = await handleUnauthorized(token);
-            if (retryRes) return resolve(retryRes);
-          }
-          resolve(result);
-        } catch (e) {
-          resolve({ success: true, output: stdout });
-        }
-      });
-    });
   }
+
+  return lastResult ? { success: true, output: lastResult } : { error: "Failed to connect to Synapse Admin endpoint" };
 }
 
 async function callSynapseClientAPI(userToken: string, method: string, apiPath: string, body?: any): Promise<any> {
@@ -7275,9 +7268,16 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
       if (ep.needsAdmin) {
         try {
           const result = await callSynapseAdminAPI(ep.method, ep.path);
-          statusCode = 200;
-          payload = result;
-          status = "active";
+          if (result && (result.errcode || result.error || result.error === "Failed to connect to Synapse Admin endpoint")) {
+            statusCode = (result.errcode === "M_FORBIDDEN" || result.errcode === "M_UNKNOWN_TOKEN") ? 401 : 400;
+            errorMsg = result.error || result.errcode || "Admin API call returned error";
+            status = "unauthorized";
+            payload = result;
+          } else {
+            statusCode = 200;
+            payload = result;
+            status = "active";
+          }
         } catch (adminErr: any) {
           statusCode = 401;
           errorMsg = adminErr.message || "Admin API call failed or unauthorized";
@@ -7286,36 +7286,44 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
       } else {
         const port = (activeConn as any)?.apiPort || 8008;
         const rawBase = (activeConn as any)?.apiBaseUrl || `http://127.0.0.1:${port}`;
-        const apiBaseUrl = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
-        const targetUrl = `${apiBaseUrl}${ep.path}`;
-        const curlCmd = `curl -s -o /dev/null -w "%{http_code}" -X ${ep.method} "${targetUrl}"`;
-        const contentCmd = `curl -s -X ${ep.method} "${targetUrl}"`;
-        
-        if (activeConn && activeConn.id !== "local") {
-          if (activeConn.authType === "agent") {
-            const code = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
-            const body = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: contentCmd });
-            const parsedCode = parseInt((code || "").trim());
-            statusCode = isNaN(parsedCode) ? 0 : parsedCode;
-            try { payload = JSON.parse(body); } catch(e) { payload = body; }
+        const baseClean = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+        const urlsToTry = Array.from(new Set([`http://127.0.0.1:${port}`, baseClean, `http://localhost:${port}`])).filter(Boolean) as string[];
+
+        for (const testUrl of urlsToTry) {
+          const targetUrl = `${testUrl}${ep.path}`;
+          const curlCmd = `curl -s -o /dev/null -w "%{http_code}" -X ${ep.method} "${targetUrl}"`;
+          const contentCmd = `curl -s -X ${ep.method} "${targetUrl}"`;
+
+          if (activeConn && activeConn.id !== "local") {
+            if (activeConn.authType === "agent") {
+              const code = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+              const body = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: contentCmd });
+              const parsedCode = parseInt((code || "").trim());
+              statusCode = isNaN(parsedCode) ? 0 : parsedCode;
+              try { payload = JSON.parse(body); } catch(e) { payload = body; }
+            } else {
+              const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+              const code = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
+              const body = await executeSSHCommand(activeConn, `${sudoPrefix}${contentCmd}`);
+              const parsedCode = parseInt((code || "").trim());
+              statusCode = isNaN(parsedCode) ? 0 : parsedCode;
+              try { payload = JSON.parse(body); } catch(e) { payload = body; }
+            }
           } else {
-            const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-            const code = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd}`);
-            const body = await executeSSHCommand(activeConn, `${sudoPrefix}${contentCmd}`);
-            const parsedCode = parseInt((code || "").trim());
-            statusCode = isNaN(parsedCode) ? 0 : parsedCode;
-            try { payload = JSON.parse(body); } catch(e) { payload = body; }
+            try {
+              const code = execSync(curlCmd).toString().trim();
+              const body = execSync(contentCmd).toString().trim();
+              const parsedCode = parseInt(code);
+              statusCode = isNaN(parsedCode) ? 0 : parsedCode;
+              try { payload = JSON.parse(body); } catch(e) { payload = body; }
+            } catch (e) {
+              statusCode = 0;
+              payload = { error: "Failed to connect to local endpoint" };
+            }
           }
-        } else {
-          try {
-            const code = execSync(curlCmd).toString().trim();
-            const body = execSync(contentCmd).toString().trim();
-            const parsedCode = parseInt(code);
-            statusCode = isNaN(parsedCode) ? 0 : parsedCode;
-            try { payload = JSON.parse(body); } catch(e) { payload = body; }
-          } catch (e) {
-            statusCode = 0;
-            payload = { error: "Failed to connect to local endpoint" };
+
+          if (statusCode >= 200 && statusCode < 500) {
+            break;
           }
         }
 

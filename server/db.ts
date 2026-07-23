@@ -797,29 +797,53 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   dbHost = dbHost || "localhost";
   dbPort = dbPort || 5432;
   
-  let cmd = "";
   if (isWriteQuery) {
-    cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`;
-    try {
-      const output = await executeSSHCommand(config, cmd);
-      return [{ success: true, affectedRows: output.trim() }];
-    } catch (err: any) {
-      console.error("Error executing remote postgres write query:", err);
-      throw err;
+    const cmdsToTry = [
+      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`,
+      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`,
+      `sudo -u postgres psql -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`,
+      `sudo psql -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`
+    ];
+
+    let lastErr: any = null;
+    for (const cmd of cmdsToTry) {
+      try {
+        const output = await executeSSHCommand(config, cmd);
+        if (output && !output.includes("psql: error") && !output.includes("FATAL:") && !output.includes("Command failed")) {
+          return [{ success: true, affectedRows: output.trim() }];
+        }
+      } catch (err: any) {
+        lastErr = err;
+      }
     }
+    console.error("Error executing remote postgres write query across all fallbacks:", lastErr);
+    throw lastErr || new Error("Failed to execute remote PostgreSQL write query");
   } else {
     // Clean trailing semicolons inside the subquery to prevent postgres syntax errors
     const cleanSql = trimmedSql.replace(/;+$/, "");
     const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql.replace(/"/g, '\\"')}) t;`;
-    cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`;
     
-    try {
-      const jsonStr = await executeSSHCommand(config, cmd);
-      return cleanAndParseJSON(jsonStr, []);
-    } catch (err: any) {
-      console.error("Error executing remote postgres read query:", err);
-      throw err;
+    const cmdsToTry = [
+      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`,
+      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`,
+      `sudo -u postgres psql -d '${dbName}' -t -A -c "${wrappedQuery}"`,
+      `sudo psql -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`
+    ];
+
+    let lastErr: any = null;
+    for (const cmd of cmdsToTry) {
+      try {
+        const jsonStr = await executeSSHCommand(config, cmd);
+        if (jsonStr && !jsonStr.includes("psql: error") && !jsonStr.includes("FATAL:") && !jsonStr.includes("Command failed")) {
+          const parsed = cleanAndParseJSON(jsonStr, null);
+          if (parsed !== null) return parsed;
+        }
+      } catch (err: any) {
+        lastErr = err;
+      }
     }
+    console.error("Error executing remote postgres read query across all fallbacks:", lastErr);
+    throw lastErr || new Error("Failed to execute remote PostgreSQL read query");
   }
 }
 
