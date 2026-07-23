@@ -3503,71 +3503,117 @@ app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["
 // Room Chat/Messages Viewer API
 app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res) => {
   const { roomId } = req.params;
+  let apiMessages: any[] = [];
+  let fetchedFromApi = false;
 
-  let pgMessages: any[] = [];
-  // 1. Try querying Postgres for real chat history if available
-  try {
-    const rows = await queryPostgres(`
-      SELECT e.event_id, e.sender, e.origin_server_ts, ej.json, p.displayname
-      FROM events e 
-      JOIN event_json ej ON e.event_id = ej.event_id 
-      LEFT JOIN profiles p ON e.sender = p.user_id
-      WHERE e.room_id = $1 AND e.type = 'm.room.message'
-      ORDER BY e.origin_server_ts DESC 
-      LIMIT 100
-    `, [roomId]);
-    
-    if (rows && rows.length > 0) {
-      pgMessages = rows.reverse().map((row: any) => {
-        let contentText = "";
-        let msgType = "m.text";
-        let mxcUri = "";
-        let fileName = "";
-        let fileSize = 0;
-        let mimeType = "";
+  const activeConn = getActiveConnection();
+
+  // 1. Prioritize Matrix Client-Server API / Synapse API
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      let msgRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=100`);
+      
+      // If forbidden / not joined, force admin to join and retry
+      if (msgRes && msgRes.errcode === "M_FORBIDDEN") {
         try {
-          const parsed = typeof row.json === 'string' ? JSON.parse(row.json) : row.json;
-          contentText = parsed?.content?.body || "";
-          msgType = parsed?.content?.msgtype || "m.text";
-          mxcUri = parsed?.content?.url || "";
-          fileName = parsed?.content?.body || "";
-          fileSize = parsed?.content?.info?.size || 0;
-          mimeType = parsed?.content?.info?.mimetype || "";
-        } catch (e) {
-          contentText = "Message content undecodable";
-        }
-        const username = row.sender.split(":")[0].replace("@", "");
-        return {
-          id: row.event_id,
-          sender: row.sender,
-          senderDisplayName: row.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
-          content: contentText,
-          timestamp: new Date(parseInt(row.origin_server_ts)).toISOString(),
-          type: msgType,
-          mxc: mxcUri,
-          fileName: fileName,
-          fileSize: fileSize,
-          mimeType: mimeType
-        };
-      });
+          await callSynapseAdminAPI("POST", `/_synapse/admin/v1/join/${encodeURIComponent(roomId)}`, {
+            user_id: `@admin:${activeConn.domain || "localhost"}`
+          });
+          msgRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=100`);
+        } catch (jErr) {}
+      }
+
+      if (msgRes && Array.isArray(msgRes.chunk)) {
+        apiMessages = msgRes.chunk
+          .filter((ev: any) => ev.type === "m.room.message" && ev.content)
+          .map((ev: any) => {
+            const senderMxid = ev.sender || "unknown";
+            const username = senderMxid.split(":")[0].replace("@", "");
+            const contentObj = ev.content || {};
+            return {
+              id: ev.event_id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              sender: senderMxid,
+              senderDisplayName: username.charAt(0).toUpperCase() + username.slice(1),
+              content: contentObj.body || "",
+              timestamp: new Date(ev.origin_server_ts || Date.now()).toISOString(),
+              type: contentObj.msgtype || "m.text",
+              mxc: contentObj.url || "",
+              fileName: contentObj.body || "",
+              fileSize: contentObj.info?.size || 0,
+              mimeType: contentObj.info?.mimetype || ""
+            };
+          });
+        fetchedFromApi = true;
+      }
+    } catch (apiErr: any) {
+      console.warn("Synapse API fetch messages failed:", apiErr.message);
     }
-  } catch (err: any) {
-    console.warn("Could not fetch messages from Postgres, falling back to local/mock:", err.message);
   }
 
-  // 2. Fetch local DB room messages
+  // 2. Query Postgres fallback if Matrix API failed or returned empty
+  let pgMessages: any[] = [];
+  if (!fetchedFromApi) {
+    try {
+      const rows = await queryPostgres(`
+        SELECT e.event_id, e.sender, e.origin_server_ts, ej.json, p.displayname
+        FROM events e 
+        JOIN event_json ej ON e.event_id = ej.event_id 
+        LEFT JOIN profiles p ON e.sender = p.user_id
+        WHERE e.room_id = $1 AND e.type = 'm.room.message'
+        ORDER BY e.origin_server_ts DESC 
+        LIMIT 100
+      `, [roomId]);
+      
+      if (rows && rows.length > 0) {
+        pgMessages = rows.map((row: any) => {
+          let contentText = "";
+          let msgType = "m.text";
+          let mxcUri = "";
+          let fileName = "";
+          let fileSize = 0;
+          let mimeType = "";
+          try {
+            const parsed = typeof row.json === 'string' ? JSON.parse(row.json) : row.json;
+            contentText = parsed?.content?.body || "";
+            msgType = parsed?.content?.msgtype || "m.text";
+            mxcUri = parsed?.content?.url || "";
+            fileName = parsed?.content?.body || "";
+            fileSize = parsed?.content?.info?.size || 0;
+            mimeType = parsed?.content?.info?.mimetype || "";
+          } catch (e) {
+            contentText = "Message content undecodable";
+          }
+          const username = row.sender.split(":")[0].replace("@", "");
+          return {
+            id: row.event_id,
+            sender: row.sender,
+            senderDisplayName: row.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
+            content: contentText,
+            timestamp: new Date(parseInt(row.origin_server_ts)).toISOString(),
+            type: msgType,
+            mxc: mxcUri,
+            fileName: fileName,
+            fileSize: fileSize,
+            mimeType: mimeType
+          };
+        });
+      }
+    } catch (err: any) {
+      console.warn("Could not fetch messages from Postgres, falling back to local/mock:", err.message);
+    }
+  }
+
+  // 3. Fetch local DB room messages
   const db = readDb();
   let room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
 
-  if (!room && pgMessages.length === 0) {
-    const activeConn = getActiveConnection();
+  if (!room && apiMessages.length === 0 && pgMessages.length === 0) {
     if (activeConn && activeConn.id !== "local") {
       return res.json([]);
     }
     return res.status(404).json({ error: "Room not found" });
   }
 
-  // Populate mock default messages if room exists locally but has no messages array
   if (room && !room.messages) {
     const domain = roomId.split(":")[1] || "matrix.company.local";
     room.messages = [
@@ -3583,8 +3629,9 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
 
   const localMessages = room ? (room.messages || []) : [];
 
-  // Merge pgMessages and localMessages cleanly without duplicates
+  // Merge messages cleanly
   const msgMap = new Map();
+  apiMessages.forEach((m: any) => msgMap.set(m.id, m));
   pgMessages.forEach((m: any) => msgMap.set(m.id, m));
   localMessages.forEach((m: any) => msgMap.set(m.id, m));
 
@@ -3596,10 +3643,31 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
 });
 
 // Send message to room
-app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, (req, res) => {
+app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, async (req, res) => {
   const { roomId } = req.params;
   const { content, sender, senderDisplayName } = req.body;
   if (!content) return res.status(400).json({ error: "Content is required" });
+
+  const activeConn = getActiveConnection();
+  const domain = roomId.split(":")[1] || (activeConn?.domain || "localhost");
+  const senderMxid = sender || `@${req.user?.username || "admin"}:${domain}`;
+  const senderName = senderDisplayName || req.user?.username || "Admin";
+
+  let sentViaApi = false;
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const txnId = `m.${Date.now()}.${Math.random().toString(36).substring(2, 6)}`;
+      const apiRes = await callSynapseAdminAPI("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`, {
+        msgtype: "m.text",
+        body: content
+      });
+      if (apiRes && apiRes.event_id) {
+        sentViaApi = true;
+      }
+    } catch (err: any) {
+      console.warn("Sending message via Synapse API failed, saving to local DB:", err.message);
+    }
+  }
 
   const db = readDb();
   if (!db.matrixRooms) db.matrixRooms = [];
@@ -3617,8 +3685,8 @@ app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, (req, res
 
   const newMessage = {
     id: "msg-" + Date.now(),
-    sender: sender || `@${req.user.username || "admin"}:${roomId.split(":")[1] || "localhost"}`,
-    senderDisplayName: senderDisplayName || req.user.username || "Admin",
+    sender: senderMxid,
+    senderDisplayName: senderName,
     content,
     timestamp: new Date().toISOString(),
     type: "m.text"
@@ -3884,7 +3952,7 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   res.json(roomsList);
 });
 
-// Fetch room members on-demand to prevent high CPU / connection-pool usage
+// Fetch room members on-demand
 app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res) => {
   const { roomId } = req.params;
   if (!roomId) return res.status(400).json({ error: "Room ID is required" });
@@ -3893,45 +3961,46 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
   let bannedMembers: string[] = [];
   let fetched = false;
 
-  // 1. Try Postgres
-  try {
-    const dbMembers = await queryPostgres(`
-      SELECT rm.user_id as mxid, rm.membership, p.displayname
-      FROM room_memberships rm
-      LEFT JOIN profiles p ON rm.user_id = p.user_id
-      WHERE rm.room_id = $1
-    `, [roomId]);
+  const activeConn = getActiveConnection();
 
-    if (dbMembers && dbMembers.length > 0) {
-      dbMembers.forEach((m: any) => {
-        if (m.membership === 'join') {
-          joinedMembers.push({
-            mxid: m.mxid,
-            displayName: m.displayname || "",
-            role: "Member",
-            powerLevel: 0
-          });
-        } else if (m.membership === 'ban') {
-          bannedMembers.push(m.mxid);
-        }
-      });
-      fetched = true;
-    }
-  } catch (dbErr: any) {
-    console.warn(`Postgres room members fetch failed for ${roomId}:`, dbErr.message);
-  }
-
-  // 2. Fallback to Synapse Admin API
-  if (!fetched) {
+  // 1. Try Synapse Admin API first
+  if (activeConn && activeConn.id !== "local") {
     try {
       const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/members`);
       if (membersRes && Array.isArray(membersRes.members)) {
-        joinedMembers = membersRes.members.map((m: string) => ({
-          mxid: m,
-          displayName: "",
-          role: "Member",
-          powerLevel: 0
+        // Fetch power levels for the room
+        let userPowerLevels: Record<string, number> = {};
+        let defaultPowerLevel = 0;
+        try {
+          const plRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`);
+          if (plRes && plRes.users) {
+            userPowerLevels = plRes.users;
+            defaultPowerLevel = plRes.users_default || 0;
+          }
+        } catch (plErr) {}
+
+        const db = readDb();
+        const localUsers = db.matrixUsers || [];
+
+        joinedMembers = await Promise.all(membersRes.members.map(async (m: string) => {
+          const pLevel = userPowerLevels[m] !== undefined ? userPowerLevels[m] : defaultPowerLevel;
+          const roleStr = pLevel >= 100 ? "Admin" : (pLevel >= 50 ? "Moderator" : "User");
+          const localUser = localUsers.find((u: any) => u.mxid.toLowerCase() === m.toLowerCase());
+          
+          let dName = localUser?.displayName || "";
+          if (!dName) {
+            const rawUser = m.split(":")[0].replace("@", "");
+            dName = rawUser.charAt(0).toUpperCase() + rawUser.slice(1);
+          }
+
+          return {
+            mxid: m,
+            displayName: dName,
+            role: roleStr,
+            powerLevel: pLevel
+          };
         }));
+
         fetched = true;
       }
     } catch (apiErr: any) {
@@ -3939,16 +4008,43 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
     }
   }
 
+  // 2. Fallback to Postgres
+  if (!fetched) {
+    try {
+      const dbMembers = await queryPostgres(`
+        SELECT rm.user_id as mxid, rm.membership, p.displayname
+        FROM room_memberships rm
+        LEFT JOIN profiles p ON rm.user_id = p.user_id
+        WHERE rm.room_id = $1
+      `, [roomId]);
+
+      if (dbMembers && dbMembers.length > 0) {
+        dbMembers.forEach((m: any) => {
+          if (m.membership === 'join') {
+            joinedMembers.push({
+              mxid: m.mxid,
+              displayName: m.displayname || "",
+              role: "Member",
+              powerLevel: 0
+            });
+          } else if (m.membership === 'ban') {
+            bannedMembers.push(m.mxid);
+          }
+        });
+        fetched = true;
+      }
+    } catch (dbErr: any) {
+      console.warn(`Postgres room members fetch failed for ${roomId}:`, dbErr.message);
+    }
+  }
+
   // 3. Fallback to local DB
   if (!fetched) {
-    const activeConn = getActiveConnection();
-    if (activeConn && activeConn.id === "local") {
-      const db = readDb();
-      const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
-      if (localRoom) {
-        joinedMembers = localRoom.joinedMembers || [];
-        bannedMembers = localRoom.bannedMembers || [];
-      }
+    const db = readDb();
+    const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
+    if (localRoom) {
+      joinedMembers = localRoom.joinedMembers || [];
+      bannedMembers = localRoom.bannedMembers || [];
     }
   }
 
@@ -4200,6 +4296,110 @@ app.post("/api/matrix/rooms/:roomId/ad-groups", authenticateToken, checkPermissi
   writeDb(db);
 
   res.json({ success: true, room });
+});
+
+// Room State Inspector & Setter APIs
+app.get("/api/matrix/rooms/:roomId/state", authenticateToken, async (req, res) => {
+  const { roomId } = req.params;
+  if (!roomId) return res.status(400).json({ error: "Room ID is required" });
+
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const stateEvents = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state`);
+      if (Array.isArray(stateEvents)) {
+        return res.json(stateEvents);
+      }
+    } catch (err: any) {
+      console.warn("Could not fetch room state via Synapse API:", err.message);
+    }
+  }
+
+  // Fallback to local DB state representation
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+
+  const mockState = [
+    { type: "m.room.name", state_key: "", content: { name: room.name } },
+    { type: "m.room.topic", state_key: "", content: { topic: room.topic || "" } },
+    { type: "m.room.avatar", state_key: "", content: { url: room.avatarUrl || "" } },
+    { type: "m.room.join_rules", state_key: "", content: { join_rule: room.isPublic ? "public" : "invite" } },
+    { type: "m.room.history_visibility", state_key: "", content: { history_visibility: "shared" } }
+  ];
+
+  res.json(mockState);
+});
+
+app.post("/api/matrix/rooms/:roomId/state", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
+  const { roomId } = req.params;
+  const { eventType, stateKey, content, name, topic, avatarUrl } = req.body;
+  if (!roomId) return res.status(400).json({ error: "Room ID is required" });
+
+  const activeConn = getActiveConnection();
+  let apiSuccess = false;
+
+  const targetEventType = eventType || (name ? "m.room.name" : (topic ? "m.room.topic" : "m.room.avatar"));
+  const targetContent = content || (name ? { name } : (topic ? { topic } : { url: avatarUrl }));
+
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const keyPath = stateKey !== undefined && stateKey !== null ? `/${encodeURIComponent(stateKey)}` : "";
+      const apiRes = await callSynapseAdminAPI("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/${encodeURIComponent(targetEventType)}${keyPath}`, targetContent);
+      if (apiRes && (apiRes.event_id || !apiRes.error)) {
+        apiSuccess = true;
+      }
+    } catch (err: any) {
+      console.warn("Could not set room state via Synapse API:", err.message);
+    }
+  } else {
+    apiSuccess = true;
+  }
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (room) {
+    if (targetEventType === "m.room.name" && targetContent.name) room.name = targetContent.name;
+    if (targetEventType === "m.room.topic" && targetContent.topic !== undefined) room.topic = targetContent.topic;
+    if (targetEventType === "m.room.avatar" && targetContent.url !== undefined) room.avatarUrl = targetContent.url;
+    writeDb(db);
+  }
+
+  res.json({ success: true, apiSuccess });
+});
+
+app.post("/api/matrix/rooms/:roomId/avatar", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
+  const { roomId } = req.params;
+  const { avatarUrl, url } = req.body;
+  const mxcUrl = avatarUrl || url;
+  if (!roomId || !mxcUrl) return res.status(400).json({ error: "Room ID and avatar URL are required" });
+
+  const activeConn = getActiveConnection();
+  let apiSuccess = false;
+
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const apiRes = await callSynapseAdminAPI("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.avatar/`, {
+        url: mxcUrl
+      });
+      if (apiRes && (apiRes.event_id || !apiRes.error)) {
+        apiSuccess = true;
+      }
+    } catch (err: any) {
+      console.warn("Could not set room avatar via Synapse API:", err.message);
+    }
+  } else {
+    apiSuccess = true;
+  }
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (room) {
+    room.avatarUrl = mxcUrl;
+    writeDb(db);
+  }
+
+  res.json({ success: true, apiSuccess, avatarUrl: mxcUrl });
 });
 
 app.post("/api/matrix/ldap/simulate-login", authenticateToken, async (req, res) => {
@@ -4644,6 +4844,26 @@ app.post("/api/matrix/media/upload", authenticateToken, express.json({ limit: "5
     db.matrixMedia.unshift(newMediaItem);
 
     if (roomId) {
+      const activeConn = getActiveConnection();
+      const isImg = cleanMimeType.startsWith("image/");
+
+      if (activeConn && activeConn.id !== "local") {
+        try {
+          const txnId = `m.${Date.now()}.${Math.random().toString(36).substring(2, 6)}`;
+          await callSynapseAdminAPI("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`, {
+            msgtype: isImg ? "m.image" : "m.file",
+            body: cleanFileName,
+            url: mxcUri,
+            info: {
+              mimetype: cleanMimeType,
+              size: buffer.length
+            }
+          });
+        } catch (mSendErr: any) {
+          console.warn("Could not send media event to room via Synapse API:", mSendErr.message);
+        }
+      }
+
       if (!db.matrixRooms) db.matrixRooms = [];
       let room = db.matrixRooms.find((r: any) => r.id === roomId);
       if (!room) {
@@ -4655,7 +4875,6 @@ app.post("/api/matrix/media/upload", authenticateToken, express.json({ limit: "5
         db.matrixRooms.unshift(room);
       }
       if (!room.messages) room.messages = [];
-      const isImg = cleanMimeType.startsWith("image/");
       room.messages.push({
         id: "msg-" + Date.now(),
         sender: req.user?.username ? `@${req.user.username}:${roomId.split(":")[1] || "localhost"}` : `@admin:${roomId.split(":")[1] || "localhost"}`,
