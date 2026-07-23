@@ -2450,133 +2450,44 @@ export default function KetesaAdmin({
     window.URL.revokeObjectURL(url);
   };
 
-  const handleDownloadMediaFile = (mediaItem: MatrixMedia) => {
-    const mime = (mediaItem.mimeType || '').toLowerCase();
-    const name = (mediaItem.fileName || '').toLowerCase();
-    const fileNameToSave = mediaItem.fileName || `${mediaItem.id.replace(/[^a-zA-Z0-9]/g, '_')}`;
-
-    const isImage = mime.startsWith('image/') || !!name.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i);
-
-    if (isImage) {
-      if (mime.includes('svg') || name.endsWith('.svg')) {
-        const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
-  <rect width="800" height="600" fill="#0f172a"/>
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#a855f7"/>
-    </linearGradient>
-  </defs>
-  <rect x="30" y="30" width="740" height="540" rx="16" fill="#1e293b" stroke="url(#g)" stroke-width="4"/>
-  <circle cx="400" cy="220" r="70" fill="url(#g)" opacity="0.3"/>
-  <text x="400" y="235" font-family="sans-serif" font-size="64" text-anchor="middle">🖼️</text>
-  <text x="400" y="340" font-family="sans-serif" font-size="24" font-weight="bold" fill="#f8fafc" text-anchor="middle">${mediaItem.fileName || 'Matrix Media'}</text>
-  <text x="400" y="385" font-family="monospace" font-size="16" fill="#818cf8" text-anchor="middle">ID: ${mediaItem.id}</text>
-  <text x="400" y="425" font-family="sans-serif" font-size="14" fill="#94a3b8" text-anchor="middle">Uploaded by ${mediaItem.uploadedBy} • ${(mediaItem.fileSize / 1024).toFixed(1)} KB</text>
-</svg>`;
-        const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-        triggerBlobDownload(blob, fileNameToSave.endsWith('.svg') ? fileNameToSave : `${fileNameToSave}.svg`);
-        showToast('success', isRtl ? 'دانلود تصویر SVG انجام شد' : 'SVG Image download completed');
-      } else {
-        // Create real PNG / JPEG binary image via HTML5 Canvas
-        const canvas = document.createElement('canvas');
-        canvas.width = 800;
-        canvas.height = 600;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Dark spatial gradient
-          const grad = ctx.createLinearGradient(0, 0, 800, 600);
-          grad.addColorStop(0, '#0f172a');
-          grad.addColorStop(0.5, '#1e1b4b');
-          grad.addColorStop(1, '#020617');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, 800, 600);
-
-          // Cyber Grid Lines
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-          ctx.lineWidth = 1;
-          for (let x = 0; x < 800; x += 40) {
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, 600);
-            ctx.stroke();
-          }
-          for (let y = 0; y < 600; y += 40) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(800, y);
-            ctx.stroke();
-          }
-
-          // Inner glowing border
-          ctx.strokeStyle = '#6366f1';
-          ctx.lineWidth = 4;
-          ctx.strokeRect(30, 30, 740, 540);
-
-          // Glowing circle behind icon
-          const radGrad = ctx.createRadialGradient(400, 220, 10, 400, 220, 100);
-          radGrad.addColorStop(0, 'rgba(99, 102, 241, 0.4)');
-          radGrad.addColorStop(1, 'rgba(99, 102, 241, 0)');
-          ctx.fillStyle = radGrad;
-          ctx.beginPath();
-          ctx.arc(400, 220, 100, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Icon text symbol
-          ctx.font = '64px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('🖼️', 400, 220);
-
-          // File Title
-          ctx.fillStyle = '#f8fafc';
-          ctx.font = 'bold 24px sans-serif';
-          ctx.fillText(mediaItem.fileName || 'Matrix Media File', 400, 340);
-
-          // ID tag
-          ctx.fillStyle = '#818cf8';
-          ctx.font = '15px monospace';
-          ctx.fillText(`ID: ${mediaItem.id}`, 400, 380);
-
-          // Uploader & size
-          ctx.fillStyle = '#94a3b8';
-          ctx.font = '14px sans-serif';
-          ctx.fillText(`Uploaded by ${mediaItem.uploadedBy} • ${(mediaItem.fileSize / 1024).toFixed(1)} KB`, 400, 415);
-
-          // Stamp badge
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-          ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.roundRect(300, 460, 200, 36, 18);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#34d399';
-          ctx.font = 'bold 12px monospace';
-          ctx.fillText('RAVEN MATRIX MEDIA', 400, 478);
-
-          const isJpeg = mime.includes('jpeg') || mime.includes('jpg') || !!name.match(/\.(jpg|jpeg)$/i);
-          const targetType = isJpeg ? 'image/jpeg' : 'image/png';
-          const ext = isJpeg ? '.jpg' : '.png';
-          const finalName = (fileNameToSave.endsWith('.jpg') || fileNameToSave.endsWith('.jpeg') || fileNameToSave.endsWith('.png'))
-            ? fileNameToSave
-            : `${fileNameToSave}${ext}`;
-
-          canvas.toBlob((blob) => {
-            if (blob) {
-              triggerBlobDownload(blob, finalName);
-              showToast('success', isRtl ? 'دانلود تصویر با موفقیت انجام شد' : 'Image download completed');
-            }
-          }, targetType, 0.95);
+  const handleDownloadMediaFile = async (mediaItem: MatrixMedia) => {
+    try {
+      showToast('info', isRtl ? 'در حال دریافت فایل از سرور...' : 'Downloading file from server...');
+      const token = localStorage.getItem('token');
+      const downloadUrl = `/api/matrix/media/download?mxc=${encodeURIComponent(mediaItem.id)}&fileName=${encodeURIComponent(mediaItem.fileName || '')}&mimeType=${encodeURIComponent(mediaItem.mimeType || '')}`;
+      
+      const response = await fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`
         }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}`);
       }
-    } else {
-      // Non-image text/document files
-      const sampleData = `[Raven Matrix Media File]\nMedia ID: ${mediaItem.id}\nFilename: ${mediaItem.fileName || 'file'}\nMIME Type: ${mediaItem.mimeType}\nFile Size: ${mediaItem.fileSize} Bytes\nUploaded By: ${mediaItem.uploadedBy}\nUploaded At: ${mediaItem.uploadedAt}`;
-      const blob = new Blob([sampleData], { type: mediaItem.mimeType || 'text/plain' });
-      triggerBlobDownload(blob, fileNameToSave.includes('.') ? fileNameToSave : `${fileNameToSave}.txt`);
-      showToast('success', isRtl ? 'دانلود فایل انجام شد' : 'Media file download completed');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      let targetName = mediaItem.fileName;
+      if (!targetName) {
+        const isImg = (mediaItem.mimeType || '').includes('image');
+        const ext = (mediaItem.mimeType || '').includes('jpeg') ? '.jpg' : isImg ? '.png' : '.bin';
+        targetName = `media_${mediaItem.id.replace(/[^a-zA-Z0-9]/g, '_')}${ext}`;
+      }
+
+      link.download = targetName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      showToast('success', isRtl ? 'دانلود فایل انجام شد' : 'Media download completed');
+    } catch (err: any) {
+      console.error('Media download error:', err);
+      showToast('error', isRtl ? 'خطا در دریافت فایل از سرور' : 'Failed to download file from server');
     }
   };
 

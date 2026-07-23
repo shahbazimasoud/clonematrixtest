@@ -1218,30 +1218,30 @@ export default function ReportingPanel({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="p-5 rounded-2xl bg-black/25 border border-white/5 space-y-4">
                     <div className="flex justify-between items-center">
-                      <div className="h-4 w-32 bg-slate-800 rounded animate-pulse relative overflow-hidden">
-                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                      <div className="h-4 w-32 bg-slate-800/40 rounded border border-white/5 relative overflow-hidden">
+                        <div className="shimmer-light-beam" />
                       </div>
-                      <div className="h-4 w-16 bg-slate-800 rounded animate-pulse relative overflow-hidden">
-                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                      <div className="h-4 w-16 bg-slate-800/40 rounded border border-white/5 relative overflow-hidden">
+                        <div className="shimmer-light-beam" />
                       </div>
                     </div>
-                    <div className="h-48 w-full bg-slate-900/50 rounded-xl relative overflow-hidden flex items-center justify-center">
-                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <div className="h-48 w-full bg-slate-900/30 rounded-xl relative overflow-hidden border border-white/5 flex items-center justify-center">
+                      <div className="shimmer-light-beam" />
                       <span className="text-xs font-mono text-slate-500 z-10">{t.loadingStream}</span>
                     </div>
                   </div>
 
                   <div className="p-5 rounded-2xl bg-black/25 border border-white/5 space-y-4">
                     <div className="flex justify-between items-center">
-                      <div className="h-4 w-32 bg-slate-800 rounded animate-pulse relative overflow-hidden">
-                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                      <div className="h-4 w-32 bg-slate-800/40 rounded border border-white/5 relative overflow-hidden">
+                        <div className="shimmer-light-beam" />
                       </div>
-                      <div className="h-4 w-20 bg-slate-800 rounded animate-pulse relative overflow-hidden">
-                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                      <div className="h-4 w-20 bg-slate-800/40 rounded border border-white/5 relative overflow-hidden">
+                        <div className="shimmer-light-beam" />
                       </div>
                     </div>
-                    <div className="h-48 w-full bg-slate-900/50 rounded-xl relative overflow-hidden flex items-center justify-center">
-                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <div className="h-48 w-full bg-slate-900/30 rounded-xl relative overflow-hidden border border-white/5 flex items-center justify-center">
+                      <div className="shimmer-light-beam" />
                       <span className="text-xs font-mono text-slate-500 z-10">{t.loadingStream}</span>
                     </div>
                   </div>

@@ -532,11 +532,32 @@
 }
 
 /* Shimmer Loading Animations */
-@keyframes shimmerWave {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+@keyframes lightSweep {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(200%) skewX(-20deg);
+  }
 }
 
 .animate-shimmer {
-  animation: shimmerWave 1.6s infinite ease-in-out;
+  animation: lightSweep 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.shimmer-light-beam {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(129, 140, 248, 0.08) 70%,
+    transparent 100%
+  );
+  filter: blur(4px);
+  animation: lightSweep 2.2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
