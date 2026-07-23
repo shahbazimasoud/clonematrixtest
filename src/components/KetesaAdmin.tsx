@@ -2453,13 +2453,13 @@ export default function KetesaAdmin({
   const handleDownloadMediaFile = async (mediaItem: MatrixMedia) => {
     try {
       showToast('info', isRtl ? 'در حال دریافت فایل از سرور...' : 'Downloading file from server...');
-      const token = localStorage.getItem('token');
-      const downloadUrl = `/api/matrix/media/download?mxc=${encodeURIComponent(mediaItem.id)}&fileName=${encodeURIComponent(mediaItem.fileName || '')}&mimeType=${encodeURIComponent(mediaItem.mimeType || '')}`;
+      const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
+      const downloadUrl = `/api/matrix/media/download?mxc=${encodeURIComponent(mediaItem.id)}&fileName=${encodeURIComponent(mediaItem.fileName || '')}&mimeType=${encodeURIComponent(mediaItem.mimeType || '')}&token=${encodeURIComponent(token)}`;
       
       const response = await fetch(downloadUrl, {
-        headers: {
+        headers: token ? {
           Authorization: `Bearer ${token}`
-        }
+        } : {}
       });
 
       if (!response.ok) {
