@@ -3844,6 +3844,13 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
     roomsList = db.matrixRooms || [];
   }
 
+  // Sort rooms alphabetically by name
+  roomsList.sort((a, b) => {
+    const nameA = (a.name || a.alias || a.id || "").toLowerCase();
+    const nameB = (b.name || b.alias || b.id || "").toLowerCase();
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
   res.json(roomsList);
 });
 
@@ -4365,15 +4372,22 @@ app.get("/api/matrix/media", authenticateToken, async (req, res) => {
     `);
 
     if (dbMedia && dbMedia.length > 0) {
-      mediaList = dbMedia.map((m: any) => ({
-        id: `mxc://localhost/${m.media_id}`,
-        fileName: m.upload_name || m.media_id,
-        fileSize: parseInt(m.media_length) || 0,
-        mimeType: m.media_type || "application/octet-stream",
-        uploadedBy: m.user_id || "unknown",
-        uploadedAt: new Date(parseInt(m.created_ts) || Date.now()).toISOString(),
-        isCached: false
-      }));
+      mediaList = dbMedia.map((m: any) => {
+        const cleanId = m.media_id;
+        const sub1 = cleanId.length >= 2 ? cleanId.slice(0, 2) : "00";
+        const sub2 = cleanId.length >= 4 ? cleanId.slice(2, 4) : "00";
+        const sPath = `/var/lib/matrix-synapse/media/local_content/${sub1}/${sub2}/${cleanId}`;
+        return {
+          id: `mxc://localhost/${m.media_id}`,
+          fileName: m.upload_name || m.media_id,
+          fileSize: parseInt(m.media_length) || 0,
+          mimeType: m.media_type || "application/octet-stream",
+          uploadedBy: m.user_id || "unknown",
+          uploadedAt: new Date(parseInt(m.created_ts) || Date.now()).toISOString(),
+          isCached: false,
+          serverPath: sPath
+        };
+      });
       fetchedFromRemote = true;
     }
   } catch (err: any) {
@@ -4382,7 +4396,23 @@ app.get("/api/matrix/media", authenticateToken, async (req, res) => {
 
   if (!fetchedFromRemote || mediaList.length === 0) {
     const db = readDb();
-    mediaList = db.matrixMedia || [];
+    mediaList = (db.matrixMedia || []).map((m: any) => {
+      let sPath = m.serverPath || m.filePath;
+      if (!sPath) {
+        const cleanId = (m.id || "").replace("mxc://", "").split("/").pop() || "unknown";
+        const sub1 = cleanId.length >= 2 ? cleanId.slice(0, 2) : "00";
+        const sub2 = cleanId.length >= 4 ? cleanId.slice(2, 4) : "00";
+        if (m.isCached) {
+          sPath = `/var/lib/matrix-synapse/media/remote_content/${sub1}/${sub2}/${cleanId}`;
+        } else {
+          sPath = `/var/lib/matrix-synapse/media/local_content/${sub1}/${sub2}/${cleanId}`;
+        }
+      }
+      return {
+        ...m,
+        serverPath: sPath
+      };
+    });
   }
 
   res.json(mediaList);

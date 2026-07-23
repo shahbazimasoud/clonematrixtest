@@ -103,6 +103,8 @@ export interface MatrixMedia {
   uploadedBy: string;
   uploadedAt: string;
   isCached: boolean;
+  filePath?: string;
+  serverPath?: string;
 }
 
 export interface RegistrationToken {

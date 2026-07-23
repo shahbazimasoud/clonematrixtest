@@ -59,7 +59,8 @@ import {
   FileCode,
   File,
   Upload,
-  Paperclip
+  Paperclip,
+  Copy
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -2411,7 +2412,47 @@ export default function KetesaAdmin({
     if (roomFilter === 'federated') return r.isFederated;
     if (roomFilter === 'local') return !r.isFederated;
     return true;
+  }).sort((a, b) => {
+    const getRoomDisplayName = (r: MatrixRoom) => {
+      if (r.name && !r.name.startsWith('!')) return r.name;
+      if (r.alias && !r.alias.startsWith('!')) return r.alias;
+      return r.id;
+    };
+    const nameA = getRoomDisplayName(a).toLowerCase();
+    const nameB = getRoomDisplayName(b).toLowerCase();
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
   });
+
+  const getMediaServerPath = (m: MatrixMedia) => {
+    if (m.serverPath) return m.serverPath;
+    if (m.filePath) return m.filePath;
+    const cleanId = (m.id || "").replace("mxc://", "").split("/").pop() || "unknown";
+    const sub1 = cleanId.length >= 2 ? cleanId.slice(0, 2) : "00";
+    const sub2 = cleanId.length >= 4 ? cleanId.slice(2, 4) : "00";
+    if (m.isCached) {
+      return `/var/lib/matrix-synapse/media/remote_content/${sub1}/${sub2}/${cleanId}`;
+    }
+    return `/var/lib/matrix-synapse/media/local_content/${sub1}/${sub2}/${cleanId}`;
+  };
+
+  const getMediaFormatBadge = (mimeType?: string, fileName?: string) => {
+    const mime = (mimeType || 'application/octet-stream').toLowerCase();
+    const name = (fileName || '').toLowerCase();
+    const ext = name.includes('.') ? name.split('.').pop()?.toUpperCase() || '' : '';
+
+    if (mime.includes('png')) return { badge: 'PNG Image', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' };
+    if (mime.includes('jpeg') || mime.includes('jpg')) return { badge: 'JPEG Image', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' };
+    if (mime.includes('gif')) return { badge: 'GIF Image', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' };
+    if (mime.includes('webp')) return { badge: 'WEBP Image', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' };
+    if (mime.includes('svg')) return { badge: 'SVG Vector', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' };
+    if (mime.includes('pdf')) return { badge: 'PDF Doc', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' };
+    if (mime.includes('video') || mime.includes('mp4')) return { badge: 'MP4 Video', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
+    if (mime.includes('audio') || mime.includes('mp3')) return { badge: 'Audio Clip', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' };
+    if (mime.includes('zip') || mime.includes('compressed')) return { badge: 'ZIP Archive', color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' };
+    if (mime.includes('json') || mime.includes('text')) return { badge: 'Text / Code', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' };
+
+    return { badge: ext ? `${ext} File` : 'Binary Data', color: 'bg-slate-500/10 text-slate-300 border-slate-500/20' };
+  };
 
   const getMediaFormatIcon = (mimeType?: string, fileName?: string) => {
     const mime = (mimeType || '').toLowerCase();
@@ -2535,10 +2576,12 @@ export default function KetesaAdmin({
   };
 
   const filteredMedia = media.filter(m => {
+    const sPath = getMediaServerPath(m);
     const matchesSearch = (m.fileName && m.fileName.toLowerCase().includes(mediaSearch.toLowerCase())) ||
                           m.id.toLowerCase().includes(mediaSearch.toLowerCase()) ||
                           m.uploadedBy.toLowerCase().includes(mediaSearch.toLowerCase()) ||
-                          m.mimeType.toLowerCase().includes(mediaSearch.toLowerCase());
+                          m.mimeType.toLowerCase().includes(mediaSearch.toLowerCase()) ||
+                          sPath.toLowerCase().includes(mediaSearch.toLowerCase());
     if (!matchesSearch) return false;
 
     if (mediaOriginFilter === 'local' && m.isCached) return false;
@@ -3514,77 +3557,110 @@ export default function KetesaAdmin({
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-white/5 bg-black/30 text-gray-400 text-xs uppercase tracking-wider font-mono">
-                        <th className="py-3 px-4 text-center w-14">#</th>
+                        <th className="py-3 px-4 text-center w-12">#</th>
                         <th className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>{t.fileName}</th>
+                        <th className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>{isRtl ? 'فرمت فایل (MIME)' : 'Format / MIME'}</th>
+                        <th className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>{isRtl ? 'آدرس فایل روی سرور' : 'Server File Path'}</th>
                         <th className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>MXC ID</th>
                         <th className="py-3 px-4 text-center">{t.fileSize}</th>
                         <th className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>{t.uploadedBy}</th>
                         <th className="py-3 px-4 text-center">{t.origin}</th>
-                        <th className="py-3 px-4 text-center w-32">Actions</th>
+                        <th className="py-3 px-4 text-center w-28">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 text-sm font-medium">
                       {filteredMedia.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-10 text-center text-gray-500 font-mono">
+                          <td colSpan={9} className="py-10 text-center text-gray-500 font-mono">
                             No stored media files matching search parameters.
                           </td>
                         </tr>
                       ) : (
-                        filteredMedia.map((m, i) => (
-                          <tr key={m.id} className="hover:bg-white/5 transition-all duration-200">
-                            <td className="py-3 px-4 text-center font-mono text-gray-500">{i + 1}</td>
-                            <td className={`py-3 px-4 text-gray-200 ${isRtl ? 'text-right' : 'text-left'}`}>
-                              <div className="flex items-center gap-2">
-                                {getMediaFormatIcon(m.mimeType, m.fileName)}
-                                <div className="min-w-0">
-                                  <span className="block font-sans max-w-[180px] truncate text-xs font-semibold text-gray-200" title={m.fileName || 'unnamed'}>
-                                    {m.fileName || <span className="italic text-gray-500 text-xs">unnamed</span>}
-                                  </span>
-                                  <span className="block text-[10px] text-gray-500 font-mono truncate">{m.mimeType}</span>
+                        filteredMedia.map((m, i) => {
+                          const sPath = getMediaServerPath(m);
+                          const fmtBadge = getMediaFormatBadge(m.mimeType, m.fileName);
+
+                          return (
+                            <tr key={m.id} className="hover:bg-white/5 transition-all duration-200">
+                              <td className="py-3 px-4 text-center font-mono text-gray-500">{i + 1}</td>
+                              <td className={`py-3 px-4 text-gray-200 ${isRtl ? 'text-right' : 'text-left'}`}>
+                                <div className="flex items-center gap-2">
+                                  {getMediaFormatIcon(m.mimeType, m.fileName)}
+                                  <div className="min-w-0">
+                                    <span className="block font-sans max-w-[180px] truncate text-xs font-semibold text-gray-200" title={m.fileName || 'unnamed'}>
+                                      {m.fileName || <span className="italic text-gray-500 text-xs">unnamed</span>}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className={`py-3 px-4 text-purple-400 font-mono select-all text-xs max-w-[160px] truncate ${isRtl ? 'text-right' : 'text-left'}`} title={m.id}>
-                              {m.id}
-                            </td>
-                            <td className="py-3 px-4 text-center font-mono text-gray-300 text-xs">
-                              {(m.fileSize / 1024 / 1024).toFixed(2)} MB
-                            </td>
-                            <td className={`py-3 px-4 text-gray-400 font-mono truncate text-xs ${isRtl ? 'text-right' : 'text-left'}`} title={m.uploadedBy}>
-                              {m.uploadedBy}
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${
-                                m.isCached 
-                                  ? 'bg-orange-500/5 text-orange-400 border border-orange-500/10' 
-                                  : 'bg-indigo-500/5 text-indigo-400 border border-indigo-500/10'
-                              }`}>
-                                {m.isCached ? t.originRemote : t.originLocal}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
-                                <button
-                                  onClick={() => handleDownloadMediaFile(m)}
-                                  className="p-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 rounded transition-all duration-200"
-                                  title={isRtl ? 'دانلود فایل' : 'Download file'}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </button>
-                                {hasWriteAccess && (
+                              </td>
+                              <td className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>
+                                <div className="flex flex-col items-start gap-1">
+                                  <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${fmtBadge.color}`}>
+                                    {fmtBadge.badge}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 font-mono select-all truncate max-w-[140px]" title={m.mimeType || 'application/octet-stream'}>
+                                    {m.mimeType || 'application/octet-stream'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className={`py-3 px-4 max-w-[240px] ${isRtl ? 'text-right' : 'text-left'}`}>
+                                <div className="flex items-center gap-1.5 group/path">
+                                  <span className="text-[10px] font-mono text-amber-300/90 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20 truncate select-all dir-ltr text-left max-w-[200px]" title={sPath}>
+                                    {sPath}
+                                  </span>
                                   <button
-                                    onClick={() => handlePurgeMediaFile(m.id)}
-                                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded transition-all duration-200"
-                                    title={t.purgeFileBtn}
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(sPath);
+                                      showToast('success', isRtl ? 'آدرس فایل روی سرور کپی شد' : 'Server path copied to clipboard');
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-amber-300 hover:bg-amber-500/20 rounded transition-colors opacity-0 group-hover/path:opacity-100 flex-shrink-0"
+                                    title={isRtl ? 'کپی آدرس سرور' : 'Copy Server Path'}
                                   >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Copy className="h-3 w-3" />
                                   </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                                </div>
+                              </td>
+                              <td className={`py-3 px-4 text-purple-400 font-mono select-all text-xs max-w-[140px] truncate ${isRtl ? 'text-right' : 'text-left'}`} title={m.id}>
+                                {m.id}
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono text-gray-300 text-xs">
+                                {(m.fileSize / 1024 / 1024).toFixed(2)} MB
+                              </td>
+                              <td className={`py-3 px-4 text-gray-400 font-mono truncate text-xs ${isRtl ? 'text-right' : 'text-left'}`} title={m.uploadedBy}>
+                                {m.uploadedBy}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${
+                                  m.isCached 
+                                    ? 'bg-orange-500/5 text-orange-400 border border-orange-500/10' 
+                                    : 'bg-indigo-500/5 text-indigo-400 border border-indigo-500/10'
+                                }`}>
+                                  {m.isCached ? t.originRemote : t.originLocal}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => handleDownloadMediaFile(m)}
+                                    className="p-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 rounded transition-all duration-200"
+                                    title={isRtl ? 'دانلود فایل' : 'Download file'}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </button>
+                                  {hasWriteAccess && (
+                                    <button
+                                      onClick={() => handlePurgeMediaFile(m.id)}
+                                      className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded transition-all duration-200"
+                                      title={t.purgeFileBtn}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
