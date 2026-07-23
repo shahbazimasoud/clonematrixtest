@@ -329,7 +329,7 @@ export default function ConnectionManager({
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, { success: boolean; ssh: boolean; db: boolean; error?: string }>>({});
+  const [testResults, setTestResults] = useState<Record<string, { success: boolean; ssh: boolean; db: boolean; api?: boolean; error?: string }>>({});
 
   // Form State
   const [name, setName] = useState('');
@@ -539,16 +539,19 @@ export default function ConnectionManager({
       setTestResults(prev => ({
         ...prev,
         [profile.id]: {
-          success: data.ssh && data.db,
+          success: data.ssh && data.db && data.api,
           ssh: data.ssh,
           db: data.db,
-          error: data.dbError
+          api: data.api,
+          error: data.dbError || data.apiError
         }
       }));
       setTestingId(null);
-      if (data.ssh && data.db) {
-        showToast('success', `SSH and Database connection to ${profile.name} are fully healthy!`);
-      } else if (data.ssh) {
+      if (data.ssh && data.db && data.api) {
+        showToast('success', `SSH, Database, and Matrix API connection to ${profile.name} are fully healthy!`);
+      } else if (data.ssh && data.db && !data.api) {
+        showToast('error', `SSH and Database are active, but Matrix API test failed: ${data.apiError || 'API unreachable'}`);
+      } else if (data.ssh && !data.db) {
         showToast('error', `SSH is active, but Database connection failed: ${data.dbError}`);
       } else {
         showToast('error', `Failed to connect over SSH to ${profile.name}`);
@@ -561,6 +564,7 @@ export default function ConnectionManager({
           success: false,
           ssh: false,
           db: false,
+          api: false,
           error: err.message
         }
       }));
@@ -1111,6 +1115,12 @@ export default function ConnectionManager({
                             <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} flex items-center gap-0.5`}><CheckCircle2 className="w-3 h-3" /> Postgres</span>
                           ) : (
                             <span className={`${isLightMode ? 'text-rose-600' : 'text-rose-400'} flex items-center gap-0.5`}><AlertCircle className="w-3 h-3" /> Postgres</span>
+                          )}
+                          <span className={isLightMode ? 'text-slate-300' : 'text-slate-500'}>|</span>
+                          {testResult.api ? (
+                            <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} flex items-center gap-0.5`}><CheckCircle2 className="w-3 h-3" /> Matrix API</span>
+                          ) : (
+                            <span className={`${isLightMode ? 'text-rose-600' : 'text-rose-400'} flex items-center gap-0.5`}><AlertCircle className="w-3 h-3" /> Matrix API</span>
                           )}
                         </div>
                       </div>

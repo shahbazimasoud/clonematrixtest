@@ -1437,7 +1437,31 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
     const db = readDb();
     const existing = (db.connections || []).find((c: any) => c.id === profile.id || c.host === profile.host);
     if (existing && existing.status === "online" && existing.lastSeen && (Date.now() - new Date(existing.lastSeen).getTime() < 45000)) {
-      return res.json({ success: true, agent: true, status: "online", systemInfo: existing.systemInfo });
+      let apiOk = false;
+      let apiErrMsg = "";
+      try {
+        const port = profile.apiPort || 8008;
+        const agentCmd = `curl -s http://127.0.0.1:${port}/_matrix/client/versions`;
+        const agentOut = await executeRemoteAgentTask(existing.id, "execute_command", { command: agentCmd });
+        const parsed = cleanAndParseJSON(agentOut, null);
+        if (parsed && (parsed.versions || parsed.unstable_features)) {
+          apiOk = true;
+        } else {
+          apiErrMsg = `Matrix API endpoint unreachable on port ${port}`;
+        }
+      } catch (e: any) {
+        apiErrMsg = e.message;
+      }
+      return res.json({
+        success: true,
+        agent: true,
+        status: "online",
+        systemInfo: existing.systemInfo,
+        ssh: true,
+        db: true,
+        api: apiOk,
+        apiError: apiErrMsg || undefined
+      });
     } else {
       return res.status(400).json({ error: "Agent is offline, pending, or not yet registered." });
     }
@@ -1451,16 +1475,77 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
     }
     
     // 2. Test PostgreSQL Connection over SSH
+    let dbOk = false;
+    let dbErrMsg = "";
     try {
       const dbResult = await queryRemotePostgres(profile, "SELECT 1 as connected");
       if (dbResult && dbResult[0] && dbResult[0].connected === 1) {
-        return res.json({ success: true, ssh: true, db: true });
+        dbOk = true;
       } else {
-        return res.json({ success: true, ssh: true, db: false, dbError: "SSH connected, but failed to connect to Postgres" });
+        dbErrMsg = "SSH connected, but failed to connect to Postgres";
       }
     } catch (dbErr: any) {
-      return res.json({ success: true, ssh: true, db: false, dbError: dbErr.message });
+      dbErrMsg = dbErr.message;
     }
+
+    // 3. Test Matrix / Synapse API over SSH
+    let apiOk = false;
+    let apiErrMsg = "";
+    try {
+      const port = profile.apiPort || 8008;
+      const rawBase = profile.apiBaseUrl || `http://127.0.0.1:${port}`;
+      const baseUrl = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+      const sudoPrefix = profile.username === "root" ? "" : "sudo ";
+
+      let tokenToTest = profile.adminAccessToken;
+      if (!tokenToTest && profile.adminUsername && profile.adminPassword) {
+        const loginCmd = `curl -s -X POST -H "Content-Type: application/json" -d '{"type":"m.login.password","identifier":{"type":"m.id.user","user":"${profile.adminUsername.replace(/'/g, "'\\''")}"},"password":"${profile.adminPassword.replace(/'/g, "'\\''")}"}' "${baseUrl}/_matrix/client/v3/login"`;
+        const loginOut = await executeSSHCommand(profile, `${sudoPrefix}${loginCmd}`);
+        const loginObj = cleanAndParseJSON(loginOut, null);
+        if (loginObj && loginObj.access_token) {
+          tokenToTest = loginObj.access_token;
+        }
+      }
+
+      if (tokenToTest) {
+        const adminVerCmd = `curl -s -H "Authorization: Bearer ${tokenToTest}" "${baseUrl}/_synapse/admin/v1/server_version"`;
+        const adminVerOut = await executeSSHCommand(profile, `${sudoPrefix}${adminVerCmd}`);
+        const parsedAdmin = cleanAndParseJSON(adminVerOut, null);
+        if (parsedAdmin && parsedAdmin.server_version) {
+          apiOk = true;
+        }
+      }
+
+      if (!apiOk) {
+        const versionCmd = `curl -s "${baseUrl}/_matrix/client/versions"`;
+        const versionRes = await executeSSHCommand(profile, `${sudoPrefix}${versionCmd}`);
+        const parsedVersions = cleanAndParseJSON(versionRes, null);
+
+        if (parsedVersions && (parsedVersions.versions || parsedVersions.unstable_features)) {
+          apiOk = true;
+        } else {
+          const versionCmd2 = `curl -s "http://127.0.0.1:${port}/_matrix/client/versions"`;
+          const versionRes2 = await executeSSHCommand(profile, `${sudoPrefix}${versionCmd2}`);
+          const parsedVersions2 = cleanAndParseJSON(versionRes2, null);
+          if (parsedVersions2 && (parsedVersions2.versions || parsedVersions2.unstable_features)) {
+            apiOk = true;
+          } else {
+            apiErrMsg = `Matrix API endpoint unreachable on ${baseUrl} (Port ${port})`;
+          }
+        }
+      }
+    } catch (apiErr: any) {
+      apiErrMsg = apiErr.message;
+    }
+
+    return res.json({
+      success: true,
+      ssh: true,
+      db: dbOk,
+      dbError: dbErrMsg || undefined,
+      api: apiOk,
+      apiError: apiErrMsg || undefined
+    });
   } catch (err: any) {
     res.status(400).json({ error: `SSH Connection Failed: ${err.message}` });
   }
