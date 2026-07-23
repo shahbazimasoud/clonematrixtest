@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import crowAudioUrl from '../assets/crow-caw.mp3';
+
+const crowAudioUrl = '/crow-caw.mp3';
 
 interface RavenLogoProps {
   className?: string;

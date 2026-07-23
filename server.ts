@@ -3504,6 +3504,7 @@ app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["
 app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res) => {
   const { roomId } = req.params;
 
+  let pgMessages: any[] = [];
   // 1. Try querying Postgres for real chat history if available
   try {
     const rows = await queryPostgres(`
@@ -3517,14 +3518,21 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
     `, [roomId]);
     
     if (rows && rows.length > 0) {
-      // Map rows from Postgres (reverse them so they are in chronological order)
-      const messages = rows.reverse().map((row: any) => {
+      pgMessages = rows.reverse().map((row: any) => {
         let contentText = "";
         let msgType = "m.text";
+        let mxcUri = "";
+        let fileName = "";
+        let fileSize = 0;
+        let mimeType = "";
         try {
           const parsed = typeof row.json === 'string' ? JSON.parse(row.json) : row.json;
           contentText = parsed?.content?.body || "";
           msgType = parsed?.content?.msgtype || "m.text";
+          mxcUri = parsed?.content?.url || "";
+          fileName = parsed?.content?.body || "";
+          fileSize = parsed?.content?.info?.size || 0;
+          mimeType = parsed?.content?.info?.mimetype || "";
         } catch (e) {
           contentText = "Message content undecodable";
         }
@@ -3535,20 +3543,23 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
           senderDisplayName: row.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
           content: contentText,
           timestamp: new Date(parseInt(row.origin_server_ts)).toISOString(),
-          type: msgType
+          type: msgType,
+          mxc: mxcUri,
+          fileName: fileName,
+          fileSize: fileSize,
+          mimeType: mimeType
         };
       });
-      return res.json(messages);
     }
   } catch (err: any) {
     console.warn("Could not fetch messages from Postgres, falling back to local/mock:", err.message);
   }
 
-  // 2. Fall back to local DB
+  // 2. Fetch local DB room messages
   const db = readDb();
-  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
-  if (!room) {
-    // If we have an active connection but room is not in local mock DB, return empty list instead of 404
+  let room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+
+  if (!room && pgMessages.length === 0) {
     const activeConn = getActiveConnection();
     if (activeConn && activeConn.id !== "local") {
       return res.json([]);
@@ -3556,9 +3567,8 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
     return res.status(404).json({ error: "Room not found" });
   }
 
-  // If no messages array exists, populate with realistic defaults
-  if (!room.messages) {
-    const isPublic = room.isPublic;
+  // Populate mock default messages if room exists locally but has no messages array
+  if (room && !room.messages) {
     const domain = roomId.split(":")[1] || "matrix.company.local";
     room.messages = [
       { id: "msg-1", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "سلام به همگی، خوش آمدید به سرور ماتریکس ما. لطفاً همگی در این کانال حضور فعال داشته باشید.", timestamp: new Date(Date.now() - 3600000 * 24).toISOString(), type: "m.text" },
@@ -3568,21 +3578,21 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
       { id: "msg-5", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "I noticed that. The integration with LDAP AD works seamlessly as well.", timestamp: new Date(Date.now() - 3600000 * 20.8).toISOString(), type: "m.text" },
       { id: "msg-6", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "بله، همگام‌سازی کاربرها به صورت اتوماتیک انجام میشه.", timestamp: new Date(Date.now() - 3600000 * 18).toISOString(), type: "m.text" }
     ];
-
-    if (roomId.includes("room2")) {
-      room.messages = [
-        { id: "sec-1", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "سلام تیم امنیت. ممیزی دوره‌ای کدهای TLS رو شروع کردیم. لاگ‌های سرور سیناپس رو بررسی کنید.", timestamp: new Date(Date.now() - 3600000 * 6).toISOString(), type: "m.text" },
-        { id: "sec-2", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "I audited the nginx-proxy logs. All unauthorized endpoints are correctly blocked via rate limits.", timestamp: new Date(Date.now() - 3600000 * 5).toISOString(), type: "m.text" },
-        { id: "sec-3", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "We should restrict the API registrations with token-only access to prevent bot spamming.", timestamp: new Date(Date.now() - 3600000 * 4.8).toISOString(), type: "m.text" },
-        { id: "sec-4", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "موافقم آلیس. از بخش توکن‌های ثبت‌نام پنل، توکن‌های اختصاصی با محدودیت استفاده بساز تا بفرستیم برای افراد جدید.", timestamp: new Date(Date.now() - 3600000 * 4).toISOString(), type: "m.text" },
-        { id: "sec-5", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "Done. I created three tokens and enabled LDAP authentication fallback. Safe and sound.", timestamp: new Date(Date.now() - 3600000 * 3.5).toISOString(), type: "m.text" }
-      ];
-    }
-
     writeDb(db);
   }
 
-  res.json(room.messages);
+  const localMessages = room ? (room.messages || []) : [];
+
+  // Merge pgMessages and localMessages cleanly without duplicates
+  const msgMap = new Map();
+  pgMessages.forEach((m: any) => msgMap.set(m.id, m));
+  localMessages.forEach((m: any) => msgMap.set(m.id, m));
+
+  const allMessages = Array.from(msgMap.values()).sort((a: any, b: any) => {
+    return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+  });
+
+  res.json(allMessages);
 });
 
 // Send message to room
@@ -3592,15 +3602,23 @@ app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, (req, res
   if (!content) return res.status(400).json({ error: "Content is required" });
 
   const db = readDb();
-  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
-  if (!room) return res.status(404).json({ error: "Room not found" });
+  if (!db.matrixRooms) db.matrixRooms = [];
+  let room = db.matrixRooms.find((r: any) => r.id === roomId);
+  if (!room) {
+    room = {
+      id: roomId,
+      name: roomId,
+      messages: []
+    };
+    db.matrixRooms.unshift(room);
+  }
 
   if (!room.messages) room.messages = [];
 
   const newMessage = {
     id: "msg-" + Date.now(),
-    sender: sender || `@${req.user.username}:${roomId.split(":")[1] || "matrix.company.local"}`,
-    senderDisplayName: senderDisplayName || req.user.username,
+    sender: sender || `@${req.user.username || "admin"}:${roomId.split(":")[1] || "localhost"}`,
+    senderDisplayName: senderDisplayName || req.user.username || "Admin",
     content,
     timestamp: new Date().toISOString(),
     type: "m.text"
@@ -3735,25 +3753,29 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   let roomsList: any[] = [];
   let fetchedFromRemote = false;
 
+  const db = readDb();
+  const localRooms = db.matrixRooms || [];
+
   // 1. Try Synapse Admin API
   try {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
     if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms) && apiRes.rooms.length > 0) {
-      const db = readDb();
       roomsList = apiRes.rooms.map((r: any) => {
-        // Merge with local DB configurations like AD groups
-        const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === r.room_id);
+        const localRoom = localRooms.find((lr: any) => lr.id === r.room_id);
         const adGroups = localRoom ? (localRoom.adGroups || []) : [];
+        const nameVal = (r.name && r.name !== r.room_id ? r.name : "") || r.canonical_alias || (localRoom ? (localRoom.name || localRoom.alias) : "") || r.room_id;
+        const aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
+        const mCount = parseInt(r.joined_members) || (localRoom ? (localRoom.membersCount || (localRoom.joinedMembers ? localRoom.joinedMembers.length : 0)) : 0) || 1;
 
         return {
           id: r.room_id,
-          name: r.name || r.canonical_alias || r.room_id,
-          alias: r.canonical_alias || "",
-          topic: r.topic || "",
-          creator: r.creator || "",
-          membersCount: r.joined_members || 0,
-          joinedMembers: [], // empty initially, loaded on demand
-          bannedMembers: [], // empty initially, loaded on demand
+          name: nameVal,
+          alias: aliasVal,
+          topic: r.topic || (localRoom ? localRoom.topic : "") || "",
+          creator: r.creator || (localRoom ? localRoom.creator : "") || "",
+          membersCount: mCount,
+          joinedMembers: localRoom ? (localRoom.joinedMembers || []) : [],
+          bannedMembers: localRoom ? (localRoom.bannedMembers || []) : [],
           adGroups,
           version: r.version || "1",
           isFederated: r.federatable !== false,
@@ -3776,8 +3798,8 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
         dbRooms = await queryPostgres(`
           SELECT 
             r.room_id,
-            COALESCE(rss.name, (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), r.room_id) as name,
-            COALESCE(rss.canonical_alias, (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), '') as canonical_alias,
+            COALESCE(NULLIF(rss.name, ''), (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), r.room_id) as name,
+            COALESCE(NULLIF(rss.canonical_alias, ''), (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), '') as canonical_alias,
             COALESCE(rss.topic, '') as topic,
             COALESCE(rss.creator, r.creator, '') as creator,
             COALESCE(rss.joined_members, (SELECT COUNT(*) FROM room_memberships rm WHERE rm.room_id = r.room_id AND rm.membership = 'join'), 0) as joined_members,
@@ -3807,21 +3829,23 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
       }
 
       if (dbRooms && dbRooms.length > 0) {
-        const db = readDb();
         roomsList = dbRooms.map((r: any) => {
           const roomId = r.room_id;
-          const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
+          const localRoom = localRooms.find((lr: any) => lr.id === roomId);
           const adGroups = localRoom ? (localRoom.adGroups || []) : [];
+          const nameVal = (r.name && r.name !== roomId ? r.name : "") || r.canonical_alias || (localRoom ? (localRoom.name || localRoom.alias) : "") || roomId;
+          const aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
+          const mCount = parseInt(r.joined_members) || (localRoom ? (localRoom.membersCount || (localRoom.joinedMembers ? localRoom.joinedMembers.length : 0)) : 0) || 1;
 
           return {
             id: roomId,
-            name: r.name || roomId,
-            alias: r.canonical_alias || "",
-            topic: r.topic || "",
-            creator: r.creator || "",
-            membersCount: parseInt(r.joined_members) || 0,
-            joinedMembers: [], // empty initially
-            bannedMembers: [], // empty initially
+            name: nameVal,
+            alias: aliasVal,
+            topic: r.topic || (localRoom ? localRoom.topic : "") || "",
+            creator: r.creator || (localRoom ? localRoom.creator : "") || "",
+            membersCount: mCount,
+            joinedMembers: localRoom ? (localRoom.joinedMembers || []) : [],
+            bannedMembers: localRoom ? (localRoom.bannedMembers || []) : [],
             adGroups,
             version: r.version || "1",
             isFederated: r.is_federatable !== false,
@@ -3837,11 +3861,17 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
     }
   }
 
-  // 3. Fallback to local DB from db.json if everything else failed or returned 0 rooms
+  // 3. Fallback or merge with local DB rooms
   if (!fetchedFromRemote || roomsList.length === 0) {
     console.log("Both Synapse Admin API and Postgres returned 0 rooms or failed. Falling back to matrixRooms database.");
-    const db = readDb();
-    roomsList = db.matrixRooms || [];
+    roomsList = localRooms;
+  } else {
+    // Merge any local-only rooms that are not present in remote list
+    localRooms.forEach((lr: any) => {
+      if (!roomsList.some((r: any) => r.id === lr.id)) {
+        roomsList.push(lr);
+      }
+    });
   }
 
   // Sort rooms alphabetically by name
@@ -4615,23 +4645,29 @@ app.post("/api/matrix/media/upload", authenticateToken, express.json({ limit: "5
 
     if (roomId) {
       if (!db.matrixRooms) db.matrixRooms = [];
-      const room = db.matrixRooms.find((r: any) => r.id === roomId);
-      if (room) {
-        if (!room.messages) room.messages = [];
-        const isImg = cleanMimeType.startsWith("image/");
-        room.messages.push({
-          id: "msg-" + Date.now(),
-          sender: req.user?.username ? `@${req.user.username}:localhost` : "@admin:localhost",
-          senderDisplayName: req.user?.username || "Admin",
-          content: `📎 Attached file: ${cleanFileName} (${(buffer.length / 1024).toFixed(1)} KB)`,
-          timestamp: new Date().toISOString(),
-          type: isImg ? "m.image" : "m.file",
-          mxc: mxcUri,
-          fileName: cleanFileName,
-          fileSize: buffer.length,
-          mimeType: cleanMimeType
-        });
+      let room = db.matrixRooms.find((r: any) => r.id === roomId);
+      if (!room) {
+        room = {
+          id: roomId,
+          name: roomId,
+          messages: []
+        };
+        db.matrixRooms.unshift(room);
       }
+      if (!room.messages) room.messages = [];
+      const isImg = cleanMimeType.startsWith("image/");
+      room.messages.push({
+        id: "msg-" + Date.now(),
+        sender: req.user?.username ? `@${req.user.username}:${roomId.split(":")[1] || "localhost"}` : `@admin:${roomId.split(":")[1] || "localhost"}`,
+        senderDisplayName: req.user?.username || "Admin",
+        content: `📎 Attached file: ${cleanFileName} (${(buffer.length / 1024).toFixed(1)} KB)`,
+        timestamp: new Date().toISOString(),
+        type: isImg ? "m.image" : "m.file",
+        mxc: mxcUri,
+        fileName: cleanFileName,
+        fileSize: buffer.length,
+        mimeType: cleanMimeType
+      });
     }
 
     writeDb(db);

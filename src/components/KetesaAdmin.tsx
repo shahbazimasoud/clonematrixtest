@@ -60,7 +60,8 @@ import {
   File,
   Upload,
   Paperclip,
-  Copy
+  Copy,
+  Send
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -1494,23 +1495,63 @@ export default function KetesaAdmin({
     }
   };
 
+  const fetchRoomChatMessages = async (roomId: string) => {
+    try {
+      const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
+      const res = await fetch(`/api/matrix/rooms/${encodeURIComponent(roomId)}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setRoomChatMessages(await res.json());
+      }
+    } catch (e) {
+      console.error("Error fetching room messages:", e);
+    }
+  };
+
   const handleOpenRoomChat = async (roomId: string, roomName: string) => {
     setIsChatLoading(true);
     setActiveRoomChatId(roomId);
     setActiveRoomChatName(roomName);
     try {
-      const res = await fetch(`/api/matrix/rooms/${encodeURIComponent(roomId)}/messages`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      if (res.ok) {
-        setRoomChatMessages(await res.json());
-      } else {
-        showToast('error', t.errorAction);
-      }
+      await fetchRoomChatMessages(roomId);
     } catch (e) {
       showToast('error', t.errorAction);
     } finally {
       setIsChatLoading(false);
+    }
+  };
+
+  const handleSendRoomChatMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newRoomChatMessageText.trim() || !activeRoomChatId) return;
+
+    try {
+      const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
+      const domain = activeRoomChatId.split(':')[1] || 'localhost';
+      const res = await fetch(`/api/matrix/rooms/${encodeURIComponent(activeRoomChatId)}/messages/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          content: newRoomChatMessageText.trim(),
+          sender: `@admin:${domain}`,
+          senderDisplayName: 'Admin'
+        })
+      });
+
+      if (res.ok) {
+        setNewRoomChatMessageText('');
+        showToast('success', isRtl ? 'پیام ارسال شد' : 'Message sent');
+        await fetchRoomChatMessages(activeRoomChatId);
+      } else {
+        showToast('error', isRtl ? 'خطا در ارسال پیام' : 'Failed to send message');
+      }
+    } catch (err) {
+      console.error("Send message error:", err);
+      showToast('error', isRtl ? 'خطا در ارسال پیام' : 'Failed to send message');
     }
   };
 
@@ -2493,9 +2534,18 @@ export default function KetesaAdmin({
     window.URL.revokeObjectURL(url);
   };
 
+  const fetchMediaData = async () => {
+    try {
+      const mediaRes = await fetch('/api/matrix/media', { headers: { 'Authorization': `Bearer ${authToken}` } });
+      if (mediaRes.ok) setMedia(await mediaRes.json());
+    } catch (err) {
+      console.error("Error fetching media:", err);
+    }
+  };
+
   const handleDownloadMediaFile = async (mediaItem: MatrixMedia) => {
     try {
-      showToast('info', isRtl ? 'در حال دریافت فایل از سرور...' : 'Downloading file from server...');
+      showToast('success', isRtl ? 'در حال دریافت فایل از سرور...' : 'Downloading file from server...');
       const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
       const downloadUrl = `/api/matrix/media/download?mxc=${encodeURIComponent(mediaItem.id)}&fileName=${encodeURIComponent(mediaItem.fileName || '')}&mimeType=${encodeURIComponent(mediaItem.mimeType || '')}&token=${encodeURIComponent(token)}`;
       
@@ -2541,7 +2591,7 @@ export default function KetesaAdmin({
     if (!file) return;
 
     try {
-      showToast('info', isRtl ? 'در حال آپلود فایل به سرور...' : 'Uploading file to server...');
+      showToast('success', isRtl ? 'در حال آپلود فایل به سرور...' : 'Uploading file to server...');
       const reader = new FileReader();
       reader.onload = async (event) => {
         const fileData = event.target?.result as string;
@@ -2566,7 +2616,7 @@ export default function KetesaAdmin({
 
         await res.json();
         showToast('success', isRtl ? 'فایل با موفقیت آپلود شد' : 'File uploaded successfully');
-        fetchMedia();
+        fetchMediaData();
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
@@ -3231,7 +3281,7 @@ export default function KetesaAdmin({
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setActiveRoomDropdown(null);
-                                      handleOpenRoomChat(r.id, r.name || r.id);
+                                      handleOpenRoomChat(r.id, r.name || r.alias || r.id);
                                     }}
                                     className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-all cursor-pointer ${
                                       isLightMode ? 'hover:bg-slate-50 text-slate-800' : 'hover:bg-white/5 text-white'
@@ -6639,23 +6689,19 @@ export default function KetesaAdmin({
                 )}
               </div>
 
-              {/* Chat bottom bar */}
-              <div className={`p-4 border-t flex flex-wrap items-center justify-between gap-2 text-xs font-medium ${
-                isLightMode ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-white/5 bg-black/20 text-gray-400'
+              {/* Chat bottom bar with text input & file upload */}
+              <div className={`p-3.5 border-t flex flex-col gap-3 ${
+                isLightMode ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/40'
               }`}>
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1.5">
-                    <Shield className="h-4 w-4 text-emerald-500 animate-pulse" />
-                    <span>{isRtl ? 'حالت امنیتی پایش گفتگو' : 'Secure Inspection Mode'}</span>
-                  </span>
-                  
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-mono font-medium cursor-pointer transition-all">
-                    <Paperclip className="h-3.5 w-3.5" />
-                    <span>{isRtl ? 'پیوست فایل به این اتاق' : 'Attach File to Room'}</span>
+                {/* Form to send message */}
+                <form onSubmit={handleSendRoomChatMessage} className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-xl text-xs font-mono font-medium cursor-pointer transition-all flex-shrink-0" title={isRtl ? 'پیوست فایل' : 'Attach File'}>
+                    <Paperclip className="h-4 w-4" />
+                    <span className="hidden sm:inline">{isRtl ? 'پیوست فایل' : 'Attach File'}</span>
                     <input type="file" className="hidden" onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file || !activeRoomChatId) return;
-                      showToast('info', isRtl ? 'در حال ارسال فایل به اتاق...' : 'Sending file to room...');
+                      showToast('success', isRtl ? 'در حال آپلود فایل در اتاق...' : 'Uploading file to room...');
                       const reader = new FileReader();
                       reader.onload = async (evt) => {
                         const fileData = evt.target?.result as string;
@@ -6666,28 +6712,64 @@ export default function KetesaAdmin({
                           body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', fileData, roomId: activeRoomChatId })
                         });
                         if (res.ok) {
-                          showToast('success', isRtl ? 'فایل در اتاق ثبت شد' : 'File attached to room');
+                          showToast('success', isRtl ? 'فایل با موفقیت در اتاق آپلود و ارسال شد' : 'File attached and posted to room');
                           fetchRoomChatMessages(activeRoomChatId);
+                        } else {
+                          showToast('error', isRtl ? 'خطا در آپلود فایل' : 'Failed to upload file');
                         }
                       };
                       reader.readAsDataURL(file);
                     }} />
                   </label>
-                </div>
 
-                <button
-                  onClick={() => {
-                    setActiveRoomChatId(null);
-                    setRoomChatMessages([]);
-                  }}
-                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors duration-200 ${
-                    isLightMode 
-                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
-                      : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
-                  }`}
-                >
-                  Close Panel
-                </button>
+                  <input
+                    type="text"
+                    value={newRoomChatMessageText}
+                    onChange={(e) => setNewRoomChatMessageText(e.target.value)}
+                    placeholder={isRtl ? 'پیام خود را تایپ کنید...' : 'Type a message to send to room...'}
+                    className={`flex-1 px-3.5 py-2 rounded-xl text-xs border outline-none transition-all ${
+                      isLightMode 
+                        ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' 
+                        : 'bg-slate-900 border-white/10 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
+                    }`}
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={!newRoomChatMessageText.trim()}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      newRoomChatMessageText.trim()
+                        ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20'
+                        : 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>{isRtl ? 'ارسال' : 'Send'}</span>
+                  </button>
+                </form>
+
+                <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 px-1">
+                  <span className="flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+                    <span>{isRtl ? 'حالت امنیتی و مدیریتی پایش گفتگو' : 'Secure Admin Chat Inspector'}</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveRoomChatId(null);
+                      setRoomChatMessages([]);
+                      setNewRoomChatMessageText('');
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors duration-200 ${
+                      isLightMode 
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' 
+                        : 'bg-slate-800 hover:bg-slate-700 text-gray-300'
+                    }`}
+                  >
+                    {isRtl ? 'بستن پنجره' : 'Close Panel'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
