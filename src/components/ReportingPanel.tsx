@@ -1059,7 +1059,11 @@ export default function ReportingPanel({
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                           <XAxis dataKey="time" stroke="#64748b" />
                           <YAxis domain={[0, 100]} stroke="#64748b" />
-                          <Tooltip contentStyle={{ backgroundColor: '#090a16', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#f8fafc', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', padding: '8px 12px' }} 
+                            itemStyle={{ color: '#818cf8', fontSize: '11px', fontWeight: 600 }}
+                            labelStyle={{ color: '#94a3b8', fontSize: '10px', marginBottom: '4px', fontWeight: 700 }}
+                          />
                           <Line type="monotone" dataKey="cpu" stroke="#6366f1" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
                         </LineChart>
                       </ResponsiveContainer>
@@ -1087,7 +1091,11 @@ export default function ReportingPanel({
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                           <XAxis dataKey="time" stroke="#64748b" />
                           <YAxis domain={[0, 100]} stroke="#64748b" />
-                          <Tooltip contentStyle={{ backgroundColor: '#090a16', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#f8fafc', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', padding: '8px 12px' }} 
+                            itemStyle={{ color: '#c084fc', fontSize: '11px', fontWeight: 600 }}
+                            labelStyle={{ color: '#94a3b8', fontSize: '10px', marginBottom: '4px', fontWeight: 700 }}
+                          />
                           <Area type="monotone" dataKey="memory" stroke="#a855f7" fillOpacity={1} fill="url(#colorMem)" strokeWidth={2.5} />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -1116,7 +1124,11 @@ export default function ReportingPanel({
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                         <XAxis dataKey="time" stroke="#64748b" />
                         <YAxis stroke="#64748b" />
-                        <Tooltip contentStyle={{ backgroundColor: '#090a16', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#f8fafc', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', padding: '8px 12px' }} 
+                          itemStyle={{ color: '#34d399', fontSize: '11px', fontWeight: 600 }}
+                          labelStyle={{ color: '#94a3b8', fontSize: '10px', marginBottom: '4px', fontWeight: 700 }}
+                        />
                         <Area type="monotone" dataKey="activeUsers" stroke="#10b981" fillOpacity={1} fill="url(#colorUsers)" strokeWidth={2.5} />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -1147,7 +1159,11 @@ export default function ReportingPanel({
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                           <XAxis dataKey="time" stroke="#64748b" />
                           <YAxis stroke="#64748b" />
-                          <Tooltip contentStyle={{ backgroundColor: '#090a16', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#f8fafc', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', padding: '8px 12px' }} 
+                            itemStyle={{ color: '#38bdf8', fontSize: '11px', fontWeight: 600 }}
+                            labelStyle={{ color: '#94a3b8', fontSize: '10px', marginBottom: '4px', fontWeight: 700 }}
+                          />
                           <Line type="monotone" name={t.downloadSpeed} dataKey="networkIn" stroke="#14b8a6" strokeWidth={2} dot={false} />
                           <Line type="monotone" name={t.uploadSpeed} dataKey="networkOut" stroke="#6366f1" strokeWidth={2} dot={false} />
                         </LineChart>
@@ -1184,7 +1200,11 @@ export default function ReportingPanel({
                           <XAxis dataKey="time" stroke="#64748b" />
                           <YAxis yAxisId="left" stroke="#f59e0b" />
                           <YAxis yAxisId="right" orientation="right" stroke="#f43f5e" domain={[0, 10]} />
-                          <Tooltip contentStyle={{ backgroundColor: '#090a16', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#f8fafc', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', padding: '8px 12px' }} 
+                            itemStyle={{ color: '#fbbf24', fontSize: '11px', fontWeight: 600 }}
+                            labelStyle={{ color: '#94a3b8', fontSize: '10px', marginBottom: '4px', fontWeight: 700 }}
+                          />
                           <Area yAxisId="left" type="monotone" name={t.iopsLabel} dataKey="diskIops" stroke="#f59e0b" fillOpacity={1} fill="url(#colorIops)" strokeWidth={2} />
                           <Line yAxisId="right" type="monotone" name={t.latencyLabel} dataKey="diskLatencyMs" stroke="#f43f5e" strokeWidth={2} dot={false} />
                         </AreaChart>

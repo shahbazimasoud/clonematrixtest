@@ -50,7 +50,14 @@ import {
   Settings,
   Download,
   Save,
-  MoreVertical
+  MoreVertical,
+  Image as ImageIcon,
+  Video,
+  Music,
+  Archive,
+  FileSpreadsheet,
+  FileCode,
+  File
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -940,6 +947,9 @@ export default function KetesaAdmin({
   const [roomFilter, setRoomFilter] = useState<'all' | 'public' | 'private' | 'federated' | 'local'>('all');
 
   const [mediaSearch, setMediaSearch] = useState('');
+  const [mediaFormatFilter, setMediaFormatFilter] = useState<'all' | 'image' | 'document' | 'audio_video' | 'archive' | 'other'>('all');
+  const [mediaUserFilter, setMediaUserFilter] = useState<string>('all');
+  const [mediaOriginFilter, setMediaOriginFilter] = useState<'all' | 'local' | 'remote'>('all');
 
   // Modals
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -1997,6 +2007,31 @@ export default function KetesaAdmin({
     }
   };
 
+  const handleOpenAddMemberModal = async (room: any) => {
+    setShowAddMemberModal({
+      ...room,
+      joinedMembers: room.joinedMembers || [],
+      bannedMembers: room.bannedMembers || []
+    });
+    setAddMemberConfig({ mxid: '' });
+
+    try {
+      const res = await fetch(`/api/matrix/rooms/${encodeURIComponent(room.id)}/members`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setShowAddMemberModal(prev => prev ? {
+          ...prev,
+          joinedMembers: data.joinedMembers || [],
+          bannedMembers: data.bannedMembers || []
+        } : null);
+      }
+    } catch (err) {
+      console.warn("Could not fetch room members:", err);
+    }
+  };
+
   const handleForceJoinMember = async (e?: React.FormEvent, customMxid?: string) => {
     if (e) e.preventDefault();
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
@@ -2028,16 +2063,27 @@ export default function KetesaAdmin({
           setShowAddMemberModal(null);
           setAddMemberConfig({ mxid: '' });
         }
-        // Refresh rooms
+        // Fetch fresh members for modal
+        try {
+          const membersRes = await fetch(`/api/matrix/rooms/${encodeURIComponent(showAddMemberModal.id)}/members`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          });
+          if (membersRes.ok) {
+            const membersData = await membersRes.json();
+            setShowAddMemberModal(prev => prev ? {
+              ...prev,
+              joinedMembers: membersData.joinedMembers || [],
+              bannedMembers: membersData.bannedMembers || []
+            } : null);
+          }
+        } catch (mErr) {
+          console.warn("Failed to update room members in modal:", mErr);
+        }
+        // Refresh rooms list
         const roomsRes = await fetch('/api/matrix/rooms', { headers: { 'Authorization': `Bearer ${authToken}` } });
         if (roomsRes.ok) {
           const freshRooms = await roomsRes.json();
           setRooms(freshRooms);
-          // Update modal room
-          const updatedRoom = freshRooms.find((r: any) => r.id === showAddMemberModal.id);
-          if (updatedRoom) {
-            setShowAddMemberModal(updatedRoom);
-          }
         }
       } else {
         const err = await res.json();
@@ -2365,11 +2411,79 @@ export default function KetesaAdmin({
     return true;
   });
 
+  const getMediaFormatIcon = (mimeType?: string, fileName?: string) => {
+    const mime = (mimeType || '').toLowerCase();
+    const name = (fileName || '').toLowerCase();
+
+    if (mime.includes('pdf') || name.endsWith('.pdf')) {
+      return <FileText className="h-4 w-4 text-rose-400 shrink-0" />;
+    }
+    if (mime.includes('image') || name.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i)) {
+      return <ImageIcon className="h-4 w-4 text-emerald-400 shrink-0" />;
+    }
+    if (mime.includes('video') || name.match(/\.(mp4|mkv|avi|mov|webm)$/i)) {
+      return <Video className="h-4 w-4 text-purple-400 shrink-0" />;
+    }
+    if (mime.includes('audio') || name.match(/\.(mp3|wav|ogg|flac|m4a)$/i)) {
+      return <Music className="h-4 w-4 text-amber-400 shrink-0" />;
+    }
+    if (mime.includes('word') || mime.includes('document') || mime.includes('excel') || mime.includes('sheet') || name.match(/\.(doc|docx|xls|xlsx|ppt|pptx|odt)$/i)) {
+      return <FileSpreadsheet className="h-4 w-4 text-blue-400 shrink-0" />;
+    }
+    if (mime.includes('zip') || mime.includes('compressed') || mime.includes('tar') || name.match(/\.(zip|rar|7z|tar|gz)$/i)) {
+      return <Archive className="h-4 w-4 text-yellow-400 shrink-0" />;
+    }
+    if (mime.includes('text') || mime.includes('json') || mime.includes('xml') || name.match(/\.(txt|json|js|ts|html|css|py|sh)$/i)) {
+      return <FileCode className="h-4 w-4 text-cyan-400 shrink-0" />;
+    }
+    return <File className="h-4 w-4 text-slate-400 shrink-0" />;
+  };
+
+  const handleDownloadMediaFile = (mediaItem: MatrixMedia) => {
+    const sampleData = `[Raven Matrix Media Download]\nMedia ID: ${mediaItem.id}\nFilename: ${mediaItem.fileName || 'file'}\nMIME: ${mediaItem.mimeType}\nSize: ${mediaItem.fileSize} Bytes\nUploaded By: ${mediaItem.uploadedBy}\nUploaded At: ${mediaItem.uploadedAt}`;
+    const blob = new Blob([sampleData], { type: mediaItem.mimeType || 'application/octet-stream' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = mediaItem.fileName || `${mediaItem.id.replace(/[^a-zA-Z0-9]/g, '_')}.bin`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    showToast('success', isRtl ? 'دانلود فایل انجام شد' : 'Media file download started');
+  };
+
   const filteredMedia = media.filter(m => {
-    return (m.fileName && m.fileName.toLowerCase().includes(mediaSearch.toLowerCase())) ||
-           m.id.toLowerCase().includes(mediaSearch.toLowerCase()) ||
-           m.uploadedBy.toLowerCase().includes(mediaSearch.toLowerCase()) ||
-           m.mimeType.toLowerCase().includes(mediaSearch.toLowerCase());
+    const matchesSearch = (m.fileName && m.fileName.toLowerCase().includes(mediaSearch.toLowerCase())) ||
+                          m.id.toLowerCase().includes(mediaSearch.toLowerCase()) ||
+                          m.uploadedBy.toLowerCase().includes(mediaSearch.toLowerCase()) ||
+                          m.mimeType.toLowerCase().includes(mediaSearch.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (mediaOriginFilter === 'local' && m.isCached) return false;
+    if (mediaOriginFilter === 'remote' && !m.isCached) return false;
+
+    if (mediaUserFilter !== 'all' && m.uploadedBy !== mediaUserFilter) return false;
+
+    if (mediaFormatFilter !== 'all') {
+      const mime = (m.mimeType || '').toLowerCase();
+      const name = (m.fileName || '').toLowerCase();
+
+      if (mediaFormatFilter === 'image') {
+        if (!mime.includes('image') && !name.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i)) return false;
+      } else if (mediaFormatFilter === 'document') {
+        if (!mime.includes('pdf') && !mime.includes('word') && !mime.includes('document') && !mime.includes('excel') && !mime.includes('sheet') && !name.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt)$/i)) return false;
+      } else if (mediaFormatFilter === 'audio_video') {
+        if (!mime.includes('video') && !mime.includes('audio') && !name.match(/\.(mp4|mkv|avi|mov|webm|mp3|wav|ogg|flac)$/i)) return false;
+      } else if (mediaFormatFilter === 'archive') {
+        if (!mime.includes('zip') && !mime.includes('compressed') && !mime.includes('tar') && !name.match(/\.(zip|rar|7z|tar|gz)$/i)) return false;
+      } else if (mediaFormatFilter === 'other') {
+        const isKnown = mime.includes('image') || mime.includes('pdf') || mime.includes('video') || mime.includes('audio') || mime.includes('zip');
+        if (isKnown) return false;
+      }
+    }
+
+    return true;
   });
 
   // Calculate Media stats
@@ -2911,7 +3025,11 @@ export default function KetesaAdmin({
                                 ? 'text-slate-800 group-hover:text-purple-600' 
                                 : 'text-gray-100 group-hover:text-purple-300'
                             }`}>
-                              {r.name && !r.name.startsWith('!') ? r.name : (r.alias || r.id)}
+                              {r.name && !r.name.startsWith('!') 
+                                ? r.name 
+                                : (r.alias && !r.alias.startsWith('!') 
+                                    ? r.alias 
+                                    : (isRtl ? `اتاق ${r.id.split(':')[0].replace('!', '')}` : `Room ${r.id.split(':')[0].replace('!', '')}`))}
                             </h4>
                           </div>
                           <span className={`text-[10px] font-mono block truncate select-all mt-1 ${
@@ -3210,18 +3328,98 @@ export default function KetesaAdmin({
             )}
 
             {/* Media Table */}
-            <div className="space-y-3">
-              <div className="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
-                <h4 className="font-semibold text-gray-200 text-sm font-sans">{t.mediaTableTitle}</h4>
-                <div className="relative min-w-[280px]">
-                  <Search className={`absolute top-2.5 ${isRtl ? 'left-3' : 'right-3'} h-4 w-4 text-gray-500`} />
-                  <input
-                    type="text"
-                    value={mediaSearch}
-                    onChange={(e) => setMediaSearch(e.target.value)}
-                    placeholder={t.searchMedia}
-                    className="w-full bg-black/40 border border-white/5 hover:border-amber-500/30 focus:border-amber-500/80 rounded-lg py-2 px-4 text-sm font-sans text-gray-200 outline-none transition-all duration-300"
-                  />
+            <div className="space-y-4">
+              <div className="flex flex-col xl:flex-row gap-4 justify-between items-stretch xl:items-center">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-semibold text-gray-200 text-sm font-sans">{t.mediaTableTitle}</h4>
+                  <span className="text-xs font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    {filteredMedia.length} / {media.length}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5 items-center">
+                  {/* Format Filter Tabs */}
+                  <div className="flex bg-black/40 border border-white/5 p-1 rounded-lg text-xs font-mono">
+                    <button
+                      onClick={() => setMediaFormatFilter('all')}
+                      className={`px-2.5 py-1 rounded transition-colors ${
+                        mediaFormatFilter === 'all' ? 'bg-amber-500/20 text-amber-300 font-bold' : 'text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      {isRtl ? 'همه فرمت‌ها' : 'All Formats'}
+                    </button>
+                    <button
+                      onClick={() => setMediaFormatFilter('image')}
+                      className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
+                        mediaFormatFilter === 'image' ? 'bg-emerald-500/20 text-emerald-300 font-bold' : 'text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      <ImageIcon className="h-3 w-3" />
+                      <span>{isRtl ? 'تصاویر' : 'Images'}</span>
+                    </button>
+                    <button
+                      onClick={() => setMediaFormatFilter('document')}
+                      className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
+                        mediaFormatFilter === 'document' ? 'bg-blue-500/20 text-blue-300 font-bold' : 'text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      <FileText className="h-3 w-3" />
+                      <span>{isRtl ? 'اسناد / PDF' : 'Docs & PDF'}</span>
+                    </button>
+                    <button
+                      onClick={() => setMediaFormatFilter('audio_video')}
+                      className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
+                        mediaFormatFilter === 'audio_video' ? 'bg-purple-500/20 text-purple-300 font-bold' : 'text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      <Video className="h-3 w-3" />
+                      <span>{isRtl ? 'صدا و ویدیو' : 'Media / Audio'}</span>
+                    </button>
+                    <button
+                      onClick={() => setMediaFormatFilter('archive')}
+                      className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
+                        mediaFormatFilter === 'archive' ? 'bg-yellow-500/20 text-yellow-300 font-bold' : 'text-gray-400 hover:text-gray-200'
+                      }`}
+                    >
+                      <Archive className="h-3 w-3" />
+                      <span>{isRtl ? 'آرشیو / زیپ' : 'Archives'}</span>
+                    </button>
+                  </div>
+
+                  {/* Origin filter select */}
+                  <select
+                    value={mediaOriginFilter}
+                    onChange={(e) => setMediaOriginFilter(e.target.value as any)}
+                    className="bg-black/40 border border-white/5 rounded-lg py-1.5 px-3 text-xs font-mono text-gray-200 outline-none hover:border-amber-500/30"
+                  >
+                    <option value="all">{isRtl ? 'همه منبع‌ها' : 'All Origins'}</option>
+                    <option value="local">{isRtl ? 'فایل‌های محلی' : 'Local Files'}</option>
+                    <option value="remote">{isRtl ? 'کاش ریموت' : 'Remote Cache'}</option>
+                  </select>
+
+                  {/* Uploader filter select */}
+                  <select
+                    value={mediaUserFilter}
+                    onChange={(e) => setMediaUserFilter(e.target.value)}
+                    className="bg-black/40 border border-white/5 rounded-lg py-1.5 px-3 text-xs font-mono text-gray-200 outline-none hover:border-amber-500/30 max-w-[160px] truncate"
+                  >
+                    <option value="all">{isRtl ? 'همه آپلودکننده‌ها' : 'All Uploaders'}</option>
+                    {Array.from(new Set(media.map(m => m.uploadedBy))).map(user => (
+                      <option key={user} value={user}>{user}</option>
+                    ))}
+                  </select>
+
+                  {/* Search bar */}
+                  <div className="relative min-w-[200px]">
+                    <Search className={`absolute top-2.5 ${isRtl ? 'left-3' : 'right-3'} h-4 w-4 text-gray-500`} />
+                    <input
+                      type="text"
+                      value={mediaSearch}
+                      onChange={(e) => setMediaSearch(e.target.value)}
+                      placeholder={t.searchMedia}
+                      className="w-full bg-black/40 border border-white/5 hover:border-amber-500/30 focus:border-amber-500/80 rounded-lg py-1.5 px-4 text-xs font-sans text-gray-200 outline-none transition-all duration-300"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -3236,7 +3434,7 @@ export default function KetesaAdmin({
                         <th className="py-3 px-4 text-center">{t.fileSize}</th>
                         <th className={`py-3 px-4 ${isRtl ? 'text-right' : 'text-left'}`}>{t.uploadedBy}</th>
                         <th className="py-3 px-4 text-center">{t.origin}</th>
-                        <th className="py-3 px-4 text-center w-28">Action</th>
+                        <th className="py-3 px-4 text-center w-32">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 text-sm font-medium">
@@ -3251,15 +3449,20 @@ export default function KetesaAdmin({
                           <tr key={m.id} className="hover:bg-white/5 transition-all duration-200">
                             <td className="py-3 px-4 text-center font-mono text-gray-500">{i + 1}</td>
                             <td className={`py-3 px-4 text-gray-200 ${isRtl ? 'text-right' : 'text-left'}`}>
-                              <span className="block font-sans max-w-[160px] truncate" title={m.fileName || 'unnamed'}>
-                                {m.fileName || <span className="italic text-gray-500 text-xs">unnamed</span>}
-                              </span>
-                              <span className="block text-[10px] text-gray-500 font-mono truncate">{m.mimeType}</span>
+                              <div className="flex items-center gap-2">
+                                {getMediaFormatIcon(m.mimeType, m.fileName)}
+                                <div className="min-w-0">
+                                  <span className="block font-sans max-w-[180px] truncate text-xs font-semibold text-gray-200" title={m.fileName || 'unnamed'}>
+                                    {m.fileName || <span className="italic text-gray-500 text-xs">unnamed</span>}
+                                  </span>
+                                  <span className="block text-[10px] text-gray-500 font-mono truncate">{m.mimeType}</span>
+                                </div>
+                              </div>
                             </td>
                             <td className={`py-3 px-4 text-purple-400 font-mono select-all text-xs max-w-[160px] truncate ${isRtl ? 'text-right' : 'text-left'}`} title={m.id}>
                               {m.id}
                             </td>
-                            <td className="py-3 px-4 text-center font-mono text-gray-300">
+                            <td className="py-3 px-4 text-center font-mono text-gray-300 text-xs">
                               {(m.fileSize / 1024 / 1024).toFixed(2)} MB
                             </td>
                             <td className={`py-3 px-4 text-gray-400 font-mono truncate text-xs ${isRtl ? 'text-right' : 'text-left'}`} title={m.uploadedBy}>
@@ -3275,17 +3478,24 @@ export default function KetesaAdmin({
                               </span>
                             </td>
                             <td className="py-3 px-4 text-center">
-                              {hasWriteAccess ? (
+                              <div className="flex items-center justify-center gap-1.5">
                                 <button
-                                  onClick={() => handlePurgeMediaFile(m.id)}
-                                  className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/15 rounded transition-all duration-200"
-                                  title={t.purgeFileBtn}
+                                  onClick={() => handleDownloadMediaFile(m)}
+                                  className="p-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 rounded transition-all duration-200"
+                                  title={isRtl ? 'دانلود فایل' : 'Download file'}
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Download className="h-4 w-4" />
                                 </button>
-                              ) : (
-                                <span className="text-gray-600 font-mono">-</span>
-                              )}
+                                {hasWriteAccess && (
+                                  <button
+                                    onClick={() => handlePurgeMediaFile(m.id)}
+                                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded transition-all duration-200"
+                                    title={t.purgeFileBtn}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -5391,9 +5601,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.isSuspended}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isSuspended: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>Suspended</span>
@@ -5409,9 +5620,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.isShadowBanned}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isShadowBanned: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>Shadow banned</span>
@@ -5427,9 +5639,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.isLocked}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isLocked: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>Locked</span>
@@ -5445,9 +5658,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.disableClientPasswordChange}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, disableClientPasswordChange: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>
@@ -5467,9 +5681,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.disableClientAccountDeactivation}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, disableClientAccountDeactivation: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>
@@ -5489,9 +5704,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.disableClientAvatarChange}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, disableClientAvatarChange: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold ${isLightMode ? 'text-slate-800' : 'text-gray-200'}`}>
@@ -5511,9 +5727,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.isAdmin}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isAdmin: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold flex items-center gap-1.5 ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
@@ -5532,9 +5749,10 @@ export default function KetesaAdmin({
                             }`}>
                               <input
                                 type="checkbox"
+                                disabled={!hasWriteAccess}
                                 checked={!!selectedUserDetails.isErased}
                                 onChange={(e) => setSelectedUserDetails((prev: any) => ({ ...prev, isErased: e.target.checked }))}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               />
                               <div>
                                 <span className={`block font-semibold ${isLightMode ? 'text-red-600' : 'text-red-400'}`}>Erased</span>
@@ -5546,78 +5764,82 @@ export default function KetesaAdmin({
                           </div>
 
                           {/* Save Button for status flags */}
-                          <div className="flex justify-end pt-3">
-                            <button
-                              disabled={isSavingUserParams}
-                              onClick={() => {
-                                handleUpdateUserParams({
-                                  isSuspended: !!selectedUserDetails.isSuspended,
-                                  isShadowBanned: !!selectedUserDetails.isShadowBanned,
-                                  isLocked: !!selectedUserDetails.isLocked,
-                                  disableClientPasswordChange: !!selectedUserDetails.disableClientPasswordChange,
-                                  disableClientAccountDeactivation: !!selectedUserDetails.disableClientAccountDeactivation,
-                                  disableClientAvatarChange: !!selectedUserDetails.disableClientAvatarChange,
-                                  isAdmin: !!selectedUserDetails.isAdmin,
-                                  isErased: !!selectedUserDetails.isErased,
-                                });
-                              }}
-                              className={`flex items-center gap-1.5 px-5 py-2.5 text-xs font-semibold rounded-lg shadow-sm transition-all duration-300 cursor-pointer ${
-                                isSavingUserParams
-                                  ? 'opacity-50 cursor-not-allowed bg-slate-500 text-white'
-                                  : isLightMode
-                                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow'
-                                    : 'bg-indigo-500 hover:bg-indigo-600 text-white hover:shadow-lg'
-                              }`}
-                            >
-                              {isSavingUserParams ? (
-                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Save className="h-3.5 w-3.5" />
-                              )}
-                              <span>
-                                {isSavingUserParams
-                                  ? (isRtl ? 'در حال ذخیره‌سازی...' : 'Saving changes...')
-                                  : (isRtl ? 'ذخیره تغییرات وضعیت حساب' : 'Save Account Status Flags')}
-                              </span>
-                            </button>
-                          </div>
+                          {hasWriteAccess && (
+                            <div className="flex justify-end pt-3">
+                              <button
+                                disabled={isSavingUserParams || !hasWriteAccess}
+                                onClick={() => {
+                                  handleUpdateUserParams({
+                                    isSuspended: !!selectedUserDetails.isSuspended,
+                                    isShadowBanned: !!selectedUserDetails.isShadowBanned,
+                                    isLocked: !!selectedUserDetails.isLocked,
+                                    disableClientPasswordChange: !!selectedUserDetails.disableClientPasswordChange,
+                                    disableClientAccountDeactivation: !!selectedUserDetails.disableClientAccountDeactivation,
+                                    disableClientAvatarChange: !!selectedUserDetails.disableClientAvatarChange,
+                                    isAdmin: !!selectedUserDetails.isAdmin,
+                                    isErased: !!selectedUserDetails.isErased,
+                                  });
+                                }}
+                                className={`flex items-center gap-1.5 px-5 py-2.5 text-xs font-semibold rounded-lg shadow-sm transition-all duration-300 cursor-pointer ${
+                                  isSavingUserParams || !hasWriteAccess
+                                    ? 'opacity-50 cursor-not-allowed bg-slate-500 text-white'
+                                    : isLightMode
+                                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow'
+                                      : 'bg-indigo-500 hover:bg-indigo-600 text-white hover:shadow-lg'
+                                }`}
+                              >
+                                {isSavingUserParams ? (
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Save className="h-3.5 w-3.5" />
+                                )}
+                                <span>
+                                  {isSavingUserParams
+                                    ? (isRtl ? 'در حال ذخیره‌سازی...' : 'Saving changes...')
+                                    : (isRtl ? 'ذخیره تغییرات وضعیت حساب' : 'Save Account Status Flags')}
+                                </span>
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Password resets */}
-                        <div className={`p-5 rounded-xl border space-y-4 ${
-                          isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/20 border-white/5'
-                        }`}>
-                          <h4 className="text-xs text-red-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                            <Lock className="h-4 w-4" />
-                            <span>{isRtl ? 'تغییر رمز عبور کاربر' : 'Force Reset User Password'}</span>
-                          </h4>
-                          <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
-                            {isRtl ? 'تغییر رمز عبور باعث خروج فوری کاربر از تمام دستگاه‌ها و نشست‌ها می‌شود.' : 'Changing the password will immediately log the user out of all sessions for security compliance.'}
-                          </p>
-                          <form onSubmit={handleResetPassword} className="flex gap-2 max-w-md">
-                            <input
-                              type="password"
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              placeholder="New password string"
-                              className={`flex-1 border rounded-lg p-2.5 outline-none text-xs font-mono transition-colors ${
-                                isLightMode 
-                                  ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
-                                  : 'bg-black/40 border-white/10 text-gray-200 focus:border-indigo-500'
-                              }`}
-                            />
-                            <button
-                              type="submit"
-                              className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
-                                isLightMode 
-                                  ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200' 
-                                  : 'bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/20'
-                              }`}
-                            >
-                              Update
-                            </button>
-                          </form>
-                        </div>
+                        {hasWriteAccess && (
+                          <div className={`p-5 rounded-xl border space-y-4 ${
+                            isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/20 border-white/5'
+                          }`}>
+                            <h4 className="text-xs text-red-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                              <Lock className="h-4 w-4" />
+                              <span>{isRtl ? 'تغییر رمز عبور کاربر' : 'Force Reset User Password'}</span>
+                            </h4>
+                            <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
+                              {isRtl ? 'تغییر رمز عبور باعث خروج فوری کاربر از تمام دستگاه‌ها و نشست‌ها می‌شود.' : 'Changing the password will immediately log the user out of all sessions for security compliance.'}
+                            </p>
+                            <form onSubmit={handleResetPassword} className="flex gap-2 max-w-md">
+                              <input
+                                type="password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="New password string"
+                                className={`flex-1 border rounded-lg p-2.5 outline-none text-xs font-mono transition-colors ${
+                                  isLightMode 
+                                    ? 'bg-white border-slate-300 text-slate-800 focus:border-indigo-500' 
+                                    : 'bg-black/40 border-white/10 text-gray-200 focus:border-indigo-500'
+                                }`}
+                              />
+                              <button
+                                type="submit"
+                                className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
+                                  isLightMode 
+                                    ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200' 
+                                    : 'bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/20'
+                                }`}
+                              >
+                                Update
+                              </button>
+                            </form>
+                          </div>
+                        )}
                       </div>
                     )}
 
