@@ -4535,6 +4535,99 @@ app.post("/api/matrix/media/cleanup", authenticateToken, checkPermission(["Owner
   res.json({ success: true, purgedCount, reclaimedSizeMB: (purgedSize / 1024 / 1024).toFixed(2) });
 });
 
+app.post("/api/matrix/media/upload", authenticateToken, express.json({ limit: "50mb" }), async (req, res) => {
+  try {
+    const { fileName, mimeType, fileData, roomId } = req.body;
+    if (!fileData) {
+      return res.status(400).json({ error: "No file data provided" });
+    }
+
+    const cleanFileName = (fileName || `uploaded_file_${Date.now()}`).trim();
+    const cleanMimeType = (mimeType || "application/octet-stream").trim();
+    const mediaId = `mxc_` + Date.now() + `_` + Math.random().toString(36).substring(2, 8);
+    const mxcUri = `mxc://localhost/${mediaId}`;
+
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    let buffer: Buffer;
+    if (typeof fileData === "string" && fileData.includes(";base64,")) {
+      const base64Str = fileData.split(";base64,").pop() || "";
+      buffer = Buffer.from(base64Str, "base64");
+    } else if (typeof fileData === "string") {
+      buffer = Buffer.from(fileData, "base64");
+    } else {
+      buffer = Buffer.from(fileData);
+    }
+
+    const safeDiskName = `${mediaId}_${cleanFileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const filePath = path.join(uploadsDir, safeDiskName);
+    fs.writeFileSync(filePath, buffer);
+
+    const db = readDb();
+    if (!db.matrixMedia) db.matrixMedia = [];
+
+    const newMediaItem = {
+      id: mxcUri,
+      fileName: cleanFileName,
+      fileSize: buffer.length,
+      mimeType: cleanMimeType,
+      uploadedBy: req.user?.username ? `@${req.user.username}:localhost` : "@admin:localhost",
+      uploadedAt: new Date().toISOString(),
+      isCached: false,
+      filePath: filePath,
+      dataUrl: buffer.length < 500000 ? `data:${cleanMimeType};base64,` + buffer.toString("base64") : undefined
+    };
+
+    db.matrixMedia.unshift(newMediaItem);
+
+    if (roomId) {
+      if (!db.matrixRooms) db.matrixRooms = [];
+      const room = db.matrixRooms.find((r: any) => r.id === roomId);
+      if (room) {
+        if (!room.messages) room.messages = [];
+        const isImg = cleanMimeType.startsWith("image/");
+        room.messages.push({
+          id: "msg-" + Date.now(),
+          sender: req.user?.username ? `@${req.user.username}:localhost` : "@admin:localhost",
+          senderDisplayName: req.user?.username || "Admin",
+          content: `📎 Attached file: ${cleanFileName} (${(buffer.length / 1024).toFixed(1)} KB)`,
+          timestamp: new Date().toISOString(),
+          type: isImg ? "m.image" : "m.file",
+          mxc: mxcUri,
+          fileName: cleanFileName,
+          fileSize: buffer.length,
+          mimeType: cleanMimeType
+        });
+      }
+    }
+
+    writeDb(db);
+
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Upload Media File",
+      target: cleanFileName,
+      status: "success",
+      details: `Uploaded file ${cleanFileName} (${(buffer.length / 1024).toFixed(1)} KB) with type ${cleanMimeType}`
+    });
+    writeDb(db);
+
+    res.json({
+      success: true,
+      media: newMediaItem,
+      mxc: mxcUri
+    });
+  } catch (err: any) {
+    console.error("Media upload error:", err);
+    res.status(500).json({ error: "Failed to upload media file: " + err.message });
+  }
+});
+
 app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
   const mxcStr = (req.query.mxc as string) || "";
   const nameStr = (req.query.fileName as string) || "downloaded_file";
@@ -4550,25 +4643,48 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
     }
   }
 
-  // Check in DB if there is a recorded dataUrl, base64, or filePath
   const db = readDb();
-  const dbItem = (db.matrixMedia || []).find((m: any) => m.id === mxcStr || m.id.endsWith(mediaId));
+  const dbItem = (db.matrixMedia || []).find((m: any) => m.id === mxcStr || m.id.endsWith(mediaId) || m.fileName === nameStr);
+  const finalMime = dbItem?.mimeType || typeStr || "application/octet-stream";
+  const finalName = dbItem?.fileName || nameStr || "downloaded_file";
+  const encodedName = encodeURIComponent(finalName);
+  const safeAsciiName = finalName.replace(/[^\x20-\x7E]/g, "_").replace(/["\r\n]/g, "");
+
+  const sendFileResponse = (buffer: Buffer, mime: string) => {
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`);
+    return res.send(buffer);
+  };
+
+  // 0a. Check in DB item for recorded dataUrl or filePath
   if (dbItem) {
+    if (dbItem.filePath && fs.existsSync(dbItem.filePath)) {
+      const fileBuf = fs.readFileSync(dbItem.filePath);
+      return sendFileResponse(fileBuf, finalMime);
+    }
     if (dbItem.dataUrl && typeof dbItem.dataUrl === "string" && dbItem.dataUrl.includes(";base64,")) {
       const base64Data = dbItem.dataUrl.split(";base64,").pop();
       if (base64Data) {
         const fileBuf = Buffer.from(base64Data, "base64");
-        res.setHeader("Content-Type", dbItem.mimeType || typeStr);
-        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(dbItem.fileName || nameStr)}"`);
-        return res.send(fileBuf);
+        return sendFileResponse(fileBuf, finalMime);
       }
     }
-    if (dbItem.filePath && fs.existsSync(dbItem.filePath)) {
-      const fileBuf = fs.readFileSync(dbItem.filePath);
-      res.setHeader("Content-Type", dbItem.mimeType || typeStr);
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(dbItem.fileName || nameStr)}"`);
-      return res.send(fileBuf);
+  }
+
+  // 0b. Check uploads folder directly
+  try {
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (fs.existsSync(uploadsDir)) {
+      const files = fs.readdirSync(uploadsDir);
+      const matched = files.find(f => f.includes(mediaId) || (dbItem?.fileName && f.endsWith(dbItem.fileName)));
+      if (matched) {
+        const matchPath = path.join(uploadsDir, matched);
+        const fileBuf = fs.readFileSync(matchPath);
+        return sendFileResponse(fileBuf, finalMime);
+      }
     }
+  } catch (e) {
+    // ignore
   }
 
   // 1. Attempt Synapse media retrieval from SSH remote server if active
@@ -4591,9 +4707,7 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
         if (cleanBase64.length > 20) {
           const fileBuffer = Buffer.from(cleanBase64, 'base64');
           if (fileBuffer.length > 0) {
-            res.setHeader("Content-Type", typeStr);
-            res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
-            return res.send(fileBuffer);
+            return sendFileResponse(fileBuffer, finalMime);
           }
         }
       } catch (err: any) {
@@ -4610,9 +4724,7 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
         const fileBase64 = (await executeSSHCommand(activeConn, catCmd)).trim().replace(/\s+/g, "");
         if (fileBase64.length > 0) {
           const fileBuf = Buffer.from(fileBase64, 'base64');
-          res.setHeader("Content-Type", typeStr);
-          res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
-          return res.send(fileBuf);
+          return sendFileResponse(fileBuf, finalMime);
         }
       }
     } catch (fsErr: any) {
@@ -4620,7 +4732,7 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
     }
   }
 
-  // 2. Search local media repositories or uploads on local filesystem
+  // 2. Search local media repositories on local filesystem
   try {
     const searchDirs = [
       "/var/lib/matrix-synapse/media/local_content",
@@ -4636,9 +4748,7 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
         const matchPath = execSync(findCmd).toString().trim();
         if (matchPath && fs.existsSync(matchPath)) {
           const fileBytes = fs.readFileSync(matchPath);
-          res.setHeader("Content-Type", typeStr);
-          res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
-          return res.send(fileBytes);
+          return sendFileResponse(fileBytes, finalMime);
         }
       }
     }
@@ -4654,31 +4764,25 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
       const arrayBuf = await fetchRes.arrayBuffer();
       const fileBuf = Buffer.from(arrayBuf);
       if (fileBuf.length > 0) {
-        res.setHeader("Content-Type", typeStr);
-        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
-        return res.send(fileBuf);
+        return sendFileResponse(fileBuf, finalMime);
       }
     }
   } catch (e) {
     // ignore
   }
 
-  // 4. Fallback / Demo environment output: Generate 100% valid binary file
-  const isImage = typeStr.startsWith("image/") || nameStr.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i);
+  // 4. Fallback / Demo environment output: Generate 100% valid binary file matching mime type
+  const isImage = finalMime.startsWith("image/") || finalName.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i);
 
   if (isImage) {
     const width = 800;
     const height = 600;
-    
-    // PNG Header Signature
     const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-    // IHDR Chunk
     const ihdrData = Buffer.alloc(13);
     ihdrData.writeUInt32BE(width, 0);
     ihdrData.writeUInt32BE(height, 4);
-    ihdrData[8] = 8; // 8 bit depth
-    ihdrData[9] = 2; // Color type 2 (RGB)
+    ihdrData[8] = 8;
+    ihdrData[9] = 2;
     ihdrData[10] = 0;
     ihdrData[11] = 0;
     ihdrData[12] = 0;
@@ -4699,25 +4803,21 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
       const crcVal = (c ^ 0xffffffff) >>> 0;
       const crcBuf = Buffer.alloc(4);
       crcBuf.writeUInt32BE(crcVal, 0);
-
       return Buffer.concat([len, typeAndData, crcBuf]);
     };
 
     const ihdrChunk = createChunk('IHDR', ihdrData);
-
-    // RGB pixel array: width x height
     const rowSize = 1 + width * 3;
     const rawPixels = Buffer.alloc(rowSize * height);
 
     for (let y = 0; y < height; y++) {
       const rowStart = y * rowSize;
-      rawPixels[rowStart] = 0; // Filter byte
+      rawPixels[rowStart] = 0;
       for (let x = 0; x < width; x++) {
         const idx = rowStart + 1 + x * 3;
-        // Cyber gradient background
-        rawPixels[idx] = Math.floor(15 + (x / width) * 50);      // R
-        rawPixels[idx + 1] = Math.floor(23 + (y / height) * 70);  // G
-        rawPixels[idx + 2] = Math.floor(42 + (x / width) * 140); // B
+        rawPixels[idx] = Math.floor(15 + (x / width) * 50);
+        rawPixels[idx + 1] = Math.floor(23 + (y / height) * 70);
+        rawPixels[idx + 2] = Math.floor(42 + (x / width) * 140);
       }
     }
 
@@ -4726,25 +4826,13 @@ app.get("/api/matrix/media/download", authenticateToken, async (req, res) => {
     const iendChunk = createChunk('IEND', Buffer.alloc(0));
 
     const validPngBuffer = Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk]);
-
-    const isJpeg = typeStr.includes("jpeg") || typeStr.includes("jpg") || nameStr.match(/\.(jpg|jpeg)$/i);
-    const finalMime = isJpeg ? "image/jpeg" : "image/png";
-    const ext = isJpeg ? ".jpg" : ".png";
-    let finalFileName = nameStr;
-    if (!finalFileName.includes(".")) {
-      finalFileName += ext;
-    }
-
-    res.setHeader("Content-Type", finalMime);
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(finalFileName)}"`);
-    return res.send(validPngBuffer);
+    return sendFileResponse(validPngBuffer, "image/png");
+  } else if (finalMime.includes("pdf")) {
+    const pdfContent = `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length 68>>stream\nBT /F1 18 Tf 50 700 Td (${finalName}) Tj 50 650 Td (Raven Matrix Media Stream) Tj ET\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000056 00000 n \n0000000111 00000 n \n0000000220 00000 n \n0000000293 00000 n \ntrailer<</Size 6/Root 1 0 R>>\nstartxref\n412\n%%EOF`;
+    return sendFileResponse(Buffer.from(pdfContent, 'utf-8'), "application/pdf");
   } else {
-    // Standard non-image file binary output with complete metadata details
-    const sampleText = `[Raven Matrix Media File]\nMXC: ${mxcStr}\nFileName: ${nameStr}\nMIME: ${typeStr}\nUploader: ${dbItem?.uploadedBy || "Matrix User"}\nUploadedAt: ${dbItem?.uploadedAt || new Date().toISOString()}\nFileSize: ${dbItem?.fileSize || "Unknown"} Bytes`;
-    const textBuffer = Buffer.from(sampleText, 'utf-8');
-    res.setHeader("Content-Type", typeStr || "text/plain");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(nameStr)}"`);
-    return res.send(textBuffer);
+    const sampleText = `[Raven Matrix Media File]\nMXC: ${mxcStr}\nFileName: ${finalName}\nMIME: ${finalMime}\nUploader: ${dbItem?.uploadedBy || "Matrix User"}\nUploadedAt: ${dbItem?.uploadedAt || new Date().toISOString()}\nFileSize: ${dbItem?.fileSize || "Unknown"} Bytes`;
+    return sendFileResponse(Buffer.from(sampleText, 'utf-8'), finalMime);
   }
 });
 

@@ -57,7 +57,9 @@ import {
   Archive,
   FileSpreadsheet,
   FileCode,
-  File
+  File,
+  Upload,
+  Paperclip
 } from 'lucide-react';
 import { MatrixUser, MatrixRoom, MatrixMedia, RegistrationToken, UserRole } from '../types';
 
@@ -2466,15 +2468,17 @@ export default function KetesaAdmin({
         throw new Error(`Server returned status ${response.status}`);
       }
 
-      const blob = await response.blob();
+      const mimeTypeHeader = response.headers.get('content-type') || mediaItem.mimeType || 'application/octet-stream';
+      const arrayBuf = await response.arrayBuffer();
+      const blob = new Blob([arrayBuf], { type: mimeTypeHeader });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
 
       let targetName = mediaItem.fileName;
       if (!targetName) {
-        const isImg = (mediaItem.mimeType || '').includes('image');
-        const ext = (mediaItem.mimeType || '').includes('jpeg') ? '.jpg' : isImg ? '.png' : '.bin';
+        const isImg = mimeTypeHeader.includes('image');
+        const ext = mimeTypeHeader.includes('jpeg') ? '.jpg' : isImg ? '.png' : mimeTypeHeader.includes('pdf') ? '.pdf' : '.bin';
         targetName = `media_${mediaItem.id.replace(/[^a-zA-Z0-9]/g, '_')}${ext}`;
       }
 
@@ -2488,6 +2492,45 @@ export default function KetesaAdmin({
     } catch (err: any) {
       console.error('Media download error:', err);
       showToast('error', isRtl ? 'خطا در دریافت فایل از سرور' : 'Failed to download file from server');
+    }
+  };
+
+  const handleUploadMediaFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      showToast('info', isRtl ? 'در حال آپلود فایل به سرور...' : 'Uploading file to server...');
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const fileData = event.target?.result as string;
+        const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
+
+        const res = await fetch('/api/matrix/media/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            fileData
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`Upload failed with status ${res.status}`);
+        }
+
+        await res.json();
+        showToast('success', isRtl ? 'فایل با موفقیت آپلود شد' : 'File uploaded successfully');
+        fetchMedia();
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      showToast('error', isRtl ? 'خطا در آپلود فایل' : 'Failed to upload file');
     }
   };
 
@@ -3373,6 +3416,11 @@ export default function KetesaAdmin({
                   <span className="text-xs font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                     {filteredMedia.length} / {media.length}
                   </span>
+                  <label className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-mono font-medium cursor-pointer transition-all ml-2">
+                    <Upload className="h-3.5 w-3.5" />
+                    <span>{isRtl ? 'آپلود فایل جدید' : 'Upload New File'}</span>
+                    <input type="file" className="hidden" onChange={handleUploadMediaFile} />
+                  </label>
                 </div>
 
                 <div className="flex flex-wrap gap-2.5 items-center">
@@ -6470,6 +6518,41 @@ export default function KetesaAdmin({
                             </span>
                           </div>
                           <p className="text-xs font-sans leading-relaxed break-words whitespace-pre-wrap">{msg.content}</p>
+
+                          {(msg.mxc || msg.type === "m.image" || msg.type === "m.file" || msg.fileName) && (
+                            <div className="mt-2.5 p-2 bg-black/25 rounded-lg border border-white/10 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {getMediaFormatIcon(msg.mimeType || '', msg.fileName || '')}
+                                <div className="min-w-0">
+                                  <span className="block text-xs font-semibold truncate text-gray-200" title={msg.fileName || 'Attached Media'}>
+                                    {msg.fileName || 'Attached Media'}
+                                  </span>
+                                  {msg.fileSize && (
+                                    <span className="block text-[10px] text-gray-400 font-mono">
+                                      {(msg.fileSize / 1024).toFixed(1)} KB
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleDownloadMediaFile({
+                                  id: msg.mxc || `mxc://localhost/${msg.id}`,
+                                  fileName: msg.fileName || 'room_file',
+                                  fileSize: msg.fileSize || 0,
+                                  mimeType: msg.mimeType || 'application/octet-stream',
+                                  uploadedBy: msg.sender,
+                                  uploadedAt: msg.timestamp,
+                                  isCached: false
+                                })}
+                                className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded border border-emerald-500/30 text-xs font-mono flex items-center gap-1 transition-all"
+                                title={isRtl ? 'دانلود فایل' : 'Download file'}
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                <span>{isRtl ? 'دانلود' : 'Download'}</span>
+                              </button>
+                            </div>
+                          )}
+
                           <span className="block text-[9px] text-gray-500 text-right mt-1.5 font-mono">
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -6480,14 +6563,42 @@ export default function KetesaAdmin({
                 )}
               </div>
 
-              {/* Chat bottom bar (Read-Only Mode) */}
-              <div className={`p-4 border-t flex items-center justify-between text-xs font-medium ${
+              {/* Chat bottom bar */}
+              <div className={`p-4 border-t flex flex-wrap items-center justify-between gap-2 text-xs font-medium ${
                 isLightMode ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-white/5 bg-black/20 text-gray-400'
               }`}>
-                <span className="flex items-center gap-1.5">
-                  <Shield className="h-4 w-4 text-emerald-500 animate-pulse" />
-                  <span>{isRtl ? 'حالت امنیتی پایش گفتگو (فقط خواندنی)' : 'Secure Inspection Mode (Read-Only)'}</span>
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1.5">
+                    <Shield className="h-4 w-4 text-emerald-500 animate-pulse" />
+                    <span>{isRtl ? 'حالت امنیتی پایش گفتگو' : 'Secure Inspection Mode'}</span>
+                  </span>
+                  
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-mono font-medium cursor-pointer transition-all">
+                    <Paperclip className="h-3.5 w-3.5" />
+                    <span>{isRtl ? 'پیوست فایل به این اتاق' : 'Attach File to Room'}</span>
+                    <input type="file" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file || !activeRoomChatId) return;
+                      showToast('info', isRtl ? 'در حال ارسال فایل به اتاق...' : 'Sending file to room...');
+                      const reader = new FileReader();
+                      reader.onload = async (evt) => {
+                        const fileData = evt.target?.result as string;
+                        const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
+                        const res = await fetch('/api/matrix/media/upload', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                          body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', fileData, roomId: activeRoomChatId })
+                        });
+                        if (res.ok) {
+                          showToast('success', isRtl ? 'فایل در اتاق ثبت شد' : 'File attached to room');
+                          fetchRoomChatMessages(activeRoomChatId);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }} />
+                  </label>
+                </div>
+
                 <button
                   onClick={() => {
                     setActiveRoomChatId(null);

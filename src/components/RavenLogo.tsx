@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import crowAudioUrl from '../assets/crow-caw.mp3';
 
 interface RavenLogoProps {
   className?: string;
@@ -11,82 +12,16 @@ export function RavenLogo({ className = "w-8 h-8", size = 32, showGlow = true }:
 
   const playRavenCawSound = () => {
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-
-      const playSingleCaw = (startTime: number, duration: number = 0.38) => {
-        // 1. Sawtooth Oscillator for primary throat pitch
-        const osc = ctx.createOscillator();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(580, startTime);
-        osc.frequency.exponentialRampToValueAtTime(260, startTime + duration);
-
-        // 2. Throat Rattle LFO (Tremolo for harsh crow vibration ~30Hz)
-        const lfo = ctx.createOscillator();
-        lfo.type = 'sawtooth';
-        lfo.frequency.setValueAtTime(32, startTime);
-
-        const lfoGain = ctx.createGain();
-        lfoGain.gain.setValueAtTime(80, startTime);
-        lfo.connect(lfoGain);
-        lfoGain.connect(osc.frequency);
-
-        // 3. Raspy Throat Noise (bandpass filtered white noise)
-        const bufferSize = ctx.sampleRate * duration;
-        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const output = noiseBuffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-          output[i] = Math.random() * 2 - 1;
-        }
-        const noise = ctx.createBufferSource();
-        noise.buffer = noiseBuffer;
-
-        const noiseFilter = ctx.createBiquadFilter();
-        noiseFilter.type = 'bandpass';
-        noiseFilter.frequency.setValueAtTime(1100, startTime);
-        noiseFilter.frequency.exponentialRampToValueAtTime(600, startTime + duration);
-        noiseFilter.Q.setValueAtTime(2.5, startTime);
-
-        const noiseGain = ctx.createGain();
-        noiseGain.gain.setValueAtTime(0.3, startTime);
-        noiseGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
-
-        noise.connect(noiseFilter);
-        noiseFilter.connect(noiseGain);
-
-        // 4. Main Bandpass Filter for Raven acoustic resonance
-        const bodyFilter = ctx.createBiquadFilter();
-        bodyFilter.type = 'bandpass';
-        bodyFilter.frequency.setValueAtTime(950, startTime);
-        bodyFilter.frequency.exponentialRampToValueAtTime(450, startTime + duration);
-        bodyFilter.Q.setValueAtTime(1.8, startTime);
-
-        // 5. Volume envelope
-        const mainGain = ctx.createGain();
-        mainGain.gain.setValueAtTime(0.001, startTime);
-        mainGain.gain.linearRampToValueAtTime(0.45, startTime + 0.05);
-        mainGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
-        osc.connect(bodyFilter);
-        bodyFilter.connect(mainGain);
-        noiseGain.connect(mainGain);
-        mainGain.connect(ctx.destination);
-
-        osc.start(startTime);
-        lfo.start(startTime);
-        noise.start(startTime);
-
-        osc.stop(startTime + duration);
-        lfo.stop(startTime + duration);
-        noise.stop(startTime + duration);
-      };
-
-      const now = ctx.currentTime;
-      playSingleCaw(now, 0.35);
-      playSingleCaw(now + 0.42, 0.40);
+      const audio = new Audio(crowAudioUrl || '/crow-caw.mp3');
+      audio.volume = 0.85;
+      audio.play().catch(() => {
+        // Fallback to root /crow-caw.mp3
+        const altAudio = new Audio('/crow-caw.mp3');
+        altAudio.volume = 0.85;
+        altAudio.play().catch(err => console.warn('Crow audio playback error:', err));
+      });
     } catch (e) {
-      console.error("Audio synth error:", e);
+      console.error("Audio playback error:", e);
     }
   };
 
@@ -95,7 +30,7 @@ export function RavenLogo({ className = "w-8 h-8", size = 32, showGlow = true }:
     playRavenCawSound();
     setTimeout(() => {
       setIsCawing(false);
-    }, 1000);
+    }, 1200);
   };
 
   return (
