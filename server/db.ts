@@ -548,48 +548,137 @@ export function getActiveConnection(): ConnectionProfile {
   }
 }
 
-export function executeSSHCommand(config: ConnectionProfile, cmd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
+interface CachedSSH {
+  conn: SSHClient;
+  isReady: boolean;
+  lastUsed: number;
+  connectPromise?: Promise<SSHClient>;
+}
+
+const sshPool = new Map<string, CachedSSH>();
+
+function getSSHKey(config: ConnectionProfile): string {
+  return `${config.id || "node"}_${config.host}_${config.port || 22}_${config.username}`;
+}
+
+async function getOrCreateSSHClient(config: ConnectionProfile): Promise<SSHClient> {
+  const key = getSSHKey(config);
+  const existing = sshPool.get(key);
+
+  if (existing && existing.isReady && existing.conn) {
+    existing.lastUsed = Date.now();
+    return existing.conn;
+  }
+
+  if (existing && existing.connectPromise) {
+    return existing.connectPromise;
+  }
+
+  const connectPromise = new Promise<SSHClient>((resolve, reject) => {
     const conn = new SSHClient();
+    let isHandshakeDone = false;
+
     conn.on("ready", () => {
-      conn.exec(cmd, (err, stream) => {
-        if (err) {
-          conn.end();
-          return reject(err);
-        }
-        let stdout = "";
-        let stderr = "";
-        stream.on("close", (code) => {
-          conn.end();
-          if (code !== 0 && code !== null) {
-            reject(new Error(stderr || `Command failed with exit code ${code}`));
-          } else {
-            resolve(stdout);
-          }
-        }).on("data", (data: any) => {
-          stdout += data.toString();
-        }).stderr.on("data", (data: any) => {
-          stderr += data.toString();
-        });
-      });
-    }).on("error", (err) => {
-      reject(err);
+      isHandshakeDone = true;
+      sshPool.set(key, { conn, isReady: true, lastUsed: Date.now() });
+      resolve(conn);
+    });
+
+    conn.on("error", (err) => {
+      sshPool.delete(key);
+      if (!isHandshakeDone) {
+        reject(err);
+      }
+    });
+
+    conn.on("close", () => {
+      sshPool.delete(key);
+    });
+
+    conn.on("end", () => {
+      sshPool.delete(key);
     });
 
     const connOpts: any = {
       host: config.host,
       port: config.port || 22,
       username: config.username,
-      readyTimeout: 10000
+      readyTimeout: 10000,
+      keepaliveInterval: 10000,
+      keepaliveCountMax: 3
     };
+
     if (config.authType === "password") {
       connOpts.password = config.password;
     } else {
       connOpts.privateKey = config.privateKey;
     }
-    conn.connect(connOpts);
+
+    try {
+      conn.connect(connOpts);
+    } catch (e) {
+      sshPool.delete(key);
+      reject(e);
+    }
+  });
+
+  sshPool.set(key, { conn: null as any, isReady: false, lastUsed: Date.now(), connectPromise });
+
+  try {
+    const client = await connectPromise;
+    return client;
+  } catch (err) {
+    sshPool.delete(key);
+    throw err;
+  }
+}
+
+export async function executeSSHCommand(config: ConnectionProfile, cmd: string): Promise<string> {
+  let conn: SSHClient;
+  try {
+    conn = await getOrCreateSSHClient(config);
+  } catch (err: any) {
+    // Retry once on connection failure
+    sshPool.delete(getSSHKey(config));
+    conn = await getOrCreateSSHClient(config);
+  }
+
+  return new Promise((resolve, reject) => {
+    conn.exec(cmd, (err, stream) => {
+      if (err) {
+        sshPool.delete(getSSHKey(config));
+        return reject(err);
+      }
+      let stdout = "";
+      let stderr = "";
+
+      stream.on("close", (code) => {
+        if (code !== 0 && code !== null) {
+          reject(new Error(stderr || `Command failed with exit code ${code}`));
+        } else {
+          resolve(stdout);
+        }
+      }).on("data", (data: any) => {
+        stdout += data.toString();
+      }).stderr.on("data", (data: any) => {
+        stderr += data.toString();
+      });
+    });
   });
 }
+
+// Cleanup idle SSH connections every 2 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, cached] of sshPool.entries()) {
+    if (cached.lastUsed && now - cached.lastUsed > 5 * 60 * 1000) {
+      try {
+        if (cached.conn) cached.conn.end();
+      } catch (e) {}
+      sshPool.delete(key);
+    }
+  }
+}, 2 * 60 * 1000);
 
 export function interpolateQueryParams(queryStr: string, params: any[]): string {
   if (!params || params.length === 0) return queryStr;

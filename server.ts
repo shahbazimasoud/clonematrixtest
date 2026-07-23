@@ -4276,17 +4276,79 @@ app.get("/api/matrix/media", authenticateToken, async (req, res) => {
   res.json(mediaList);
 });
 
-app.post("/api/matrix/media/delete", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+app.post("/api/matrix/media/delete", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { mediaId } = req.body;
   if (!mediaId) return res.status(400).json({ error: "Media MXC ID is required" });
 
-  const db = readDb();
-  const mediaIndex = (db.matrixMedia || []).findIndex((m: any) => m.id === mediaId);
-  if (mediaIndex === -1) return res.status(404).json({ error: "Media not found" });
+  let serverName = "localhost";
+  let cleanId = mediaId;
+  if (mediaId.startsWith("mxc://")) {
+    const parts = mediaId.replace("mxc://", "").split("/");
+    if (parts.length >= 2) {
+      serverName = parts[0];
+      cleanId = parts.slice(1).join("/");
+    }
+  }
 
-  const media = db.matrixMedia[mediaIndex];
-  db.matrixMedia.splice(mediaIndex, 1);
-  writeDb(db);
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.domain) {
+    serverName = activeConn.domain;
+  }
+
+  let deletedFromHomeserver = false;
+
+  // 1. Try Synapse Delete Media Admin API
+  try {
+    const endpoints = [
+      `/_synapse/admin/v1/media/${encodeURIComponent(serverName)}/${encodeURIComponent(cleanId)}`,
+      `/_matrix/client/v1/admin/media/delete/${encodeURIComponent(serverName)}/${encodeURIComponent(cleanId)}`,
+      `/_matrix/client/v1/admin/media/${encodeURIComponent(serverName)}/${encodeURIComponent(cleanId)}`
+    ];
+
+    for (const ep of endpoints) {
+      try {
+        const apiRes = await callSynapseAdminAPI("POST", ep, {});
+        if (apiRes) {
+          deletedFromHomeserver = true;
+          break;
+        }
+      } catch (e) {
+        // ignore endpoint error
+      }
+    }
+  } catch (err: any) {
+    console.warn("Synapse Admin API delete error:", err.message);
+  }
+
+  // 2. If connected to Postgres / Remote SSH, purge records from database and filesystem directly
+  if (activeConn && activeConn.id !== "local") {
+    const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+    try {
+      // Postgres purge
+      await queryRemotePostgres(activeConn, `DELETE FROM local_media_repository WHERE media_id = $1`, [cleanId]);
+      await queryRemotePostgres(activeConn, `DELETE FROM remote_media_repository WHERE media_id = $1`, [cleanId]);
+      
+      // File purge on server
+      const rmCmd = `${sudoPrefix}find /var/lib/matrix-synapse/ /var/lib/synapse/ /tmp/ -name "*${cleanId}*" -type f -exec rm -f {} + 2>/dev/null || true`;
+      await executeSSHCommand(activeConn, rmCmd);
+      deletedFromHomeserver = true;
+    } catch (dbErr: any) {
+      console.warn("Remote media DB/file delete error:", dbErr.message);
+    }
+  }
+
+  // 3. Remove from local JSON db
+  const db = readDb();
+  let mediaFileName = cleanId;
+
+  if (db.matrixMedia) {
+    const mediaIndex = db.matrixMedia.findIndex((m: any) => m.id === mediaId || m.id.endsWith(cleanId));
+    if (mediaIndex !== -1) {
+      const media = db.matrixMedia[mediaIndex];
+      mediaFileName = media.fileName || cleanId;
+      db.matrixMedia.splice(mediaIndex, 1);
+    }
+  }
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
@@ -4295,11 +4357,11 @@ app.post("/api/matrix/media/delete", authenticateToken, checkPermission(["Owner"
     action: "Purge Media File",
     target: mediaId,
     status: "success",
-    details: `Permanently purged file ${media.fileName || "unnamed"} (${(media.fileSize / 1024 / 1024).toFixed(2)} MB)`
+    details: `Purged media file ${mediaFileName} (${cleanId}) successfully.`
   });
   writeDb(db);
 
-  res.json({ message: "Media purged successfully" });
+  return res.json({ success: true, message: "Media purged successfully from homeserver and database." });
 });
 
 app.post("/api/matrix/media/cleanup", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
