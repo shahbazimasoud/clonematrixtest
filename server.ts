@@ -3659,158 +3659,121 @@ app.post("/api/matrix/users/account-data", authenticateToken, checkPermission(["
 // Room Chat/Messages Viewer API
 app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res) => {
   const { roomId } = req.params;
+  const dir = (req.query.dir as string) || "b";
+  const limit = Math.min(parseInt((req.query.limit as string) || "100", 10), 200);
+  const from = (req.query.from as string) || "";
+
   let apiMessages: any[] = [];
   let fetchedFromApi = false;
+  let startToken = "";
+  let endToken = "";
 
   const activeConn = getActiveConnection();
 
-  // 1. Prioritize Matrix Client-Server API / Synapse API
   if (activeConn && activeConn.id !== "local") {
     try {
-      let msgRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=100`);
-      
+      let queryUrl = `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=${encodeURIComponent(dir)}&limit=${limit}`;
+      if (from) {
+        queryUrl += `&from=${encodeURIComponent(from)}`;
+      }
+
+      let msgRes = await callSynapseAdminAPI("GET", queryUrl);
+
       // If forbidden / not joined, force admin to join and retry
       if (msgRes && msgRes.errcode === "M_FORBIDDEN") {
         try {
           await callSynapseAdminAPI("POST", `/_synapse/admin/v1/join/${encodeURIComponent(roomId)}`, {
             user_id: `@admin:${activeConn.domain || "localhost"}`
           });
-          msgRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=100`);
+          msgRes = await callSynapseAdminAPI("GET", queryUrl);
         } catch (jErr) {}
       }
 
-      if (msgRes && Array.isArray(msgRes.chunk)) {
-        apiMessages = msgRes.chunk
-          .filter((ev: any) => ev.type === "m.room.message" && ev.content)
-          .map((ev: any) => {
-            const senderMxid = ev.sender || "unknown";
-            const username = senderMxid.split(":")[0].replace("@", "");
-            const contentObj = ev.content || {};
-            const msgType = contentObj.msgtype || "m.text";
-            const isMedia = Boolean(contentObj.url || (msgType !== "m.text" && msgType !== "m.notice"));
-            return {
-              id: ev.event_id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              sender: senderMxid,
-              senderDisplayName: username.charAt(0).toUpperCase() + username.slice(1),
-              content: contentObj.body || "",
-              timestamp: new Date(ev.origin_server_ts || Date.now()).toISOString(),
-              type: msgType,
-              mxc: contentObj.url || "",
-              fileName: isMedia ? (contentObj.body || "attachment") : "",
-              fileSize: contentObj.info?.size || 0,
-              mimeType: contentObj.info?.mimetype || ""
-            };
-          });
-        fetchedFromApi = true;
+      if (msgRes) {
+        startToken = msgRes.start || "";
+        endToken = msgRes.end || "";
+
+        if (Array.isArray(msgRes.chunk)) {
+          apiMessages = msgRes.chunk
+            .filter((ev: any) => ev && ev.type)
+            .map((ev: any) => {
+              const senderMxid = ev.sender || "unknown";
+              const rawUser = senderMxid.split(":")[0].replace("@", "");
+              const dName = rawUser ? (rawUser.charAt(0).toUpperCase() + rawUser.slice(1)) : senderMxid;
+              const contentObj = ev.content || {};
+
+              const isRedacted = Boolean(ev.type === "m.room.redaction" || ev.unsigned?.redacted_because || (Object.keys(contentObj).length === 0 && !ev.type.startsWith("m.room.member")));
+
+              let msgType = contentObj.msgtype || "m.text";
+              if (ev.type === "m.sticker") msgType = "m.sticker";
+
+              const relatesTo = contentObj["m.relates_to"] || {};
+              const isReply = Boolean(relatesTo["m.in_reply_to"]?.event_id);
+              const replyToEventId = relatesTo["m.in_reply_to"]?.event_id || null;
+
+              const isEdit = relatesTo.rel_type === "m.replace";
+              const editBody = contentObj["m.new_content"]?.body || null;
+
+              const bodyText = isRedacted ? "[Message redacted / پیام پاک شده]" : (contentObj.body || "");
+              const mxcUri = contentObj.url || "";
+              const isMedia = Boolean(mxcUri || ["m.image", "m.file", "m.audio", "m.video", "m.sticker"].includes(msgType));
+
+              return {
+                id: ev.event_id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                sender: senderMxid,
+                senderDisplayName: dName,
+                content: bodyText,
+                timestamp: new Date(ev.origin_server_ts || Date.now()).toISOString(),
+                type: msgType,
+                mxc: mxcUri,
+                fileName: isMedia ? (contentObj.body || "attachment") : "",
+                fileSize: contentObj.info?.size || 0,
+                mimeType: contentObj.info?.mimetype || "",
+                isReply,
+                replyToEventId,
+                isEdit,
+                editBody,
+                isRedacted
+              };
+            });
+          fetchedFromApi = true;
+        }
       }
     } catch (apiErr: any) {
       console.warn("Synapse API fetch messages failed:", apiErr.message);
     }
   }
 
-  // 2. Query Postgres fallback if Matrix API failed or returned empty
-  let pgMessages: any[] = [];
-  if (!fetchedFromApi) {
-    try {
-      const rows = await queryPostgres(`
-        SELECT e.event_id, e.sender, e.origin_server_ts, ej.json, p.displayname
-        FROM events e 
-        JOIN event_json ej ON e.event_id = ej.event_id 
-        LEFT JOIN profiles p ON e.sender = p.user_id
-        WHERE e.room_id = $1 AND e.type = 'm.room.message'
-        ORDER BY e.origin_server_ts DESC 
-        LIMIT 100
-      `, [roomId]);
-      
-      if (rows && rows.length > 0) {
-        pgMessages = rows.map((row: any) => {
-          let contentText = "";
-          let msgType = "m.text";
-          let mxcUri = "";
-          let fileName = "";
-          let fileSize = 0;
-          let mimeType = "";
-          try {
-            const parsed = typeof row.json === 'string' ? JSON.parse(row.json) : row.json;
-            contentText = parsed?.content?.body || "";
-            msgType = parsed?.content?.msgtype || "m.text";
-            mxcUri = parsed?.content?.url || "";
-            const isMedia = Boolean(mxcUri || (msgType !== "m.text" && msgType !== "m.notice"));
-            fileName = isMedia ? (parsed?.content?.body || "attachment") : "";
-            fileSize = parsed?.content?.info?.size || 0;
-            mimeType = parsed?.content?.info?.mimetype || "";
-          } catch (e) {
-            contentText = "Message content undecodable";
-          }
-          const username = row.sender.split(":")[0].replace("@", "");
-          return {
-            id: row.event_id,
-            sender: row.sender,
-            senderDisplayName: row.displayname || (username.charAt(0).toUpperCase() + username.slice(1)),
-            content: contentText,
-            timestamp: new Date(parseInt(row.origin_server_ts)).toISOString(),
-            type: msgType,
-            mxc: mxcUri,
-            fileName: fileName,
-            fileSize: fileSize,
-            mimeType: mimeType
-          };
-        });
-      }
-    } catch (err: any) {
-      console.warn("Could not fetch messages from Postgres, falling back to local/mock:", err.message);
-    }
-  }
-
-  // 3. Fetch local DB room messages
+  // Fallback to local JSON DB
   const db = readDb();
   let room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
 
-  if (!room && apiMessages.length === 0 && pgMessages.length === 0) {
-    if (activeConn && activeConn.id !== "local") {
-      return res.json([]);
-    }
-    return res.status(404).json({ error: "Room not found" });
+  if (!fetchedFromApi && room && room.messages) {
+    apiMessages = room.messages;
   }
 
-  if (room && !room.messages) {
-    const domain = roomId.split(":")[1] || "matrix.company.local";
-    room.messages = [
-      { id: "msg-1", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "سلام به همگی، خوش آمدید به سرور ماتریکس ما. لطفاً همگی در این کانال حضور فعال داشته باشید.", timestamp: new Date(Date.now() - 3600000 * 24).toISOString(), type: "m.text" },
-      { id: "msg-2", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "Hi Masoud! Glad to be here. The Homeserver is running extremely fast today.", timestamp: new Date(Date.now() - 3600000 * 23.5).toISOString(), type: "m.text" },
-      { id: "msg-3", sender: "@bob:" + domain, senderDisplayName: "Bob", content: "درود، تشکر از راه‌اندازی این سرور امن. تمام بخش‌های رمزنگاری شده تست شدند.", timestamp: new Date(Date.now() - 3600000 * 22).toISOString(), type: "m.text" },
-      { id: "msg-4", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "عالیه باب. برای ترن‌سرور (Coturn) هم پورت‌های امن رو فعال کردیم تا تماس‌ها بدون مشکل وصل بشن.", timestamp: new Date(Date.now() - 3600000 * 21).toISOString(), type: "m.text" },
-      { id: "msg-5", sender: "@alice:" + domain, senderDisplayName: "Alice", content: "I noticed that. The integration with LDAP AD works seamlessly as well.", timestamp: new Date(Date.now() - 3600000 * 20.8).toISOString(), type: "m.text" },
-      { id: "msg-6", sender: "@masoud:" + domain, senderDisplayName: "Masoud", content: "بله، همگام‌سازی کاربرها به صورت اتوماتیک انجام میشه.", timestamp: new Date(Date.now() - 3600000 * 18).toISOString(), type: "m.text" }
-    ];
-    writeDb(db);
+  // Reverse if backward so UI receives chronological array
+  if (dir === "b") {
+    apiMessages.reverse();
   }
 
-  const localMessages = room ? (room.messages || []) : [];
+  // Attach pagination tokens to response object/array
+  const responseData: any = apiMessages;
+  responseData.start = startToken;
+  responseData.end = endToken;
 
-  // Merge messages cleanly
-  const msgMap = new Map();
-  apiMessages.forEach((m: any) => msgMap.set(m.id, m));
-  pgMessages.forEach((m: any) => msgMap.set(m.id, m));
-  localMessages.forEach((m: any) => msgMap.set(m.id, m));
-
-  const allMessages = Array.from(msgMap.values()).sort((a: any, b: any) => {
-    return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-  });
-
-  res.json(allMessages);
+  res.json(responseData);
 });
 
 // Send message to room (Admins and Operators)
 app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator", "Moderator"]), async (req, res) => {
   const { roomId } = req.params;
-  const { content, sender, senderDisplayName } = req.body;
-  if (!content) return res.status(400).json({ error: "Content is required" });
+  const { content, msgtype, sender, senderDisplayName, url, info } = req.body;
+  if (!content && !url) return res.status(400).json({ error: "Content or media URL is required" });
 
   const activeConn = getActiveConnection();
   const domain = roomId.split(":")[1] || (activeConn?.domain || "localhost");
 
-  // Determine sender from active connection's adminUsername if configured
   let configuredSender = activeConn?.adminUsername?.trim();
   let senderMxid = "";
   if (configuredSender) {
@@ -3826,15 +3789,41 @@ app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, checkPerm
   const rawLocal = senderMxid.split(":")[0].replace("@", "");
   const senderName = senderDisplayName || (rawLocal ? (rawLocal.charAt(0).toUpperCase() + rawLocal.slice(1)) : "Admin");
 
+  let targetMsgType = msgtype || "m.text";
+  let bodyText = content || "";
+
+  if (typeof bodyText === "string" && bodyText.startsWith("/me ")) {
+    targetMsgType = "m.emote";
+    bodyText = bodyText.replace(/^\/me\s+/, "");
+  }
+
   let sentViaApi = false;
+  let createdEventId = `msg-${Date.now()}`;
+
   if (activeConn && activeConn.id !== "local") {
     try {
+      // Ensure admin user is joined
+      try {
+        await callSynapseAdminAPI("POST", `/_synapse/admin/v1/join/${encodeURIComponent(roomId)}`, {
+          user_id: senderMxid
+        });
+      } catch (jErr) {}
+
       const txnId = `m.${Date.now()}.${Math.random().toString(36).substring(2, 6)}`;
-      const apiRes = await callSynapseAdminAPI("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`, {
-        msgtype: "m.text",
-        body: content
-      });
+      const endpoint = targetMsgType === "m.sticker" 
+        ? `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.sticker/${txnId}`
+        : `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`;
+
+      const payload: any = {
+        msgtype: targetMsgType,
+        body: bodyText
+      };
+      if (url) payload.url = url;
+      if (info) payload.info = info;
+
+      const apiRes = await callSynapseAdminAPI("PUT", endpoint, payload);
       if (apiRes && apiRes.event_id) {
+        createdEventId = apiRes.event_id;
         sentViaApi = true;
       }
     } catch (err: any) {
@@ -3846,23 +3835,22 @@ app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, checkPerm
   if (!db.matrixRooms) db.matrixRooms = [];
   let room = db.matrixRooms.find((r: any) => r.id === roomId);
   if (!room) {
-    room = {
-      id: roomId,
-      name: roomId,
-      messages: []
-    };
+    room = { id: roomId, name: roomId, messages: [] };
     db.matrixRooms.unshift(room);
   }
-
   if (!room.messages) room.messages = [];
 
   const newMessage = {
-    id: "msg-" + Date.now(),
+    id: createdEventId,
     sender: senderMxid,
     senderDisplayName: senderName,
-    content,
+    content: bodyText,
     timestamp: new Date().toISOString(),
-    type: "m.text"
+    type: targetMsgType,
+    mxc: url || "",
+    fileName: info?.filename || "",
+    fileSize: info?.size || 0,
+    mimeType: info?.mimetype || ""
   };
 
   room.messages.push(newMessage);
@@ -4001,20 +3989,51 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   try {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
     if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms) && apiRes.rooms.length > 0) {
-      roomsList = apiRes.rooms.map((r: any) => {
-        const localRoom = localRooms.find((lr: any) => lr.id === r.room_id);
+      roomsList = await Promise.all(apiRes.rooms.map(async (r: any) => {
+        const roomId = r.room_id;
+        const localRoom = localRooms.find((lr: any) => lr.id === roomId);
         const adGroups = localRoom ? (localRoom.adGroups || []) : [];
-        const nameVal = (r.name && r.name !== r.room_id ? r.name : "") || r.canonical_alias || (localRoom ? (localRoom.name || localRoom.alias) : "") || r.room_id;
-        const aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
-        const mCount = parseInt(r.joined_members) || (localRoom ? (localRoom.membersCount || (localRoom.joinedMembers ? localRoom.joinedMembers.length : 0)) : 0) || 1;
+
+        let nameVal = (r.name && r.name !== roomId ? r.name.trim() : "");
+        let aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
+        let mCount = typeof r.joined_members === "number" ? r.joined_members : (parseInt(r.joined_members) || 0);
+
+        // Requirement 1: If room name is empty, read GET /_matrix/client/v3/rooms/{roomId}/state/m.room.name
+        if (!nameVal) {
+          try {
+            const nameState = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.name`);
+            if (nameState && nameState.name) {
+              nameVal = nameState.name.trim();
+            }
+          } catch (e) {}
+        }
+
+        // Requirement 2: Read member count GET /_synapse/admin/v1/rooms/{roomId}
+        if (!nameVal || !aliasVal || mCount <= 0) {
+          try {
+            const singleRoom = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}`);
+            if (singleRoom) {
+              if (!nameVal && singleRoom.name) nameVal = singleRoom.name.trim();
+              if (!aliasVal && singleRoom.canonical_alias) aliasVal = singleRoom.canonical_alias.trim();
+              if (typeof singleRoom.joined_members === "number" && singleRoom.joined_members > 0) {
+                mCount = singleRoom.joined_members;
+              }
+            }
+          } catch (e) {}
+        }
+
+        // Requirement 1 fallback: use room canonical alias or roomId
+        if (!nameVal) {
+          nameVal = aliasVal || (localRoom ? (localRoom.name || localRoom.alias) : "") || roomId;
+        }
 
         return {
-          id: r.room_id,
+          id: roomId,
           name: nameVal,
           alias: aliasVal,
           topic: r.topic || (localRoom ? localRoom.topic : "") || "",
           creator: r.creator || (localRoom ? localRoom.creator : "") || "",
-          membersCount: mCount,
+          membersCount: mCount || 1,
           joinedMembers: localRoom ? (localRoom.joinedMembers || []) : [],
           bannedMembers: localRoom ? (localRoom.bannedMembers || []) : [],
           adGroups,
@@ -4023,91 +4042,17 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
           isPublic: r.public === true,
           createdAt: new Date().toISOString()
         };
-      });
+      }));
       fetchedFromRemote = true;
     }
   } catch (apiErr: any) {
     console.warn("Synapse Admin API rooms fetch failed:", apiErr.message);
   }
 
-  // 2. If Synapse Admin API didn't return any rooms, try Postgres directly!
+  // Fallback or merge with local DB rooms
   if (!fetchedFromRemote || roomsList.length === 0) {
-    try {
-      console.log("Querying room details directly from Postgres database...");
-      let dbRooms: any[] = [];
-      try {
-        dbRooms = await queryPostgres(`
-          SELECT 
-            r.room_id,
-            COALESCE(NULLIF(rss.name, ''), (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), r.room_id) as name,
-            COALESCE(NULLIF(rss.canonical_alias, ''), (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), '') as canonical_alias,
-            COALESCE(rss.topic, '') as topic,
-            COALESCE(rss.creator, r.creator, '') as creator,
-            COALESCE(rss.joined_members, (SELECT COUNT(*) FROM room_memberships rm WHERE rm.room_id = r.room_id AND rm.membership = 'join'), 0) as joined_members,
-            COALESCE(rss.is_federatable, true) as is_federatable,
-            COALESCE(rss.public, r.is_public, false) as is_public,
-            COALESCE(rss.version, r.room_version, '1') as version
-          FROM rooms r
-          LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
-        `);
-      } catch (err: any) {
-        console.warn("Joined rooms query failed, trying basic room_stats_state fallback:", err.message);
-        try {
-          dbRooms = await queryPostgres(`
-            SELECT room_id, name, canonical_alias, topic, creator, joined_members, is_federatable, public, version
-            FROM room_stats_state
-          `);
-        } catch (err2: any) {
-          try {
-            dbRooms = await queryPostgres(`
-              SELECT room_id, creator, is_public, room_version as version
-              FROM rooms
-            `);
-          } catch (err3: any) {
-            console.error("Postgres rooms queries failed completely:", err3.message);
-          }
-        }
-      }
-
-      if (dbRooms && dbRooms.length > 0) {
-        roomsList = dbRooms.map((r: any) => {
-          const roomId = r.room_id;
-          const localRoom = localRooms.find((lr: any) => lr.id === roomId);
-          const adGroups = localRoom ? (localRoom.adGroups || []) : [];
-          const nameVal = (r.name && r.name !== roomId ? r.name : "") || r.canonical_alias || (localRoom ? (localRoom.name || localRoom.alias) : "") || roomId;
-          const aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
-          const mCount = parseInt(r.joined_members) || (localRoom ? (localRoom.membersCount || (localRoom.joinedMembers ? localRoom.joinedMembers.length : 0)) : 0) || 1;
-
-          return {
-            id: roomId,
-            name: nameVal,
-            alias: aliasVal,
-            topic: r.topic || (localRoom ? localRoom.topic : "") || "",
-            creator: r.creator || (localRoom ? localRoom.creator : "") || "",
-            membersCount: mCount,
-            joinedMembers: localRoom ? (localRoom.joinedMembers || []) : [],
-            bannedMembers: localRoom ? (localRoom.bannedMembers || []) : [],
-            adGroups,
-            version: r.version || "1",
-            isFederated: r.is_federatable !== false,
-            isPublic: r.public === true || r.is_public === true || r.is_public === 't',
-            createdAt: new Date().toISOString()
-          };
-        });
-        fetchedFromRemote = true;
-        console.log(`Successfully retrieved ${roomsList.length} rooms from Postgres database directly.`);
-      }
-    } catch (dbErr: any) {
-      console.error("Direct Postgres rooms fetch failed:", dbErr.message);
-    }
-  }
-
-  // 3. Fallback or merge with local DB rooms
-  if (!fetchedFromRemote || roomsList.length === 0) {
-    console.log("Both Synapse Admin API and Postgres returned 0 rooms or failed. Falling back to matrixRooms database.");
     roomsList = localRooms;
   } else {
-    // Merge any local-only rooms that are not present in remote list
     localRooms.forEach((lr: any) => {
       if (!roomsList.some((r: any) => r.id === lr.id)) {
         roomsList.push(lr);
@@ -4125,7 +4070,7 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   res.json(roomsList);
 });
 
-// Fetch room members on-demand
+// Fetch room members on-demand (Requirement 7: View Members)
 app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res) => {
   const { roomId } = req.params;
   if (!roomId) return res.status(400).json({ error: "Room ID is required" });
@@ -4136,43 +4081,62 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
 
   const activeConn = getActiveConnection();
 
-  // 1. Try Synapse Admin API first
   if (activeConn && activeConn.id !== "local") {
     try {
-      const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/members`);
-      if (membersRes && Array.isArray(membersRes.members)) {
-        // Fetch power levels for the room
-        let userPowerLevels: Record<string, number> = {};
-        let defaultPowerLevel = 0;
-        try {
-          const plRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`);
-          if (plRes && plRes.users) {
-            userPowerLevels = plRes.users;
-            defaultPowerLevel = plRes.users_default || 0;
-          }
-        } catch (plErr) {}
+      // Fetch power levels
+      let userPowerLevels: Record<string, number> = {};
+      let defaultPowerLevel = 0;
+      try {
+        const plRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`);
+        if (plRes && plRes.users) {
+          userPowerLevels = plRes.users;
+          defaultPowerLevel = plRes.users_default || 0;
+        }
+      } catch (plErr) {}
 
+      // Requirement 7: Load members using GET /_matrix/client/v3/rooms/{roomId}/members
+      let membersRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/members`);
+      if (!membersRes || !Array.isArray(membersRes.chunk)) {
+        // Synapse Admin fallback
+        const adminMembersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/members`);
+        if (adminMembersRes && Array.isArray(adminMembersRes.members)) {
+          membersRes = {
+            chunk: adminMembersRes.members.map((m: string) => ({
+              state_key: m,
+              content: { membership: "join" }
+            }))
+          };
+        }
+      }
+
+      if (membersRes && Array.isArray(membersRes.chunk)) {
         const db = readDb();
         const localUsers = db.matrixUsers || [];
 
-        joinedMembers = await Promise.all(membersRes.members.map(async (m: string) => {
-          const pLevel = userPowerLevels[m] !== undefined ? userPowerLevels[m] : defaultPowerLevel;
-          const roleStr = pLevel >= 100 ? "Admin" : (pLevel >= 50 ? "Moderator" : "User");
-          const localUser = localUsers.find((u: any) => u.mxid.toLowerCase() === m.toLowerCase());
-          
-          let dName = localUser?.displayName || "";
-          if (!dName) {
-            const rawUser = m.split(":")[0].replace("@", "");
-            dName = rawUser.charAt(0).toUpperCase() + rawUser.slice(1);
+        joinedMembers = membersRes.chunk.map((ev: any) => {
+          const mxid = ev.state_key || ev.sender || "unknown";
+          const content = ev.content || {};
+          const membership = content.membership || "join";
+          const pLevel = userPowerLevels[mxid] !== undefined ? userPowerLevels[mxid] : defaultPowerLevel;
+          const roleStr = pLevel >= 100 ? "Admin" : (pLevel >= 50 ? "Moderator" : "Member");
+
+          const localUser = localUsers.find((u: any) => u.mxid?.toLowerCase() === mxid.toLowerCase());
+          const rawUser = mxid.split(":")[0].replace("@", "");
+          const dName = content.displayname || localUser?.displayName || (rawUser ? (rawUser.charAt(0).toUpperCase() + rawUser.slice(1)) : mxid);
+
+          if (membership === "ban") {
+            bannedMembers.push(mxid);
           }
 
           return {
-            mxid: m,
+            mxid,
             displayName: dName,
+            avatar: content.avatar_url || "",
+            membership,
             role: roleStr,
             powerLevel: pLevel
           };
-        }));
+        });
 
         fetched = true;
       }
@@ -4181,50 +4145,12 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
     }
   }
 
-  // 2. Fallback to Postgres
   if (!fetched) {
-    try {
-      const dbMembers = await queryPostgres(`
-        SELECT rm.user_id as mxid, rm.membership, p.displayname
-        FROM room_memberships rm
-        LEFT JOIN profiles p ON rm.user_id = p.user_id
-        WHERE rm.room_id = $1
-      `, [roomId]);
-
-      if (dbMembers && dbMembers.length > 0) {
-        dbMembers.forEach((m: any) => {
-          if (m.membership === 'join') {
-            joinedMembers.push({
-              mxid: m.mxid,
-              displayName: m.displayname || "",
-              role: "Member",
-              powerLevel: 0
-            });
-          } else if (m.membership === 'ban') {
-            bannedMembers.push(m.mxid);
-          }
-        });
-        fetched = true;
-      }
-    } catch (dbErr: any) {
-      console.warn(`Postgres room members fetch failed for ${roomId}:`, dbErr.message);
-    }
-  }
-
-  // 3. Fallback or merge with local DB
-  const db = readDb();
-  const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
-  if (localRoom) {
-    if (!fetched) {
+    const db = readDb();
+    const localRoom = (db.matrixRooms || []).find((lr: any) => lr.id === roomId);
+    if (localRoom) {
       joinedMembers = localRoom.joinedMembers || [];
       bannedMembers = localRoom.bannedMembers || [];
-    } else if (localRoom.joinedMembers && Array.isArray(localRoom.joinedMembers)) {
-      localRoom.joinedMembers.forEach((lm: any) => {
-        const mxid = typeof lm === 'string' ? lm : lm.mxid;
-        if (mxid && !joinedMembers.some((m: any) => (m.mxid || m).toLowerCase() === mxid.toLowerCase())) {
-          joinedMembers.push(typeof lm === 'string' ? { mxid, displayName: mxid, role: 'Member', powerLevel: 0 } : lm);
-        }
-      });
     }
   }
 
@@ -4295,7 +4221,6 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
         msgtype: "m.text",
         body: farewellMsg
       });
-      console.log(`Farewell message posted to room ${roomId}`);
     } catch (msgErr: any) {
       console.warn("Could not post farewell message via Synapse API:", msgErr.message);
     }
@@ -4304,10 +4229,8 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
   // 2. Handle forcing members to leave/kick from room
   if (leave) {
     try {
-      console.log(`Getting members of room ${roomId} to force leave...`);
       const membersRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/members`);
       if (membersRes && Array.isArray(membersRes.members)) {
-        console.log(`Found ${membersRes.members.length} members to kick from ${roomId}`);
         for (const memberMxid of membersRes.members) {
           try {
             await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
@@ -4324,48 +4247,41 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
     }
   }
 
-  // 3. Purge room completely from Postgres Database
-  if (purge) {
-    try {
-      console.log(`Purging room ${roomId} directly from Postgres database tables...`);
-      await queryPostgres("DELETE FROM room_stats_state WHERE room_id = $1", [roomId]);
-      await queryPostgres("DELETE FROM current_state_events WHERE room_id = $1", [roomId]);
-      await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1", [roomId]);
-      await queryPostgres("DELETE FROM room_aliases WHERE room_id = $1", [roomId]);
-      await queryPostgres("DELETE FROM events WHERE room_id = $1", [roomId]);
-      await queryPostgres("DELETE FROM event_json WHERE room_id = $1", [roomId]);
-      await queryPostgres("DELETE FROM rooms WHERE room_id = $1", [roomId]);
-      console.log(`Successfully purged room ${roomId} from Postgres tables.`);
-    } catch (dbErr: any) {
-      console.warn("Postgres tables purge for room failed:", dbErr.message);
-    }
-  }
-
-  // 4. Delete room via Synapse Admin API
+  // 3. Delete / Shutdown room via Synapse Admin API
   let apiSuccess = false;
   let apiError = null;
 
   try {
-    const payload: any = {
-      purge: !!purge,
+    // Try shutdown room v1 endpoint first
+    const shutdownRes = await callSynapseAdminAPI("POST", `/_synapse/admin/v1/shutdown_room/${encodeURIComponent(roomId)}`, {
+      new_room_user_id: `@admin:${getActiveConnection()?.domain || "localhost"}`,
+      room_name: "Shutdown Room",
+      message: farewellMsg,
       block: true,
-      message: farewellMsg
-    };
+      purge: !!purge
+    });
 
-    console.log("Calling Synapse Admin API to delete room:", roomId, payload);
-    const apiRes = await callSynapseAdminAPI("DELETE", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}`, payload);
-    
-    if (apiRes && !apiRes.error && apiRes.errcode === undefined) {
+    if (shutdownRes && !shutdownRes.error && shutdownRes.errcode === undefined) {
       apiSuccess = true;
     } else {
-      apiError = apiRes ? (apiRes.error || apiRes.errcode) : "Unknown error";
+      // Fallback to DELETE /_synapse/admin/v1/rooms/{roomId}
+      const deleteRes = await callSynapseAdminAPI("DELETE", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}`, {
+        purge: !!purge,
+        block: true,
+        message: farewellMsg
+      });
+      if (deleteRes && !deleteRes.error && deleteRes.errcode === undefined) {
+        apiSuccess = true;
+      } else {
+        apiError = deleteRes ? (deleteRes.error || deleteRes.errcode) : "Unknown error";
+      }
     }
   } catch (err: any) {
     apiError = err.message || err;
     console.warn("Could not delete room via Synapse Admin API:", apiError);
   }
 
-  // Always keep local JSON DB synced
+  // Sync local JSON DB
   if (roomIndex !== -1) {
     db.matrixRooms.splice(roomIndex, 1);
   }
@@ -4376,13 +4292,13 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
     username: req.user.username,
     action: "Purge & Shutdown Matrix Room",
     target: room ? room.name : roomId,
-    status: apiSuccess ? "success" : (apiError ? "failed" : "success"),
-    details: `Purged room ${roomId}. Farewell message sent: ${!!sendMessage}. API Status: ${apiSuccess ? "Success" : "Failed (" + apiError + ")"}`
+    status: apiSuccess ? "success" : "warning",
+    details: `Purged/Shutdown room ${roomId}. Farewell message sent: ${!!sendMessage}. API Status: ${apiSuccess ? "Success" : "Warning (" + apiError + ")"}`
   });
   writeDb(db);
 
   res.json({ 
-    message: "اتاق با موفقیت مسدود، اعضا اخراج و به طور کامل از دیتابیس سرور حذف گردید.",
+    message: "اتاق با موفقیت مسدود، اعضا اخراج و به طور کامل از سرور حذف گردید.",
     success: true 
   });
 });
@@ -4400,12 +4316,6 @@ app.post("/api/matrix/rooms/members/kick", authenticateToken, checkPermission(["
     apiSuccess = true;
   } catch (err: any) {
     console.warn("Synapse kick API call failed:", err.message);
-  }
-
-  try {
-    await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
-  } catch (dbErr: any) {
-    console.warn("Postgres room membership delete for kick failed:", dbErr.message);
   }
 
   const db = readDb();
@@ -4446,12 +4356,6 @@ app.post("/api/matrix/rooms/members/ban", authenticateToken, checkPermission(["O
     console.warn("Synapse ban API call failed:", err.message);
   }
 
-  try {
-    await queryPostgres("UPDATE room_memberships SET membership = 'ban' WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
-  } catch (dbErr: any) {
-    console.warn("Postgres ban update failed:", dbErr.message);
-  }
-
   const db = readDb();
   const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
   if (room) {
@@ -4487,12 +4391,6 @@ app.post("/api/matrix/rooms/members/unban", authenticateToken, checkPermission([
     });
   } catch (err: any) {
     console.warn("Synapse unban API call failed:", err.message);
-  }
-
-  try {
-    await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2 AND membership = 'ban'", [roomId, mxid]);
-  } catch (dbErr: any) {
-    console.warn("Postgres unban delete failed:", dbErr.message);
   }
 
   const db = readDb();
