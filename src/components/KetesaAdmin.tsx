@@ -885,7 +885,7 @@ export default function KetesaAdmin({
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/ws?token=${authToken}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {

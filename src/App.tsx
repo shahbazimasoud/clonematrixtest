@@ -460,7 +460,12 @@ export default function App() {
 
   // Set up WebSocket connection for real-time telemetry and CLI stream
   const setupWebSocket = (token: string) => {
-    if (wsRef.current) wsRef.current.close();
+    if (!token || token === 'null' || token === 'undefined') return;
+
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
@@ -471,41 +476,48 @@ export default function App() {
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      try {
+        const data = JSON.parse(event.data);
 
-      if (data.type === 'metrics') {
-        setStats(data.stats);
-        if (data.stats && data.stats.services) {
-          setServices(prev => prev.map(s => {
-            const updated = data.stats.services.find((us: any) => us.id === s.id);
-            return updated ? { ...s, status: updated.status } : s;
-          }));
+        if (data.type === 'metrics') {
+          setStats(data.stats);
+          if (data.stats && data.stats.services) {
+            setServices(prev => prev.map(s => {
+              const updated = data.stats.services.find((us: any) => us.id === s.id);
+              return updated ? { ...s, status: updated.status } : s;
+            }));
+          }
+        } else if (data.type === 'cmd_stdout') {
+          setTerminalLogs(prev => [...prev, data.text]);
+        } else if (data.type === 'cmd_start') {
+          setIsExecuting(true);
+          setTerminalLogs(prev => [...prev, `\nroot@matrix-node:~# executing ${data.command}...`]);
+        } else if (data.type === 'cmd_end') {
+          setIsExecuting(false);
+          setTerminalLogs(prev => [...prev, `\nCommand executed successfully. Exit code: ${data.code}`]);
+          // Re-sync all configurations
+          fetchConfig();
+          fetchLogs();
+          fetchBackups();
+        } else if (data.type === 'cmd_err') {
+          setIsExecuting(false);
+          setTerminalLogs(prev => [...prev, `\n❌ ERROR: ${data.text}`]);
+        } else if (data.type === 'error') {
+          showToast('error', data.message);
         }
-      } else if (data.type === 'cmd_stdout') {
-        setTerminalLogs(prev => [...prev, data.text]);
-      } else if (data.type === 'cmd_start') {
-        setIsExecuting(true);
-        setTerminalLogs(prev => [...prev, `\nroot@matrix-node:~# executing ${data.command}...`]);
-      } else if (data.type === 'cmd_end') {
-        setIsExecuting(false);
-        setTerminalLogs(prev => [...prev, `\nCommand executed successfully. Exit code: ${data.code}`]);
-        // Re-sync all configurations
-        fetchConfig();
-        fetchLogs();
-        fetchBackups();
-      } else if (data.type === 'cmd_err') {
-        setIsExecuting(false);
-        setTerminalLogs(prev => [...prev, `\n❌ ERROR: ${data.text}`]);
-      } else if (data.type === 'error') {
-        showToast('error', data.message);
+      } catch (err) {
+        console.error("Error parsing WebSocket message:", err);
       }
     };
 
     ws.onclose = () => {
       console.log("WebSocket connection closed. Reconnecting in 5s...");
       setTimeout(() => {
-        if (localStorage.getItem('admin_token')) {
-          setupWebSocket(token);
+        const currentToken = localStorage.getItem('admin_token') || token;
+        if (currentToken && currentToken !== 'null' && currentToken !== 'undefined') {
+          if (wsRef.current === ws || !wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+            setupWebSocket(currentToken);
+          }
         }
       }, 5000);
     };

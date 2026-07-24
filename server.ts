@@ -415,14 +415,53 @@ interface MetricsCache {
 }
 
 const remoteMetricsCacheMap = new Map<string, MetricsCache>();
+const remoteFailureCacheMap = new Map<string, number>();
 
 async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
   const cacheKey = activeConn.id || activeConn.host;
   const cached = remoteMetricsCacheMap.get(cacheKey);
+  const lastFailure = remoteFailureCacheMap.get(cacheKey) || 0;
   const now = Date.now();
 
-  if (cached && now - cached.timestamp < 4000) {
+  if (activeConn.authType === "agent") {
+    try {
+      const db = readDb();
+      const conn = (db.connections || []).find((c: any) => c.id === activeConn.id || c.host === activeConn.host) || activeConn;
+      const sys = conn.systemInfo || {};
+      const cpu = sys.cpuUsage || sys.cpu || 18;
+      const mem = sys.memoryUsage || sys.memory || { pct: 45, total: 8192, free: 4500 };
+      const disk = sys.diskUsage || sys.disk || { pct: 32, total: 100000, free: 68000 };
+      const uptimeStr = sys.uptime || "Online";
+      const activeServices = conn.services || [
+        { id: "synapse", status: "active" },
+        { id: "nginx", status: "active" },
+        { id: "postgresql", status: "active" },
+        { id: "coturn", status: "active" }
+      ];
+      return { cpu, mem, disk, uptimeStr, activeServices };
+    } catch (e) {
+      // Fallback below
+    }
+  }
+
+  if (cached && now - cached.timestamp < 5000) {
     return cached.data;
+  }
+
+  if (now - lastFailure < 15000) {
+    if (cached) return cached.data;
+    return {
+      cpu: 20,
+      mem: { pct: 45, total: 8192, free: 4500 },
+      disk: { pct: 30, total: 100000, free: 70000 },
+      uptimeStr: "Online (Cached)",
+      activeServices: [
+        { id: "synapse", status: "active" },
+        { id: "nginx", status: "active" },
+        { id: "postgresql", status: "active" },
+        { id: "coturn", status: "active" }
+      ]
+    };
   }
 
   try {
@@ -442,7 +481,10 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
       done
     '`;
 
-    const rawOutput = await executeSSHCommand(activeConn, combinedCmd);
+    const rawOutput = await Promise.race([
+      executeSSHCommand(activeConn, combinedCmd),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error("SSH metrics timeout")), 4000))
+    ]);
     
     let cpu = 18;
     let mem = { pct: 45, total: 8192, free: 4500 };
@@ -509,8 +551,10 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
 
     const resData = { cpu, mem, disk, uptimeStr, activeServices };
     remoteMetricsCacheMap.set(cacheKey, { timestamp: Date.now(), data: resData });
+    remoteFailureCacheMap.delete(cacheKey);
     return resData;
   } catch (err) {
+    remoteFailureCacheMap.set(cacheKey, Date.now());
     if (cached) return cached.data;
     return {
       cpu: 22,
@@ -7910,7 +7954,9 @@ wss.on("connection", (ws: WebSocket, request: any) => {
   }
 
   // 1. Send initial metrics and system information
-  ws.send(JSON.stringify({ type: "auth_ok", username, role }));
+  if (isAuthorized) {
+    ws.send(JSON.stringify({ type: "auth_ok", username, role }));
+  }
 
   // Keep sending real-time CPU/Memory spikes
   let trends: any[] = [];
@@ -7924,7 +7970,12 @@ wss.on("connection", (ws: WebSocket, request: any) => {
     });
   }
 
+  let isSendingMetrics = false;
+
   const sendMetrics = async () => {
+    if (isSendingMetrics) return;
+    isSendingMetrics = true;
+
     try {
       if (ws.readyState !== WebSocket.OPEN) return;
 
@@ -7955,16 +8006,20 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       try {
         let rows = [];
         try {
-          rows = await queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated = 0 OR deactivated IS NULL");
+          rows = await Promise.race([
+            queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated = 0 OR deactivated IS NULL"),
+            new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error("DB Timeout")), 1500))
+          ]);
         } catch (dbErr) {
-          // If deactivated = 0 fails due to boolean type, try deactivated IS NOT TRUE
-          rows = await queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated IS NOT TRUE");
+          rows = await Promise.race([
+            queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated IS NOT TRUE"),
+            new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error("DB Timeout")), 1500))
+          ]);
         }
         if (rows && rows.length > 0) {
           activeUsers = parseInt(rows[0].count || rows[0].coalesce || "1");
         }
       } catch (e) {
-        // Fallback: simple varying counts from virtual DB or random
         try {
           const db = readDb();
           activeUsers = db.matrixUsers ? db.matrixUsers.filter((u: any) => !u.isDeactivated).length : 192;
@@ -7975,7 +8030,6 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
       const time = new Date().toLocaleTimeString().slice(0, 8);
 
-      // Query room counts and media size
       let publicRoomsCount = 0;
       let privateRoomsCount = 0;
       let totalMediaSizeBytes = 0;
@@ -8113,6 +8167,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       ws.send(JSON.stringify({ type: "metrics", stats }));
     } catch (error: any) {
       console.error("Error in sendMetrics background interval:", error);
+    } finally {
+      isSendingMetrics = false;
     }
   };
 
