@@ -3989,51 +3989,20 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   try {
     const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms");
     if (apiRes && apiRes.rooms && Array.isArray(apiRes.rooms) && apiRes.rooms.length > 0) {
-      roomsList = await Promise.all(apiRes.rooms.map(async (r: any) => {
-        const roomId = r.room_id;
-        const localRoom = localRooms.find((lr: any) => lr.id === roomId);
+      roomsList = apiRes.rooms.map((r: any) => {
+        const localRoom = localRooms.find((lr: any) => lr.id === r.room_id);
         const adGroups = localRoom ? (localRoom.adGroups || []) : [];
-
-        let nameVal = (r.name && r.name !== roomId ? r.name.trim() : "");
-        let aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
-        let mCount = typeof r.joined_members === "number" ? r.joined_members : (parseInt(r.joined_members) || 0);
-
-        // Requirement 1: If room name is empty, read GET /_matrix/client/v3/rooms/{roomId}/state/m.room.name
-        if (!nameVal) {
-          try {
-            const nameState = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.name`);
-            if (nameState && nameState.name) {
-              nameVal = nameState.name.trim();
-            }
-          } catch (e) {}
-        }
-
-        // Requirement 2: Read member count GET /_synapse/admin/v1/rooms/{roomId}
-        if (!nameVal || !aliasVal || mCount <= 0) {
-          try {
-            const singleRoom = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}`);
-            if (singleRoom) {
-              if (!nameVal && singleRoom.name) nameVal = singleRoom.name.trim();
-              if (!aliasVal && singleRoom.canonical_alias) aliasVal = singleRoom.canonical_alias.trim();
-              if (typeof singleRoom.joined_members === "number" && singleRoom.joined_members > 0) {
-                mCount = singleRoom.joined_members;
-              }
-            }
-          } catch (e) {}
-        }
-
-        // Requirement 1 fallback: use room canonical alias or roomId
-        if (!nameVal) {
-          nameVal = aliasVal || (localRoom ? (localRoom.name || localRoom.alias) : "") || roomId;
-        }
+        const nameVal = (r.name && r.name !== r.room_id ? r.name : "") || r.canonical_alias || (localRoom ? (localRoom.name || localRoom.alias) : "") || r.room_id;
+        const aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
+        const mCount = parseInt(r.joined_members) || (localRoom ? (localRoom.membersCount || (localRoom.joinedMembers ? localRoom.joinedMembers.length : 0)) : 0) || 1;
 
         return {
-          id: roomId,
+          id: r.room_id,
           name: nameVal,
           alias: aliasVal,
           topic: r.topic || (localRoom ? localRoom.topic : "") || "",
           creator: r.creator || (localRoom ? localRoom.creator : "") || "",
-          membersCount: mCount || 1,
+          membersCount: mCount,
           joinedMembers: localRoom ? (localRoom.joinedMembers || []) : [],
           bannedMembers: localRoom ? (localRoom.bannedMembers || []) : [],
           adGroups,
@@ -4042,15 +4011,88 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
           isPublic: r.public === true,
           createdAt: new Date().toISOString()
         };
-      }));
+      });
       fetchedFromRemote = true;
     }
   } catch (apiErr: any) {
     console.warn("Synapse Admin API rooms fetch failed:", apiErr.message);
   }
 
-  // Fallback or merge with local DB rooms
+  // 2. If Synapse Admin API didn't return any rooms, try Postgres directly!
   if (!fetchedFromRemote || roomsList.length === 0) {
+    try {
+      console.log("Querying room details directly from Postgres database...");
+      let dbRooms: any[] = [];
+      try {
+        dbRooms = await queryPostgres(`
+          SELECT 
+            r.room_id,
+            COALESCE(NULLIF(rss.name, ''), (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), r.room_id) as name,
+            COALESCE(NULLIF(rss.canonical_alias, ''), (SELECT alias FROM room_aliases WHERE room_id = r.room_id LIMIT 1), '') as canonical_alias,
+            COALESCE(rss.topic, '') as topic,
+            COALESCE(rss.creator, r.creator, '') as creator,
+            COALESCE(rss.joined_members, (SELECT COUNT(*) FROM room_memberships rm WHERE rm.room_id = r.room_id AND rm.membership = 'join'), 0) as joined_members,
+            COALESCE(rss.is_federatable, true) as is_federatable,
+            COALESCE(rss.public, r.is_public, false) as is_public,
+            COALESCE(rss.version, r.room_version, '1') as version
+          FROM rooms r
+          LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
+        `);
+      } catch (err: any) {
+        console.warn("Joined rooms query failed, trying basic room_stats_state fallback:", err.message);
+        try {
+          dbRooms = await queryPostgres(`
+            SELECT room_id, name, canonical_alias, topic, creator, joined_members, is_federatable, public, version
+            FROM room_stats_state
+          `);
+        } catch (err2: any) {
+          try {
+            dbRooms = await queryPostgres(`
+              SELECT room_id, creator, is_public, room_version as version
+              FROM rooms
+            `);
+          } catch (err3: any) {
+            console.error("Postgres rooms queries failed completely:", err3.message);
+          }
+        }
+      }
+
+      if (dbRooms && dbRooms.length > 0) {
+        roomsList = dbRooms.map((r: any) => {
+          const roomId = r.room_id;
+          const localRoom = localRooms.find((lr: any) => lr.id === roomId);
+          const adGroups = localRoom ? (localRoom.adGroups || []) : [];
+          const nameVal = (r.name && r.name !== roomId ? r.name : "") || r.canonical_alias || (localRoom ? (localRoom.name || localRoom.alias) : "") || roomId;
+          const aliasVal = r.canonical_alias || (localRoom ? localRoom.alias : "") || "";
+          const mCount = parseInt(r.joined_members) || (localRoom ? (localRoom.membersCount || (localRoom.joinedMembers ? localRoom.joinedMembers.length : 0)) : 0) || 1;
+
+          return {
+            id: roomId,
+            name: nameVal,
+            alias: aliasVal,
+            topic: r.topic || (localRoom ? localRoom.topic : "") || "",
+            creator: r.creator || (localRoom ? localRoom.creator : "") || "",
+            membersCount: mCount,
+            joinedMembers: localRoom ? (localRoom.joinedMembers || []) : [],
+            bannedMembers: localRoom ? (localRoom.bannedMembers || []) : [],
+            adGroups,
+            version: r.version || "1",
+            isFederated: r.is_federatable !== false,
+            isPublic: r.public === true || r.is_public === true || r.is_public === 't',
+            createdAt: new Date().toISOString()
+          };
+        });
+        fetchedFromRemote = true;
+        console.log(`Successfully retrieved ${roomsList.length} rooms from Postgres database directly.`);
+      }
+    } catch (dbErr: any) {
+      console.error("Direct Postgres rooms fetch failed:", dbErr.message);
+    }
+  }
+
+  // 3. Fallback or merge with local DB rooms
+  if (!fetchedFromRemote || roomsList.length === 0) {
+    console.log("Both Synapse Admin API and Postgres returned 0 rooms or failed. Falling back to matrixRooms database.");
     roomsList = localRooms;
   } else {
     localRooms.forEach((lr: any) => {
@@ -4068,6 +4110,36 @@ app.get("/api/matrix/rooms", authenticateToken, async (req, res) => {
   });
 
   res.json(roomsList);
+});
+
+// Single room metadata fetched asynchronously on-demand
+app.get("/api/matrix/rooms/:roomId/metadata", authenticateToken, async (req, res) => {
+  const { roomId } = req.params;
+  if (!roomId) return res.status(400).json({ error: "Room ID is required" });
+
+  try {
+    let nameVal = "";
+    let aliasVal = "";
+    let joinedMembers = 0;
+
+    try {
+      const nameState = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.name`);
+      if (nameState && nameState.name) nameVal = nameState.name.trim();
+    } catch (e) {}
+
+    try {
+      const roomDetails = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}`);
+      if (roomDetails) {
+        if (!nameVal && roomDetails.name) nameVal = roomDetails.name.trim();
+        if (roomDetails.canonical_alias) aliasVal = roomDetails.canonical_alias.trim();
+        if (typeof roomDetails.joined_members === "number") joinedMembers = roomDetails.joined_members;
+      }
+    } catch (e) {}
+
+    res.json({ id: roomId, name: nameVal, alias: aliasVal, membersCount: joinedMembers });
+  } catch (err: any) {
+    res.json({ id: roomId, name: "", alias: "", membersCount: 0 });
+  }
 });
 
 // Fetch room members on-demand (Requirement 7: View Members)
