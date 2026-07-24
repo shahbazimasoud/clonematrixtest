@@ -29,7 +29,8 @@ import {
   executeSSHCommand,
   queryRemotePostgres,
   ConnectionProfile,
-  cleanAndParseJSON
+  cleanAndParseJSON,
+  clearSSHConnectionCache
 } from "./server/db";
 
 import {
@@ -1411,6 +1412,8 @@ app.post("/api/connections", authenticateToken, checkPermission(["Owner", "Super
     
     db.connections.push(newProfile);
     writeDb(db);
+    clearSSHConnectionCache();
+    adminTokenCache.clear();
     res.status(201).json(newProfile);
   } catch (error: any) {
     console.error("Error creating connection profile:", error);
@@ -1435,6 +1438,8 @@ app.put("/api/connections/:id", authenticateToken, checkPermission(["Owner", "Su
     };
     
     writeDb(db);
+    clearSSHConnectionCache(id);
+    adminTokenCache.delete(id);
     res.json(db.connections[index]);
   } catch (error: any) {
     console.error("Error updating connection profile:", error);
@@ -1463,6 +1468,8 @@ app.delete("/api/connections/:id", authenticateToken, checkPermission(["Owner", 
     }
     
     writeDb(db);
+    clearSSHConnectionCache(id);
+    adminTokenCache.delete(id);
     res.json({ message: "Connection profile deleted successfully" });
   } catch (error: any) {
     console.error("Error deleting connection profile:", error);
@@ -1481,6 +1488,8 @@ app.post("/api/connections/select", authenticateToken, checkPermission(["Owner",
     });
     
     writeDb(db);
+    clearSSHConnectionCache();
+    adminTokenCache.clear();
     res.json({ message: "Connection profile activated successfully" });
   } catch (error: any) {
     console.error("Error selecting connection profile:", error);

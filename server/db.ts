@@ -680,6 +680,22 @@ setInterval(() => {
   }
 }, 2 * 60 * 1000);
 
+export function clearSSHConnectionCache(connId?: string) {
+  if (connId) {
+    for (const [key, value] of sshPool.entries()) {
+      if (key.startsWith(`${connId}_`)) {
+        try { if (value.conn) value.conn.end(); } catch (e) {}
+        sshPool.delete(key);
+      }
+    }
+  } else {
+    for (const [key, value] of sshPool.entries()) {
+      try { if (value.conn) value.conn.end(); } catch (e) {}
+    }
+    sshPool.clear();
+  }
+}
+
 export function interpolateQueryParams(queryStr: string, params: any[]): string {
   if (!params || params.length === 0) return queryStr;
   
@@ -798,18 +814,19 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   dbPort = dbPort || 5432;
   
   if (isWriteQuery) {
+    const b64Sql = Buffer.from(trimmedSql).toString("base64");
     const cmdsToTry = [
-      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`,
-      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`,
-      `sudo -u postgres psql -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`,
-      `sudo psql -U '${dbUser}' -d '${dbName}' -t -A -c "${trimmedSql.replace(/"/g, '\\"')}"`
+      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
+      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
+      `echo '${b64Sql}' | base64 -d | sudo -u postgres psql -d '${dbName}' -t -A`,
+      `echo '${b64Sql}' | base64 -d | sudo psql -U '${dbUser}' -d '${dbName}' -t -A`
     ];
 
     let lastErr: any = null;
     for (const cmd of cmdsToTry) {
       try {
         const output = await executeSSHCommand(config, cmd);
-        if (output && !output.includes("psql: error") && !output.includes("FATAL:") && !output.includes("Command failed")) {
+        if (output !== undefined && !output.includes("psql: error") && !output.includes("FATAL:") && !output.includes("Command failed")) {
           return [{ success: true, affectedRows: output.trim() }];
         }
       } catch (err: any) {
@@ -821,20 +838,21 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   } else {
     // Clean trailing semicolons inside the subquery to prevent postgres syntax errors
     const cleanSql = trimmedSql.replace(/;+$/, "");
-    const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql.replace(/"/g, '\\"')}) t;`;
+    const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql}) t;`;
+    const b64Sql = Buffer.from(wrappedQuery).toString("base64");
     
     const cmdsToTry = [
-      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`,
-      `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`,
-      `sudo -u postgres psql -d '${dbName}' -t -A -c "${wrappedQuery}"`,
-      `sudo psql -U '${dbUser}' -d '${dbName}' -t -A -c "${wrappedQuery}"`
+      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
+      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
+      `echo '${b64Sql}' | base64 -d | sudo -u postgres psql -d '${dbName}' -t -A`,
+      `echo '${b64Sql}' | base64 -d | sudo psql -U '${dbUser}' -d '${dbName}' -t -A`
     ];
 
     let lastErr: any = null;
     for (const cmd of cmdsToTry) {
       try {
         const jsonStr = await executeSSHCommand(config, cmd);
-        if (jsonStr && !jsonStr.includes("psql: error") && !jsonStr.includes("FATAL:") && !jsonStr.includes("Command failed")) {
+        if (jsonStr !== undefined && !jsonStr.includes("psql: error") && !jsonStr.includes("FATAL:") && !jsonStr.includes("Command failed")) {
           const parsed = cleanAndParseJSON(jsonStr, null);
           if (parsed !== null) return parsed;
         }
@@ -857,7 +875,7 @@ export async function queryRemotePostgresMulti(config: ConnectionProfile, querie
       return trimmedSql;
     } else {
       const cleanSql = trimmedSql.replace(/;+$/, "");
-      return `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql.replace(/"/g, '\\"')}) t;`;
+      return `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql}) t;`;
     }
   });
 
@@ -869,7 +887,8 @@ export async function queryRemotePostgresMulti(config: ConnectionProfile, querie
   const dbHost = config.dbHost || "localhost";
   const dbPort = config.dbPort || 5432;
   
-  const cmd = `PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A -c "${fullSql.replace(/"/g, '\\"')}"`;
+  const b64Sql = Buffer.from(fullSql).toString("base64");
+  const cmd = `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`;
   
   try {
     const stdout = await executeSSHCommand(config, cmd);
