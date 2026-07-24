@@ -1621,21 +1621,15 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
         }
       };
 
+      const connKey = profile.id || profile.host || "test";
+      const cachedWorkingUrl = workingApiBaseUrlMap.get(connKey);
+
       const urlsToTry = Array.from(new Set([
+        cachedWorkingUrl,
         `http://127.0.0.1:${port}`,
         `http://localhost:${port}`,
         hostIp ? `http://${hostIp}:${port}` : null,
-        hostIp ? `https://${hostIp}:${port}` : null,
-        `http://127.0.0.1:8008`,
-        `http://localhost:8008`,
-        hostIp ? `http://${hostIp}:8008` : null,
-        `http://127.0.0.1:8000`,
-        `http://127.0.0.1:8448`,
-        `http://127.0.0.1:80`,
-        `http://localhost:80`,
-        baseUrl,
-        baseUrl.startsWith("http://") ? baseUrl.replace("http://", "https://") : null,
-        baseUrl.startsWith("https://") ? baseUrl.replace("https://", "http://") : null
+        baseUrl
       ])).filter(Boolean) as string[];
 
       let tokenToTest = profile.adminAccessToken ? profile.adminAccessToken.trim() : "";
@@ -1655,19 +1649,18 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
 
         const bodiesToTry = [
           { type: "m.login.password", identifier: { type: "m.id.user", user: adminUser }, password: adminPass },
-          { type: "m.login.password", identifier: { type: "m.id.user", user: localpart }, password: adminPass },
-          { type: "m.login.password", user: adminUser, password: adminPass },
-          { type: "m.login.password", user: localpart, password: adminPass }
+          { type: "m.login.password", identifier: { type: "m.id.user", user: localpart }, password: adminPass }
         ];
 
         for (const testUrl of urlsToTry) {
           for (const loginBody of bodiesToTry) {
-            const loginCmd = `curl -s -k -X POST -H "Content-Type: application/json" -d '${JSON.stringify(loginBody).replace(/'/g, "'\\''")}' "${testUrl}/_matrix/client/v3/login"`;
+            const loginCmd = `curl -s -k --connect-timeout 2 -m 4 -X POST -H "Content-Type: application/json" -d '${JSON.stringify(loginBody).replace(/'/g, "'\\''")}' "${testUrl}/_matrix/client/v3/login"`;
             const loginOut = await safeSSHExec(loginCmd);
             const loginObj = cleanAndParseJSON(loginOut, null);
             if (loginObj && loginObj.access_token) {
               tokenToTest = loginObj.access_token;
               acquiredAdminToken = tokenToTest;
+              workingApiBaseUrlMap.set(connKey, testUrl);
               if (dbOk && loginObj.user_id) {
                 try {
                   await queryRemotePostgres(profile, `UPDATE users SET admin = 1 WHERE name = '${loginObj.user_id.replace(/'/g, "''")}' OR name = '${adminUser.replace(/'/g, "''")}'`);
@@ -1714,21 +1707,23 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
         }
 
         for (const testUrl of urlsToTry) {
-          const adminVerCmd = `curl -s -k -H "Authorization: Bearer ${tokenToTest}" "${testUrl}/_synapse/admin/v1/server_version"`;
+          const adminVerCmd = `curl -s -k --connect-timeout 2 -m 4 -H "Authorization: Bearer ${tokenToTest}" "${testUrl}/_synapse/admin/v1/server_version"`;
           const adminVerOut = await safeSSHExec(adminVerCmd);
           const parsedAdmin = cleanAndParseJSON(adminVerOut, null);
           if (parsedAdmin && parsedAdmin.server_version) {
             apiOk = true;
             acquiredAdminToken = tokenToTest;
+            workingApiBaseUrlMap.set(connKey, testUrl);
             break;
           }
 
-          const whoamiCmd = `curl -s -k -H "Authorization: Bearer ${tokenToTest}" "${testUrl}/_matrix/client/v3/account/whoami"`;
+          const whoamiCmd = `curl -s -k --connect-timeout 2 -m 4 -H "Authorization: Bearer ${tokenToTest}" "${testUrl}/_matrix/client/v3/account/whoami"`;
           const whoamiOut = await safeSSHExec(whoamiCmd);
           const parsedWhoami = cleanAndParseJSON(whoamiOut, null);
           if (parsedWhoami && parsedWhoami.user_id) {
             apiOk = true;
             acquiredAdminToken = tokenToTest;
+            workingApiBaseUrlMap.set(connKey, testUrl);
             break;
           }
         }
@@ -2118,6 +2113,7 @@ app.post("/api/matrix/users/reactivate", authenticateToken, checkPermission(["Ow
 const adminTokenCache = new Map<string, { token: string, timestamp: number }>();
 const activeLogins = new Map<string, Promise<string | null>>();
 const invalidatedTokens = new Set<string>();
+const workingApiBaseUrlMap = new Map<string, string>();
 
 async function getAdminToken(): Promise<string | null> {
   const activeConn = getActiveConnection();
@@ -2158,14 +2154,14 @@ async function getAdminToken(): Promise<string | null> {
         const base = (activeConn as any).apiBaseUrl || (hostIp ? `http://${hostIp}:${port}` : `http://127.0.0.1:${port}`);
         const localpart = adminUser.startsWith("@") ? adminUser.split(":")[0].substring(1) : adminUser;
         const fullMxid = adminUser.startsWith("@") ? adminUser : `@${adminUser}:${(activeConn as any).domain || 'matrix.company.local'}`;
+        const cachedWorkingUrl = workingApiBaseUrlMap.get(cacheKey);
 
         const urlsToTry = Array.from(new Set([
+          cachedWorkingUrl,
           `http://127.0.0.1:${port}`,
           `http://localhost:${port}`,
           hostIp ? `http://${hostIp}:${port}` : null,
-          hostIp ? `https://${hostIp}:${port}` : null,
-          base,
-          base && base.startsWith("http://") ? base.replace("http://", "https://") : null
+          base
         ])).filter(Boolean) as string[];
 
         // Proactively promote user in Postgres
@@ -2175,9 +2171,7 @@ async function getAdminToken(): Promise<string | null> {
 
         const bodiesToTry = [
           { type: "m.login.password", identifier: { type: "m.id.user", user: adminUser }, password: adminPass },
-          { type: "m.login.password", identifier: { type: "m.id.user", user: localpart }, password: adminPass },
-          { type: "m.login.password", user: adminUser, password: adminPass },
-          { type: "m.login.password", user: localpart, password: adminPass }
+          { type: "m.login.password", identifier: { type: "m.id.user", user: localpart }, password: adminPass }
         ];
 
         for (const baseUrl of urlsToTry) {
@@ -2185,7 +2179,7 @@ async function getAdminToken(): Promise<string | null> {
           for (const loginBody of bodiesToTry) {
             const url = `${cleanBase}/_matrix/client/v3/login`;
             const loginData = JSON.stringify(loginBody).replace(/'/g, "'\\''");
-            const curlCmd = `curl -s -k -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
+            const curlCmd = `curl -s -k --connect-timeout 2 -m 4 -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
 
             let output = "";
             if (activeConn.id !== "local") {
@@ -2216,6 +2210,7 @@ async function getAdminToken(): Promise<string | null> {
             try {
               const resObj = cleanAndParseJSON(output);
               if (resObj && resObj.access_token) {
+                workingApiBaseUrlMap.set(cacheKey, cleanBase);
                 try {
                   const fullUserId = resObj.user_id || adminUser;
                   await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1 OR name LIKE $2`, [fullUserId, `@${localpart}:%`]);
@@ -2317,17 +2312,19 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
 
   const activeConn = getActiveConnection();
   const connAny = activeConn as any;
+  const connKey = activeConn?.id || activeConn?.host || "local";
   const port = connAny?.apiPort || 8008;
   const hostIp = connAny?.host && connAny.host.trim() !== "localhost" && connAny.host.trim() !== "127.0.0.1" ? connAny.host.trim() : null;
   const rawBase = connAny?.apiBaseUrl || (hostIp ? `http://${hostIp}:${port}` : `http://127.0.0.1:${port}`);
   const baseClean = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+  const cachedWorkingUrl = workingApiBaseUrlMap.get(connKey);
+
   const urlsToTry = Array.from(new Set([
+    cachedWorkingUrl,
     `http://127.0.0.1:${port}`,
     `http://localhost:${port}`,
     hostIp ? `http://${hostIp}:${port}` : null,
-    hostIp ? `https://${hostIp}:${port}` : null,
-    baseClean,
-    baseClean.startsWith("http://") ? baseClean.replace("http://", "https://") : null
+    baseClean
   ])).filter(Boolean) as string[];
 
   console.log(`Executing remote Synapse Admin API call: ${method} ${apiPath} (retry: ${isRetry})`);
@@ -2370,7 +2367,7 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
     const url = `${baseUrl}${apiPath}`;
     const headers = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
     const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
-    const curlCmd = `curl -s -k -X ${method} ${headers} ${dataArg} "${url}"`;
+    const curlCmd = `curl -s -k --connect-timeout 2 -m 6 -X ${method} ${headers} ${dataArg} "${url}"`;
 
     let res = "";
     if (activeConn && activeConn.id !== "local") {
@@ -2397,6 +2394,7 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
           const retryRes = await handleUnauthorized(token);
           if (retryRes) return retryRes;
         }
+        workingApiBaseUrlMap.set(connKey, baseUrl);
         return result;
       }
       lastResult = res;

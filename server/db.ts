@@ -751,7 +751,10 @@ export function cleanAndParseJSON(text: string, defaultValue: any = null): any {
   return defaultValue;
 }
 
+const remoteDbConfigCache = new Map<string, { dbUser: string; dbPass: string; dbName: string; dbHost: string; dbPort: number }>();
+
 export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: string, params: any[] = []): Promise<any[]> {
+  const cacheKey = config.id || config.host || "default";
   const interpolatedSql = interpolateQueryParams(sqlQuery, params);
   const trimmedSql = interpolatedSql.trim();
   const isWriteQuery = /^\s*(insert|update|delete|create|drop|alter|truncate)\b/i.test(trimmedSql);
@@ -761,6 +764,16 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   let dbName = config.dbName;
   let dbHost = config.dbHost;
   let dbPort = config.dbPort;
+
+  // Check in-memory cache first if DB credentials are not in config profile
+  if ((!dbUser || !dbPass || !dbName) && remoteDbConfigCache.has(cacheKey)) {
+    const cached = remoteDbConfigCache.get(cacheKey)!;
+    dbUser = dbUser || cached.dbUser;
+    dbPass = dbPass || cached.dbPass;
+    dbName = dbName || cached.dbName;
+    dbHost = dbHost || cached.dbHost;
+    dbPort = dbPort || cached.dbPort;
+  }
 
   // Dynamically load from /etc/matrix-stack.conf or homeserver.yaml if missing
   if (!dbUser || !dbPass || !dbName) {
@@ -808,6 +821,16 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
         console.warn("Failed to dynamically read remote homeserver.yaml:", e);
       }
     }
+
+    if (dbUser || dbPass || dbName) {
+      remoteDbConfigCache.set(cacheKey, {
+        dbUser: dbUser || "synapse_user",
+        dbPass: dbPass || "",
+        dbName: dbName || "synapse",
+        dbHost: dbHost || "localhost",
+        dbPort: dbPort || 5432
+      });
+    }
   }
 
   dbUser = dbUser || "synapse_user";
@@ -818,53 +841,37 @@ export async function queryRemotePostgres(config: ConnectionProfile, sqlQuery: s
   
   if (isWriteQuery) {
     const b64Sql = Buffer.from(trimmedSql).toString("base64");
-    const cmdsToTry = [
-      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
-      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
-      `echo '${b64Sql}' | base64 -d | sudo -u postgres psql -d '${dbName}' -t -A`,
-      `echo '${b64Sql}' | base64 -d | sudo psql -U '${dbUser}' -d '${dbName}' -t -A`
-    ];
+    const combinedCmd = `echo '${b64Sql}' | base64 -d | ( PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A 2>/dev/null || PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A 2>/dev/null || sudo -u postgres psql -d '${dbName}' -t -A 2>/dev/null || sudo psql -U '${dbUser}' -d '${dbName}' -t -A 2>/dev/null )`;
 
-    let lastErr: any = null;
-    for (const cmd of cmdsToTry) {
-      try {
-        const output = await executeSSHCommand(config, cmd);
-        if (output !== undefined && !output.includes("psql: error") && !output.includes("FATAL:") && !output.includes("Command failed")) {
-          return [{ success: true, affectedRows: output.trim() }];
-        }
-      } catch (err: any) {
-        lastErr = err;
+    try {
+      const output = await executeSSHCommand(config, combinedCmd);
+      if (output !== undefined && !output.includes("psql: error") && !output.includes("FATAL:") && !output.includes("Command failed")) {
+        return [{ success: true, affectedRows: output.trim() }];
       }
+    } catch (err: any) {
+      console.error("Error executing remote postgres write query:", err);
+      throw err || new Error("Failed to execute remote PostgreSQL write query");
     }
-    console.error("Error executing remote postgres write query across all fallbacks:", lastErr);
-    throw lastErr || new Error("Failed to execute remote PostgreSQL write query");
+    return [{ success: true }];
   } else {
     // Clean trailing semicolons inside the subquery to prevent postgres syntax errors
     const cleanSql = trimmedSql.replace(/;+$/, "");
     const wrappedQuery = `SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (${cleanSql}) t;`;
     const b64Sql = Buffer.from(wrappedQuery).toString("base64");
     
-    const cmdsToTry = [
-      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
-      `echo '${b64Sql}' | base64 -d | PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A`,
-      `echo '${b64Sql}' | base64 -d | sudo -u postgres psql -d '${dbName}' -t -A`,
-      `echo '${b64Sql}' | base64 -d | sudo psql -U '${dbUser}' -d '${dbName}' -t -A`
-    ];
+    const combinedCmd = `echo '${b64Sql}' | base64 -d | ( PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '${dbHost}' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A 2>/dev/null || PGPASSWORD='${dbPass.replace(/'/g, "'\\''")}' psql -h '127.0.0.1' -p '${dbPort}' -U '${dbUser}' -d '${dbName}' -t -A 2>/dev/null || sudo -u postgres psql -d '${dbName}' -t -A 2>/dev/null || sudo psql -U '${dbUser}' -d '${dbName}' -t -A 2>/dev/null )`;
 
-    let lastErr: any = null;
-    for (const cmd of cmdsToTry) {
-      try {
-        const jsonStr = await executeSSHCommand(config, cmd);
-        if (jsonStr !== undefined && !jsonStr.includes("psql: error") && !jsonStr.includes("FATAL:") && !jsonStr.includes("Command failed")) {
-          const parsed = cleanAndParseJSON(jsonStr, null);
-          if (parsed !== null) return parsed;
-        }
-      } catch (err: any) {
-        lastErr = err;
+    try {
+      const jsonStr = await executeSSHCommand(config, combinedCmd);
+      if (jsonStr !== undefined && !jsonStr.includes("psql: error") && !jsonStr.includes("FATAL:") && !jsonStr.includes("Command failed")) {
+        const parsed = cleanAndParseJSON(jsonStr, null);
+        if (parsed !== null) return parsed;
       }
+    } catch (err: any) {
+      console.error("Error executing remote postgres read query:", err);
+      throw err || new Error("Failed to execute remote PostgreSQL read query");
     }
-    console.error("Error executing remote postgres read query across all fallbacks:", lastErr);
-    throw lastErr || new Error("Failed to execute remote PostgreSQL read query");
+    return [];
   }
 }
 
