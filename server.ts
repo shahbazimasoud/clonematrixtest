@@ -5698,6 +5698,159 @@ function parseHomeserverYaml(yamlText: string): any {
   return hsConfig;
 }
 
+async function loadServerParametersFromRemoteServer(): Promise<{
+  HS_DOMAIN?: string;
+  ELEMENT_DOMAIN?: string;
+  BASE_DOMAIN?: string;
+  PUBLIC_IP?: string;
+  LE_EMAIL?: string;
+}> {
+  const params: any = {};
+  const activeConn = getActiveConnection();
+
+  // 1. Matrix Server Domain -> read from /etc/matrix-synapse/homeserver.yaml (server_name)
+  try {
+    const hsYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
+    if (hsYaml) {
+      const match = hsYaml.match(/^server_name:\s*["']?([^"'\s]+)["']?/m);
+      if (match && match[1]) {
+        params.HS_DOMAIN = match[1].trim();
+      }
+    }
+  } catch (e) {
+    console.warn("Error loading Matrix Server Domain from homeserver.yaml:", e);
+  }
+
+  // 2. Element Client Domain -> read from Element config.json
+  try {
+    const elementPaths = [
+      activeConn?.elementConfigPath,
+      "/var/www/element/config.json",
+      "/etc/element-web/config.json",
+      "/usr/share/nginx/html/config.json",
+      "/var/www/html/config.json",
+      "/etc/element/config.json"
+    ].filter(Boolean) as string[];
+
+    for (const elPath of elementPaths) {
+      const content = await readConfigContent(elPath, "");
+      if (content && content.trim().startsWith("{")) {
+        try {
+          const elJson = JSON.parse(content);
+          if (elJson.element_domain) {
+            params.ELEMENT_DOMAIN = elJson.element_domain;
+            break;
+          }
+          if (elJson.default_server_config?.["m.homeserver"]?.base_url) {
+            const rawUrl = elJson.default_server_config["m.homeserver"].base_url;
+            try {
+              const host = new URL(rawUrl).hostname;
+              if (host) {
+                params.ELEMENT_DOMAIN = host;
+                break;
+              }
+            } catch (uErr) {
+              const hostMatch = rawUrl.match(/https?:\/\/([^\/:]+)/);
+              if (hostMatch && hostMatch[1]) {
+                params.ELEMENT_DOMAIN = hostMatch[1];
+                break;
+              }
+            }
+          }
+        } catch (jsonErr) {}
+      }
+    }
+  } catch (e) {
+    console.warn("Error loading Element Client Domain from config.json:", e);
+  }
+
+  // 3. Base Federation Domain -> read from homeserver.yaml (server_name) or existing federation config
+  try {
+    const hsYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
+    if (hsYaml) {
+      const serverNameMatch = hsYaml.match(/^server_name:\s*["']?([^"'\s]+)["']?/m);
+      if (serverNameMatch && serverNameMatch[1]) {
+        params.BASE_DOMAIN = serverNameMatch[1].trim();
+      }
+    }
+  } catch (e) {
+    console.warn("Error loading Base Federation Domain:", e);
+  }
+
+  // 4. Node Public IP -> read directly from remote server operating system
+  try {
+    let publicIpOut = "";
+    const ipCmd = `curl -s --connect-timeout 3 https://api.ipify.org || curl -s --connect-timeout 3 https://ifconfig.me || hostname -I | awk '{print $1}'`;
+    if (activeConn && activeConn.id !== "local") {
+      if (activeConn.authType === "agent") {
+        try {
+          publicIpOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: ipCmd });
+        } catch (err) {
+          console.warn("Agent execute_command for Public IP failed:", err);
+        }
+      } else {
+        try {
+          const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+          publicIpOut = await executeSSHCommand(activeConn, `${sudoPrefix}${ipCmd}`);
+        } catch (err) {
+          console.warn("SSH command for Public IP failed:", err);
+        }
+      }
+    } else {
+      publicIpOut = await new Promise((resolve) => {
+        exec(ipCmd, (err, stdout) => resolve(stdout ? stdout.trim() : ""));
+      });
+    }
+
+    if (publicIpOut) {
+      const cleanIp = publicIpOut.trim();
+      const ipMatch = cleanIp.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/) || cleanIp.match(/^[a-fA-F0-9:]+$/);
+      if (ipMatch) {
+        params.PUBLIC_IP = ipMatch[0];
+      } else if (cleanIp && !cleanIp.includes(" ") && !cleanIp.includes("<")) {
+        params.PUBLIC_IP = cleanIp;
+      }
+    }
+  } catch (e) {
+    console.warn("Error loading Node Public IP:", e);
+  }
+
+  // 5. Let's Encrypt Email -> read from existing Let's Encrypt configuration on remote server
+  try {
+    let leEmailOut = "";
+    const leCmd = `grep -h -m 1 "^email =" /etc/letsencrypt/renewal/*.conf 2>/dev/null || cat /etc/letsencrypt/accounts/*/directory/*/regr.json 2>/dev/null`;
+    if (activeConn && activeConn.id !== "local") {
+      if (activeConn.authType === "agent") {
+        try {
+          leEmailOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: leCmd });
+        } catch (err) {}
+      } else {
+        try {
+          const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+          leEmailOut = await executeSSHCommand(activeConn, `${sudoPrefix}${leCmd}`);
+        } catch (err) {}
+      }
+    } else {
+      leEmailOut = await new Promise((resolve) => {
+        exec(leCmd, (err, stdout) => resolve(stdout ? stdout.trim() : ""));
+      });
+    }
+
+    if (leEmailOut) {
+      const emailMatch = leEmailOut.match(/email\s*=\s*([^\s#]+)/i) ||
+                         leEmailOut.match(/"contact":\s*\[\s*"mailto:([^"]+)"/i) ||
+                         leEmailOut.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (emailMatch && emailMatch[1]) {
+        params.LE_EMAIL = emailMatch[1].trim();
+      }
+    }
+  } catch (e) {
+    console.warn("Error loading Let's Encrypt Email:", e);
+  }
+
+  return params;
+}
+
 // System Update - Check
 app.get("/api/system/update/check", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   try {
@@ -5886,6 +6039,18 @@ app.get("/api/matrix/config", authenticateToken, async (req, res) => {
       }
     } catch (err) {
       console.warn("Could not parse homeserver.yaml", err);
+    }
+
+    // Direct remote server parameter detection (Matrix Domain, Element Domain, Base Federation Domain, Public IP, LE Email)
+    try {
+      const remoteParams = await loadServerParametersFromRemoteServer();
+      if (remoteParams.HS_DOMAIN) config.HS_DOMAIN = remoteParams.HS_DOMAIN;
+      if (remoteParams.ELEMENT_DOMAIN) config.ELEMENT_DOMAIN = remoteParams.ELEMENT_DOMAIN;
+      if (remoteParams.BASE_DOMAIN) config.BASE_DOMAIN = remoteParams.BASE_DOMAIN;
+      if (remoteParams.PUBLIC_IP) config.PUBLIC_IP = remoteParams.PUBLIC_IP;
+      if (remoteParams.LE_EMAIL) config.LE_EMAIL = remoteParams.LE_EMAIL;
+    } catch (rErr) {
+      console.warn("Error merging remote server parameters:", rErr);
     }
 
     // Default config values for new/empty servers so the form never renders blank.
@@ -6435,6 +6600,10 @@ email:
           }
         }
         
+        if (config.ELEMENT_DOMAIN) {
+          elConfig.element_domain = config.ELEMENT_DOMAIN;
+        }
+
         // Sync application branding name
         if (config.APP_NAME) {
           elConfig.brand = config.APP_NAME;
@@ -6471,6 +6640,25 @@ email:
         await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2));
       } catch (e) {
         console.error("Failed to update Element defaults configuration:", e);
+      }
+
+      if (config.LE_EMAIL) {
+        try {
+          const updateLeCmd = `sed -i 's/^email = .*/email = ${config.LE_EMAIL}/g' /etc/letsencrypt/renewal/*.conf 2>/dev/null || true`;
+          const activeConn = getActiveConnection();
+          if (activeConn && activeConn.id !== "local") {
+            if (activeConn.authType === "agent") {
+              await executeRemoteAgentTask(activeConn.id, "execute_command", { command: updateLeCmd });
+            } else {
+              const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+              await executeSSHCommand(activeConn, `${sudoPrefix}${updateLeCmd}`);
+            }
+          } else {
+            exec(updateLeCmd);
+          }
+        } catch (leErr) {
+          console.warn("Could not write Let's Encrypt renewal config email:", leErr);
+        }
       }
     }
 

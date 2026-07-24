@@ -337,6 +337,13 @@ def execute_local_command(action, params):
                 return {'success': True, 'output': res2.stdout.strip()}
             return {'success': True, 'output': res.stdout.strip()}
 
+        elif action == 'execute_command':
+            cmd = params.get('command') or params.get('cmd') or ''
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if res.returncode != 0:
+                return {'success': False, 'error': res.stderr or f"Command failed with code {res.returncode}"}
+            return {'success': True, 'output': res.stdout.strip()}
+
         else:
             return {'success': False, 'error': f"Unknown agent action: {action}"}
     except Exception as ex:
