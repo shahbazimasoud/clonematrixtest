@@ -1006,7 +1006,15 @@ export default function KetesaAdmin({
       }
       return r.alias;
     }
-    if (r.name && !r.name.startsWith('!')) return r.name;
+    if (r.canonical_alias) {
+      if (r.canonical_alias.startsWith('#')) {
+        const clean = r.canonical_alias.split(':')[0].replace('#', '');
+        if (clean) return clean.charAt(0).toUpperCase() + clean.slice(1);
+        return r.canonical_alias;
+      }
+      return r.canonical_alias;
+    }
+    if (r.name) return r.name;
     const rawId = r.id ? r.id.split(':')[0].replace('!', '') : '';
     return rawId ? (isRtl ? `اتاق ${rawId}` : `Room ${rawId}`) : (r.id || '');
   };
@@ -1541,8 +1549,8 @@ export default function KetesaAdmin({
 
   const handleSendRoomChatMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!isSuperAdmin) {
-      showToast('error', isRtl ? 'ارسال پیام در این اتاق فقط برای سوپر ادمین مجاز است.' : 'Only Super Admin is authorized to send messages.');
+    if (!hasWriteAccess && !isSuperAdmin) {
+      showToast('error', t.unauthorizedMsg);
       return;
     }
     if (!newRoomChatMessageText.trim() || !activeRoomChatId) return;
@@ -6713,8 +6721,8 @@ export default function KetesaAdmin({
               <div className={`p-3.5 border-t flex flex-col gap-3 ${
                 isLightMode ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/40'
               }`}>
-                {/* Form to send message - Only for Super Admin */}
-                {isSuperAdmin ? (
+                {/* Form to send message - Available for Super Admin & Write Access */}
+                {(isSuperAdmin || hasWriteAccess) ? (
                   <form onSubmit={handleSendRoomChatMessage} className="flex items-center gap-2">
                     <label className="flex items-center gap-1.5 px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-xl text-xs font-mono font-medium cursor-pointer transition-all flex-shrink-0" title={isRtl ? 'پیوست فایل' : 'Attach File'}>
                       <Paperclip className="h-4 w-4" />

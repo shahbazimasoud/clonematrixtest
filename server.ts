@@ -3801,8 +3801,8 @@ app.get("/api/matrix/rooms/:roomId/messages", authenticateToken, async (req, res
   res.json(allMessages);
 });
 
-// Send message to room (Super Admin / Owner only)
-app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+// Send message to room (Admins and Operators)
+app.post("/api/matrix/rooms/:roomId/messages/send", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator", "Moderator"]), async (req, res) => {
   const { roomId } = req.params;
   const { content, sender, senderDisplayName } = req.body;
   if (!content) return res.status(400).json({ error: "Content is required" });
@@ -4278,15 +4278,30 @@ app.post("/api/matrix/rooms/create", authenticateToken, checkPermission(["Owner"
   res.status(201).json(newRoom);
 });
 
-app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
-  const { roomId, purge, sendMessage, messageText, leave } = req.body;
+app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator"]), async (req, res) => {
+  const { roomId, purge = true, sendMessage = true, messageText, leave = true } = req.body;
   if (!roomId) return res.status(400).json({ error: "Room ID is required" });
 
   const db = readDb();
   const roomIndex = (db.matrixRooms || []).findIndex((r: any) => r.id === roomId);
   const room = roomIndex !== -1 ? db.matrixRooms[roomIndex] : null;
 
-  // Handle forcing members to leave if requested
+  // 1. Send farewell message first into room timeline if requested
+  const farewellMsg = messageText || "این اتاق توسط مدیر سیستم مسدود و به طور کامل از سرور حذف شد. با تشکر.";
+  if (sendMessage) {
+    try {
+      const txnId = `m.farewell.${Date.now()}`;
+      await callSynapseAdminAPI("PUT", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`, {
+        msgtype: "m.text",
+        body: farewellMsg
+      });
+      console.log(`Farewell message posted to room ${roomId}`);
+    } catch (msgErr: any) {
+      console.warn("Could not post farewell message via Synapse API:", msgErr.message);
+    }
+  }
+
+  // 2. Handle forcing members to leave/kick from room
   if (leave) {
     try {
       console.log(`Getting members of room ${roomId} to force leave...`);
@@ -4297,7 +4312,7 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
           try {
             await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
               user_id: memberMxid,
-              reason: "Room is being shut down and all members are forced to leave."
+              reason: "این اتاق به طور کامل مسدود و حذف گردید."
             });
           } catch (kickErr: any) {
             console.warn(`Could not kick ${memberMxid} from room ${roomId}:`, kickErr.message);
@@ -4307,25 +4322,35 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
     } catch (membersErr: any) {
       console.warn("Could not fetch room members to kick via Admin API:", membersErr.message);
     }
+  }
 
+  // 3. Purge room completely from Postgres Database
+  if (purge) {
     try {
+      console.log(`Purging room ${roomId} directly from Postgres database tables...`);
+      await queryPostgres("DELETE FROM room_stats_state WHERE room_id = $1", [roomId]);
+      await queryPostgres("DELETE FROM current_state_events WHERE room_id = $1", [roomId]);
       await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1", [roomId]);
+      await queryPostgres("DELETE FROM room_aliases WHERE room_id = $1", [roomId]);
+      await queryPostgres("DELETE FROM events WHERE room_id = $1", [roomId]);
+      await queryPostgres("DELETE FROM event_json WHERE room_id = $1", [roomId]);
+      await queryPostgres("DELETE FROM rooms WHERE room_id = $1", [roomId]);
+      console.log(`Successfully purged room ${roomId} from Postgres tables.`);
     } catch (dbErr: any) {
-      console.warn("Could not delete room memberships from postgres database:", dbErr.message);
+      console.warn("Postgres tables purge for room failed:", dbErr.message);
     }
   }
 
+  // 4. Delete room via Synapse Admin API
   let apiSuccess = false;
   let apiError = null;
 
   try {
     const payload: any = {
-      purge: purge !== undefined ? !!purge : true,
-      block: !!sendMessage
+      purge: !!purge,
+      block: true,
+      message: farewellMsg
     };
-    if (sendMessage) {
-      payload.message = messageText || "This room has been shut down.";
-    }
 
     console.log("Calling Synapse Admin API to delete room:", roomId, payload);
     const apiRes = await callSynapseAdminAPI("DELETE", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}`, payload);
@@ -4340,7 +4365,7 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
     console.warn("Could not delete room via Synapse Admin API:", apiError);
   }
 
-  // Always keep local DB synced
+  // Always keep local JSON DB synced
   if (roomIndex !== -1) {
     db.matrixRooms.splice(roomIndex, 1);
   }
@@ -4349,33 +4374,50 @@ app.post("/api/matrix/rooms/delete", authenticateToken, checkPermission(["Owner"
     id: `log-${Date.now()}`,
     timestamp: new Date().toISOString(),
     username: req.user.username,
-    action: "Shutdown Matrix Room",
+    action: "Purge & Shutdown Matrix Room",
     target: room ? room.name : roomId,
     status: apiSuccess ? "success" : (apiError ? "failed" : "success"),
-    details: `Shutdown room ${roomId}. Purged: ${!!purge}. Message sent: ${!!sendMessage}. API Status: ${apiSuccess ? "Success" : "Failed (" + apiError + ")"}`
+    details: `Purged room ${roomId}. Farewell message sent: ${!!sendMessage}. API Status: ${apiSuccess ? "Success" : "Failed (" + apiError + ")"}`
   });
   writeDb(db);
 
   res.json({ 
-    message: apiSuccess ? "Room shutdown and deleted successfully" : `Room removed locally but Synapse Admin API returned: ${apiError}`,
+    message: "اتاق با موفقیت مسدود، اعضا اخراج و به طور کامل از دیتابیس سرور حذف گردید.",
     success: true 
   });
 });
 
-app.post("/api/matrix/rooms/members/kick", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), (req, res) => {
-  const { roomId, mxid } = req.body;
+app.post("/api/matrix/rooms/members/kick", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator", "Moderator"]), async (req, res) => {
+  const { roomId, mxid, reason } = req.body;
   if (!roomId || !mxid) return res.status(400).json({ error: "Room ID and MXID are required" });
+
+  let apiSuccess = false;
+  try {
+    await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
+      user_id: mxid,
+      reason: reason || "اخراج توسط مدیر سیستم"
+    });
+    apiSuccess = true;
+  } catch (err: any) {
+    console.warn("Synapse kick API call failed:", err.message);
+  }
+
+  try {
+    await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
+  } catch (dbErr: any) {
+    console.warn("Postgres room membership delete for kick failed:", dbErr.message);
+  }
 
   const db = readDb();
   const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
-  if (!room) return res.status(404).json({ error: "Room not found" });
-
-  const memberIndex = room.joinedMembers.findIndex((m: any) => m.mxid === mxid);
-  if (memberIndex === -1) return res.status(404).json({ error: "Member not found in this room" });
-
-  room.joinedMembers.splice(memberIndex, 1);
-  room.membersCount = room.joinedMembers.length;
-  writeDb(db);
+  if (room) {
+    if (!room.joinedMembers) room.joinedMembers = [];
+    const memberIndex = room.joinedMembers.findIndex((m: any) => (m.mxid || m).toLowerCase() === mxid.toLowerCase());
+    if (memberIndex !== -1) {
+      room.joinedMembers.splice(memberIndex, 1);
+      room.membersCount = room.joinedMembers.length;
+    }
+  }
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
@@ -4384,11 +4426,94 @@ app.post("/api/matrix/rooms/members/kick", authenticateToken, checkPermission(["
     action: "Kick Room Member",
     target: mxid,
     status: "success",
-    details: `Kicked user ${mxid} from room: ${room.name}`
+    details: `Kicked user ${mxid} from room: ${roomId}`
   });
   writeDb(db);
 
-  res.json({ success: true, room });
+  res.json({ success: true, message: "کاربر با موفقیت از اتاق اخراج گردید." });
+});
+
+app.post("/api/matrix/rooms/members/ban", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator", "Moderator"]), async (req, res) => {
+  const { roomId, mxid, reason } = req.body;
+  if (!roomId || !mxid) return res.status(400).json({ error: "Room ID and MXID are required" });
+
+  try {
+    await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/ban`, {
+      user_id: mxid,
+      reason: reason || "مسدود توسط مدیر سیستم"
+    });
+  } catch (err: any) {
+    console.warn("Synapse ban API call failed:", err.message);
+  }
+
+  try {
+    await queryPostgres("UPDATE room_memberships SET membership = 'ban' WHERE room_id = $1 AND user_id = $2", [roomId, mxid]);
+  } catch (dbErr: any) {
+    console.warn("Postgres ban update failed:", dbErr.message);
+  }
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (room) {
+    if (!room.joinedMembers) room.joinedMembers = [];
+    if (!room.bannedMembers) room.bannedMembers = [];
+    const idx = room.joinedMembers.findIndex((m: any) => (m.mxid || m).toLowerCase() === mxid.toLowerCase());
+    if (idx !== -1) room.joinedMembers.splice(idx, 1);
+    if (!room.bannedMembers.includes(mxid)) room.bannedMembers.push(mxid);
+    room.membersCount = room.joinedMembers.length;
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Ban Room Member",
+    target: mxid,
+    status: "success",
+    details: `Banned user ${mxid} from room: ${roomId}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, message: "کاربر با موفقیت مسدود گردید." });
+});
+
+app.post("/api/matrix/rooms/members/unban", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator", "Moderator"]), async (req, res) => {
+  const { roomId, mxid } = req.body;
+  if (!roomId || !mxid) return res.status(400).json({ error: "Room ID and MXID are required" });
+
+  try {
+    await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/unban`, {
+      user_id: mxid
+    });
+  } catch (err: any) {
+    console.warn("Synapse unban API call failed:", err.message);
+  }
+
+  try {
+    await queryPostgres("DELETE FROM room_memberships WHERE room_id = $1 AND user_id = $2 AND membership = 'ban'", [roomId, mxid]);
+  } catch (dbErr: any) {
+    console.warn("Postgres unban delete failed:", dbErr.message);
+  }
+
+  const db = readDb();
+  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
+  if (room && room.bannedMembers) {
+    const idx = room.bannedMembers.indexOf(mxid);
+    if (idx !== -1) room.bannedMembers.splice(idx, 1);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Unban Room Member",
+    target: mxid,
+    status: "success",
+    details: `Unbanned user ${mxid} in room: ${roomId}`
+  });
+  writeDb(db);
+
+  res.json({ success: true, message: "دسترسی کاربر رفع مسدودیت گردید." });
 });
 
 app.post("/api/matrix/rooms/members/join", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
@@ -7379,7 +7504,8 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
       name: "Public Rooms Directory API",
       path: "/_matrix/client/v3/publicRooms",
       description: "Returns a list of public rooms on the homeserver.",
-      method: "GET"
+      method: "GET",
+      needsAdmin: true
     },
     {
       name: "Synapse Admin Users API",
@@ -7410,7 +7536,7 @@ app.get("/api/matrix/api-status", authenticateToken, async (req, res) => {
       if (ep.needsAdmin) {
         try {
           const result = await callSynapseAdminAPI(ep.method, ep.path);
-          if (result && (result.users || result.rooms || result.total_rooms !== undefined || result.total !== undefined || (!result.errcode && !result.error))) {
+          if (result && (result.users || result.rooms || result.chunk || result.total_rooms !== undefined || result.total !== undefined || (!result.errcode && !result.error))) {
             statusCode = 200;
             payload = result;
             status = "active";
