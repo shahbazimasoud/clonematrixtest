@@ -47,6 +47,9 @@ export interface ConnectionProfile {
   adminUsername?: string;
   adminPassword?: string;
   adminAccessToken?: string;
+  apiPort?: number;
+  apiBaseUrl?: string;
+  apiAdminTokenOverride?: string;
   
   isActive: boolean;
 }

@@ -16,6 +16,7 @@ import os from "os";
 import zlib from "zlib";
 import { Client } from "pg";
 import { Client as SSHClient } from "ssh2";
+import yaml from "js-yaml";
 
 // Import modular DB and Agent services
 import {
@@ -5840,67 +5841,288 @@ function parseHomeserverYaml(yamlText: string): any {
   const hsConfig: any = {};
   if (!yamlText) return hsConfig;
 
-  const lines = yamlText.split("\n");
-  let databaseIndent = -1;
-  let databaseArgsIndent = -1;
+  try {
+    const doc: any = yaml.load(yamlText);
+    if (!doc || typeof doc !== "object") return hsConfig;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (doc.server_name) hsConfig.HS_DOMAIN = doc.server_name;
+    if (doc.enable_registration !== undefined) hsConfig.REGISTRATION_ENABLED = Boolean(doc.enable_registration);
+    if (doc.max_upload_size) hsConfig.LIMIT_MB = String(doc.max_upload_size).replace(/[a-zA-Z]/g, "");
 
-    const indent = line.length - line.trimStart().length;
-
-    if (indent === 0 && /^database:\s*(?:#.*)?$/.test(trimmed)) {
-      databaseIndent = indent;
-      databaseArgsIndent = -1;
-      continue;
+    if (doc.database && doc.database.args) {
+      if (doc.database.args.user) hsConfig.PG_USER = doc.database.args.user;
+      if (doc.database.args.password) hsConfig.PG_PASS = doc.database.args.password;
+      if (doc.database.args.database) hsConfig.PG_DB = doc.database.args.database;
+      if (doc.database.args.host) hsConfig.PG_HOST = doc.database.args.host;
+      if (doc.database.args.port) hsConfig.PG_PORT = String(doc.database.args.port);
     }
 
-    if (databaseIndent >= 0) {
-      if (indent <= databaseIndent) {
-        databaseIndent = -1;
-        databaseArgsIndent = -1;
-      } else if (/^args:\s*(?:#.*)?$/.test(trimmed)) {
-        databaseArgsIndent = indent;
-        continue;
+    if (doc.retention && doc.retention.default_policy && doc.retention.default_policy.max_lifetime) {
+      hsConfig.MESSAGE_RETENTION_DAYS = String(doc.retention.default_policy.max_lifetime).replace("d", "");
+    }
+
+    if (doc.local_media_retention_period) {
+      hsConfig.MEDIA_RETENTION_LOCAL_DAYS = String(doc.local_media_retention_period).replace("d", "");
+    }
+
+    if (doc.remote_media_repository_retention_period) {
+      hsConfig.MEDIA_RETENTION_REMOTE_DAYS = String(doc.remote_media_repository_retention_period).replace("d", "");
+    }
+
+    if (doc.presence && doc.presence.enabled !== undefined) {
+      hsConfig.PRESENCE_ENABLED = Boolean(doc.presence.enabled);
+    }
+
+    if (doc.enable_room_creation !== undefined) {
+      hsConfig.ROOM_CREATION_ALLOW = Boolean(doc.enable_room_creation);
+    }
+
+    if (doc.user_directory && doc.user_directory.search_all_users !== undefined) {
+      hsConfig.DIRECTORY_SEARCH_ENABLED = Boolean(doc.user_directory.search_all_users);
+    }
+
+    if (doc.rc_message) {
+      if (doc.rc_message.per_second !== undefined) hsConfig.RATE_LIMIT_PER_SEC = String(doc.rc_message.per_second);
+      if (doc.rc_message.burst !== undefined) hsConfig.RATE_LIMIT_BURST = String(doc.rc_message.burst);
+    }
+
+    if (doc.email) {
+      if (doc.email.smtp_host) hsConfig.SMTP_HOST = doc.email.smtp_host;
+      if (doc.email.smtp_port) hsConfig.SMTP_PORT = String(doc.email.smtp_port);
+      if (doc.email.smtp_user) hsConfig.SMTP_USER = doc.email.smtp_user;
+      if (doc.email.smtp_pass) hsConfig.SMTP_PASS = doc.email.smtp_pass;
+      if (doc.email.notif_from) hsConfig.NOTIF_FROM = doc.email.notif_from;
+      if (doc.email.app_name) hsConfig.APP_NAME = doc.email.app_name;
+    }
+
+    if (Array.isArray(doc.listeners) && doc.listeners.length > 0) {
+      const firstL = doc.listeners[0];
+      const bindIps = firstL.bind_addresses || (firstL.bind_address ? [firstL.bind_address] : []);
+      if (bindIps.length > 0) {
+        const ip = String(bindIps[0]).trim();
+        if (ip === "127.0.0.1" || ip === "localhost") {
+          hsConfig.LISTEN_MODE = "localhost";
+        } else if (ip === "0.0.0.0") {
+          hsConfig.LISTEN_MODE = "all";
+        } else {
+          hsConfig.LISTEN_MODE = "custom";
+          hsConfig.LISTEN_CUSTOM_IP = ip;
+        }
       }
     }
+  } catch (err) {
+    console.warn("parseHomeserverYaml fallback:", err);
+  }
 
-    if (databaseIndent >= 0 && databaseArgsIndent >= 0) {
-      if (indent <= databaseArgsIndent) {
-        databaseArgsIndent = -1;
+  return hsConfig;
+}
+
+function updateHomeserverYamlConfig(existingYamlText: string, configUpdates: any, ldapUpdates: any): string {
+  let doc: any;
+  try {
+    doc = yaml.load(existingYamlText);
+  } catch (err: any) {
+    throw new Error(`Current homeserver.yaml has invalid syntax: ${err.message}`);
+  }
+
+  if (!doc || typeof doc !== "object") {
+    doc = {};
+  }
+
+  if (configUpdates) {
+    // 1. Server Name & Public Base URL
+    if (configUpdates.HS_DOMAIN) {
+      doc.server_name = configUpdates.HS_DOMAIN.trim();
+      doc.public_baseurl = `https://${configUpdates.HS_DOMAIN.trim()}/`;
+    }
+
+    // 2. Database (PostgreSQL) - preserve any extra args or database settings
+    if (configUpdates.PG_USER || configUpdates.PG_DB || configUpdates.PG_HOST || configUpdates.PG_PORT || configUpdates.PG_PASS) {
+      if (!doc.database) {
+        doc.database = { name: "psycopg2", args: {} };
+      }
+      if (!doc.database.args) {
+        doc.database.args = {};
+      }
+      if (configUpdates.PG_USER) doc.database.args.user = configUpdates.PG_USER.trim();
+      if (configUpdates.PG_DB) doc.database.args.database = configUpdates.PG_DB.trim();
+      if (configUpdates.PG_HOST) doc.database.args.host = configUpdates.PG_HOST.trim();
+      if (configUpdates.PG_PORT) doc.database.args.port = parseInt(configUpdates.PG_PORT, 10) || 5432;
+      if (configUpdates.PG_PASS) doc.database.args.password = configUpdates.PG_PASS;
+    }
+
+    // 3. Max Upload Size
+    if (configUpdates.LIMIT_MB !== undefined) {
+      const mb = parseInt(String(configUpdates.LIMIT_MB), 10) || 50;
+      doc.max_upload_size = `${mb}M`;
+    }
+
+    // 4. Registration Enabled
+    if (configUpdates.REGISTRATION_ENABLED !== undefined) {
+      doc.enable_registration = String(configUpdates.REGISTRATION_ENABLED) === "true";
+    }
+
+    // 5. Message Retention
+    if (configUpdates.MESSAGE_RETENTION_DAYS !== undefined) {
+      const days = parseInt(String(configUpdates.MESSAGE_RETENTION_DAYS), 10) || 0;
+      if (!doc.retention) doc.retention = {};
+      doc.retention.enabled = days > 0;
+      if (!doc.retention.default_policy) doc.retention.default_policy = {};
+      doc.retention.default_policy.max_lifetime = `${days > 0 ? days : 30}d`;
+    }
+
+    // 6. Media Retention
+    if (configUpdates.MEDIA_RETENTION_LOCAL_DAYS !== undefined) {
+      const localDays = parseInt(String(configUpdates.MEDIA_RETENTION_LOCAL_DAYS), 10) || 0;
+      if (localDays > 0) {
+        doc.local_media_retention_period = `${localDays}d`;
       } else {
-        const parts = trimmed.split(":");
-        if (parts.length >= 2) {
-          const key = parts[0].trim();
-          const val = parts.slice(1).join(":").trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-          if (key === "user") hsConfig.PG_USER = val;
-          else if (key === "password") hsConfig.PG_PASS = val;
-          else if (key === "database") hsConfig.PG_DB = val;
-          else if (key === "host") hsConfig.PG_HOST = val;
-          else if (key === "port") hsConfig.PG_PORT = val;
-        }
+        delete doc.local_media_retention_period;
       }
     }
 
-    if (indent === 0) {
-      const parts = trimmed.split(":");
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        const val = parts.slice(1).join(":").trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
-        if (key === "server_name") {
-          hsConfig.HS_DOMAIN = val;
-        } else if (key === "enable_registration") {
-          hsConfig.REGISTRATION_ENABLED = (val === "true");
-        } else if (key === "max_upload_size") {
-          hsConfig.LIMIT_MB = val.replace(/[a-zA-Z]/g, '');
-        }
+    if (configUpdates.MEDIA_RETENTION_REMOTE_DAYS !== undefined) {
+      const remoteDays = parseInt(String(configUpdates.MEDIA_RETENTION_REMOTE_DAYS), 10) || 0;
+      if (remoteDays > 0) {
+        doc.remote_media_repository_retention_period = `${remoteDays}d`;
+      } else {
+        delete doc.remote_media_repository_retention_period;
+      }
+    }
+
+    // 7. Room Creation
+    if (configUpdates.ROOM_CREATION_ALLOW !== undefined) {
+      doc.enable_room_creation = String(configUpdates.ROOM_CREATION_ALLOW) === "true";
+    }
+
+    // 8. Presence
+    if (configUpdates.PRESENCE_ENABLED !== undefined) {
+      if (!doc.presence) doc.presence = {};
+      doc.presence.enabled = String(configUpdates.PRESENCE_ENABLED) === "true";
+    }
+
+    // 9. User Directory
+    if (configUpdates.DIRECTORY_SEARCH_ENABLED !== undefined) {
+      if (!doc.user_directory) doc.user_directory = { enabled: true };
+      doc.user_directory.enabled = true;
+      doc.user_directory.search_all_users = String(configUpdates.DIRECTORY_SEARCH_ENABLED) === "true";
+    }
+
+    // 10. Rate Limits
+    if (configUpdates.RATE_LIMIT_PER_SEC !== undefined || configUpdates.RATE_LIMIT_BURST !== undefined) {
+      if (!doc.rc_message) doc.rc_message = {};
+      if (configUpdates.RATE_LIMIT_PER_SEC !== undefined) {
+        doc.rc_message.per_second = parseFloat(configUpdates.RATE_LIMIT_PER_SEC) || 0.2;
+      }
+      if (configUpdates.RATE_LIMIT_BURST !== undefined) {
+        doc.rc_message.burst = parseInt(configUpdates.RATE_LIMIT_BURST, 10) || 10;
+      }
+    }
+
+    // 11. SMTP / Email
+    if (configUpdates.SMTP_HOST !== undefined) {
+      if (!doc.email) doc.email = {};
+      doc.email.smtp_host = configUpdates.SMTP_HOST || "localhost";
+      doc.email.smtp_port = parseInt(configUpdates.SMTP_PORT, 10) || 587;
+      doc.email.smtp_user = configUpdates.SMTP_USER || "";
+      doc.email.smtp_pass = configUpdates.SMTP_PASS || "";
+      doc.email.force_tls = false;
+      doc.email.notif_from = configUpdates.NOTIF_FROM || "Matrix <noreply@company.local>";
+      doc.email.app_name = configUpdates.APP_NAME || "Matrix";
+      doc.email.enable_notifs = true;
+    }
+
+    // 12. Network / Listener Bind Interfaces
+    if (configUpdates.LISTEN_MODE) {
+      let bindIps: string[] = ["0.0.0.0"];
+      if (configUpdates.LISTEN_MODE === "localhost") {
+        bindIps = ["127.0.0.1"];
+      } else if (configUpdates.LISTEN_MODE === "custom" && configUpdates.LISTEN_CUSTOM_IP) {
+        bindIps = [configUpdates.LISTEN_CUSTOM_IP.trim()];
+      } else if (configUpdates.LISTEN_MODE === "all") {
+        bindIps = ["0.0.0.0"];
+      }
+
+      if (!Array.isArray(doc.listeners) || doc.listeners.length === 0) {
+        doc.listeners = [
+          {
+            port: 8008,
+            tls: false,
+            type: "http",
+            x_forwarded: true,
+            bind_addresses: bindIps,
+            resources: [
+              {
+                names: ["client", "federation"],
+                compress: false
+              }
+            ]
+          }
+        ];
+      } else {
+        doc.listeners.forEach((listener: any) => {
+          if (listener && typeof listener === "object") {
+            listener.bind_addresses = bindIps;
+            if ("bind_address" in listener) {
+              listener.bind_address = bindIps[0];
+            }
+          }
+        });
       }
     }
   }
 
-  return hsConfig;
+  // 13. LDAP Modules Update
+  if (ldapUpdates) {
+    if (!Array.isArray(doc.modules)) {
+      doc.modules = [];
+    }
+    // Filter out existing LDAP module entries safely
+    doc.modules = doc.modules.filter((m: any) => !(m && typeof m === "object" && m.module === "ldap_auth_provider.LdapAuthProviderModule"));
+
+    if (ldapUpdates.enabled) {
+      const ldapModule: any = {
+        module: "ldap_auth_provider.LdapAuthProviderModule",
+        config: {
+          enabled: true,
+          uri: ldapUpdates.uri,
+          mode: ldapUpdates.mode || "search",
+          start_tls: Boolean(ldapUpdates.start_tls),
+          base: ldapUpdates.base,
+          active_directory: Boolean(ldapUpdates.active_directory),
+          attributes: {
+            uid: ldapUpdates.uid_attr || "sAMAccountName",
+            mail: ldapUpdates.mail_attr || "mail",
+            name: ldapUpdates.name_attr || "displayName"
+          }
+        }
+      };
+      if (ldapUpdates.mode === "search" && ldapUpdates.bind_dn) {
+        ldapModule.config.bind_dn = ldapUpdates.bind_dn;
+        if (ldapUpdates.bind_password) {
+          ldapModule.config.bind_password = ldapUpdates.bind_password;
+        }
+      }
+      doc.modules.push(ldapModule);
+    }
+  }
+
+  return yaml.dump(doc, { indent: 2, lineWidth: -1, noRefs: true });
+}
+
+async function rollbackHomeserverYaml(activeConn: any, backupPath?: string): Promise<boolean> {
+  const targetBackup = backupPath || "/etc/matrix-synapse/homeserver.yaml.bak_latest";
+  try {
+    const backupContent = await readConfigContent(targetBackup);
+    if (backupContent) {
+      await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", backupContent);
+      await restartSynapseService(activeConn);
+      return true;
+    }
+  } catch (e) {
+    console.error("Rollback error:", e);
+  }
+  return false;
 }
 
 async function loadServerParametersFromRemoteServer(): Promise<{
@@ -6611,24 +6833,33 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
 
   writeDb(db);
 
-  // Backup existing config first so we can rollback if validation fails
+  // 1. Create Timestamped Backup of existing homeserver.yaml & matrix-stack.conf
+  const timestamp = Date.now();
+  const backupYamlPath = `/etc/matrix-synapse/homeserver.yaml.bak_${timestamp}`;
+  const latestBackupYamlPath = `/etc/matrix-synapse/homeserver.yaml.bak_latest`;
+
+  let existingYaml = "";
   let backupStackConf = "";
   let backupStackLdapConf = "";
-  let backupYaml = "";
   let backupElementJson = "";
 
   try {
+    existingYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
     backupStackConf = await readConfigContent("/etc/matrix-stack.conf");
     backupStackLdapConf = await readConfigContent("/etc/matrix-stack-ldap.conf");
-    backupYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
     backupElementJson = await readConfigContent("/var/www/element/config.json", "{}");
+
+    if (existingYaml) {
+      await writeConfigContent(backupYamlPath, existingYaml);
+      await writeConfigContent(latestBackupYamlPath, existingYaml);
+    }
   } catch (err) {
-    console.warn("Could not read backup configurations:", err);
+    console.warn("Could not create backup configurations:", err);
   }
 
   try {
+    // 2. Update matrix-stack.conf
     if (config) {
-      // 1. Read existing config first to prevent wiping out other keys
       let existingConfig: any = {};
       try {
         const confRaw = await readConfigContent("/etc/matrix-stack.conf");
@@ -6644,161 +6875,103 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
         console.warn("Could not read existing matrix-stack.conf, starting fresh");
       }
 
-      // 2. Merge with the new updates
       const mergedConfig = { ...existingConfig, ...config };
-
-      // 3. Write merged config back to /etc/matrix-stack.conf
       let confContent = "";
       Object.entries(mergedConfig).forEach(([key, val]) => {
         confContent += `${key}=${val}\n`;
       });
       await writeConfigContent("/etc/matrix-stack.conf", confContent);
+    }
 
-      // 4. Update matrix-synapse homeserver.yaml configuration dynamically
-      let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
-      
-      if (config.HS_DOMAIN) {
-        yaml = yaml.replace(/^server_name:.*$/m, `server_name: "${config.HS_DOMAIN}"`);
-        yaml = yaml.replace(/^public_baseurl:.*$/m, `public_baseurl: "https://${config.HS_DOMAIN}/"`);
+    // 3. Generate updated homeserver.yaml safely via AST/js-yaml
+    let newYamlContent = existingYaml;
+    if (config || ldap) {
+      try {
+        newYamlContent = updateHomeserverYamlConfig(existingYaml, config, ldap);
+      } catch (yamlErr: any) {
+        return res.status(400).json({
+          error: "YAML Configuration Error",
+          message: `Failed to construct updated YAML config: ${yamlErr.message}`
+        });
       }
-      if (config.PG_USER) {
-        yaml = yaml.replace(/user:.*$/m, `user: "${config.PG_USER}"`);
-      }
-      if (config.PG_DB) {
-        yaml = yaml.replace(/database:.*$/m, `database: "${config.PG_DB}"`);
-      }
+    }
 
-      // Sync Limits & Policies into homeserver.yaml
-      if (config.LIMIT_MB !== undefined) {
-        if (yaml.match(/^max_upload_size:.*$/m)) {
-          yaml = yaml.replace(/^max_upload_size:.*$/m, `max_upload_size: "${config.LIMIT_MB}M"`);
-        } else {
-          yaml += `\nmax_upload_size: "${config.LIMIT_MB}M"`;
-        }
-      }
+    // 4. Validate generated YAML syntax locally
+    try {
+      yaml.load(newYamlContent);
+    } catch (parseErr: any) {
+      return res.status(400).json({
+        error: "YAML Syntax Error",
+        message: `Generated configuration is invalid YAML: ${parseErr.message}`
+      });
+    }
 
-      if (config.REGISTRATION_ENABLED !== undefined) {
-        const isReg = String(config.REGISTRATION_ENABLED) === "true";
-        if (yaml.match(/^enable_registration:.*$/m)) {
-          yaml = yaml.replace(/^enable_registration:.*$/m, `enable_registration: ${isReg}`);
-        } else {
-          yaml += `\nenable_registration: ${isReg}`;
-        }
-      }
+    // 5. Test validation on remote server using check-config
+    const tempTestPath = `/tmp/homeserver_test_${timestamp}.yaml`;
+    await writeConfigContent(tempTestPath, newYamlContent);
 
-      if (config.MESSAGE_RETENTION_DAYS !== undefined) {
-        const days = parseInt(config.MESSAGE_RETENTION_DAYS) || 0;
-        const retentionBlock = `
-retention:
-  enabled: ${days > 0}
-  default_policy:
-    max_lifetime: ${days > 0 ? days : 30}d
+    const checkConfigCmd = `
+if command -v python3 >/dev/null 2>&1; then
+  if ! python3 -c "import yaml; yaml.safe_load(open('${tempTestPath}'))" 2>&1; then
+    echo "YAML_INVALID"
+    exit 1
+  fi
+  if [ -f /opt/venvs/matrix-synapse/bin/python ]; then
+    /opt/venvs/matrix-synapse/bin/python -m synapse.app.homeserver --config-path ${tempTestPath} --check-config 2>&1 || { echo "SYNAPSE_INVALID"; exit 1; }
+  else
+    python3 -m synapse.app.homeserver --config-path ${tempTestPath} --check-config 2>&1 || { echo "SYNAPSE_INVALID"; exit 1; }
+  fi
+  echo "VALID"
+else
+  echo "VALID"
+fi
 `.trim();
-        if (yaml.includes("retention:")) {
-          yaml = yaml.replace(/retention:\s*[\s\S]*?(?=\n\S|$)/, retentionBlock);
+
+    let validateOut = "";
+    if (activeConn && activeConn.id !== "local") {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      try {
+        if (activeConn.authType === "agent") {
+          validateOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: checkConfigCmd });
         } else {
-          yaml += `\n${retentionBlock}`;
+          validateOut = await executeSSHCommand(activeConn, `${sudoPrefix}${checkConfigCmd}`);
         }
+      } catch (e: any) {
+        validateOut = e.message || "";
       }
-
-      if (config.MEDIA_RETENTION_LOCAL_DAYS !== undefined) {
-        const localDays = parseInt(config.MEDIA_RETENTION_LOCAL_DAYS) || 0;
-        if (localDays > 0) {
-          if (yaml.match(/^local_media_retention_period:.*$/m)) {
-            yaml = yaml.replace(/^local_media_retention_period:.*$/m, `local_media_retention_period: ${localDays}d`);
-          } else {
-            yaml += `\nlocal_media_retention_period: ${localDays}d`;
-          }
-        } else {
-          yaml = yaml.replace(/^local_media_retention_period:.*$/m, "");
-        }
+    } else {
+      try {
+        validateOut = execSync(checkConfigCmd).toString();
+      } catch (e: any) {
+        validateOut = e.output ? e.output.toString() : e.message;
       }
+    }
 
-      if (config.MEDIA_RETENTION_REMOTE_DAYS !== undefined) {
-        const remoteDays = parseInt(config.MEDIA_RETENTION_REMOTE_DAYS) || 0;
-        if (remoteDays > 0) {
-          if (yaml.match(/^remote_media_repository_retention_period:.*$/m)) {
-            yaml = yaml.replace(/^remote_media_repository_retention_period:.*$/m, `remote_media_repository_retention_period: ${remoteDays}d`);
-          } else {
-            yaml += `\nremote_media_repository_retention_period: ${remoteDays}d`;
-          }
-        } else {
-          yaml = yaml.replace(/^remote_media_repository_retention_period:.*$/m, "");
-        }
+    // Clean up temporary test file
+    const rmTempCmd = `rm -f ${tempTestPath}`;
+    if (activeConn && activeConn.id !== "local") {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      if (activeConn.authType === "agent") {
+        executeRemoteAgentTask(activeConn.id, "execute_command", { command: rmTempCmd }).catch(() => {});
+      } else {
+        executeSSHCommand(activeConn, `${sudoPrefix}${rmTempCmd}`).catch(() => {});
       }
+    } else {
+      try { execSync(rmTempCmd); } catch (e) {}
+    }
 
-      if (config.ROOM_CREATION_ALLOW !== undefined) {
-        const isRoomCreation = String(config.ROOM_CREATION_ALLOW) === "true";
-        if (yaml.match(/^enable_room_creation:.*$/m)) {
-          yaml = yaml.replace(/^enable_room_creation:.*$/m, `enable_room_creation: ${isRoomCreation}`);
-        } else {
-          yaml += `\nenable_room_creation: ${isRoomCreation}`;
-        }
-      }
+    if (validateOut.includes("YAML_INVALID") || validateOut.includes("SYNAPSE_INVALID")) {
+      return res.status(400).json({
+        error: "Configuration Validation Failed",
+        message: `The configuration file failed Synapse check-config validation and was NOT applied.\n\nDiagnostics:\n${validateOut.trim()}`
+      });
+    }
 
-      if (config.PRESENCE_ENABLED !== undefined) {
-        const isPresence = String(config.PRESENCE_ENABLED) === "true";
-        const presenceBlock = `
-presence:
-  enabled: ${isPresence}
-`.trim();
-        if (yaml.includes("presence:")) {
-          yaml = yaml.replace(/presence:\s*[\s\S]*?(?=\n\S|$)/, presenceBlock);
-        } else {
-          yaml += `\n${presenceBlock}`;
-        }
-      }
+    // 6. Overwrite homeserver.yaml with validated new content
+    await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", newYamlContent);
 
-      if (config.DIRECTORY_SEARCH_ENABLED !== undefined) {
-        const searchAll = String(config.DIRECTORY_SEARCH_ENABLED) === "true";
-        const dirBlock = `
-user_directory:
-  enabled: true
-  search_all_users: ${searchAll}
-`.trim();
-        if (yaml.includes("user_directory:")) {
-          yaml = yaml.replace(/user_directory:\s*[\s\S]*?(?=\n\S|$)/, dirBlock);
-        } else {
-          yaml += `\n${dirBlock}`;
-        }
-      }
-
-      if (config.RATE_LIMIT_PER_SEC !== undefined && config.RATE_LIMIT_BURST !== undefined) {
-        const rateLimitBlock = `
-rc_message:
-  per_second: ${config.RATE_LIMIT_PER_SEC}
-  burst: ${config.RATE_LIMIT_BURST}
-`.trim();
-        if (yaml.includes("rc_message:")) {
-          yaml = yaml.replace(/rc_message:\s*[\s\S]*?(?=\n\S|$)/, rateLimitBlock);
-        } else {
-          yaml += `\n${rateLimitBlock}`;
-        }
-      }
-
-      // Sync SMTP/Email Server into homeserver.yaml
-      if (config.SMTP_HOST !== undefined) {
-        const emailBlock = `
-email:
-  smtp_host: "${config.SMTP_HOST || 'localhost'}"
-  smtp_port: ${parseInt(config.SMTP_PORT) || 587}
-  smtp_user: "${config.SMTP_USER || ''}"
-  smtp_pass: "${config.SMTP_PASS || ''}"
-  force_tls: false
-  notif_from: "${config.NOTIF_FROM || 'Matrix <noreply@company.local>'}"
-  app_name: "${config.APP_NAME || 'Matrix'}"
-  enable_notifs: true
-`.trim();
-        if (yaml.includes("email:")) {
-          yaml = yaml.replace(/email:\s*[\s\S]*?(?=\n\S|$)/, emailBlock);
-        } else {
-          yaml += `\n${emailBlock}`;
-        }
-      }
-
-      await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", yaml);
-
-      // 5. Update Element defaults and media options in config.json
+    // 7. Sync Element config.json if needed
+    if (config) {
       const elConfigRaw = await readConfigContent("/var/www/element/config.json", "{}");
       try {
         const elConfig = JSON.parse(elConfigRaw);
@@ -6808,36 +6981,18 @@ email:
             elConfig.default_server_config["m.homeserver"].server_name = config.HS_DOMAIN;
           }
         }
-        
-        if (config.ELEMENT_DOMAIN) {
-          elConfig.element_domain = config.ELEMENT_DOMAIN;
-        }
-
-        // Sync application branding name
-        if (config.APP_NAME) {
-          elConfig.brand = config.APP_NAME;
-        }
-
-        // Sync Custom Integration URLs
-        if (config.INTEGRATIONS_UI_URL) {
-          elConfig.integrations_ui_url = config.INTEGRATIONS_UI_URL;
-        }
-        if (config.INTEGRATIONS_REST_URL) {
-          elConfig.integrations_rest_url = config.INTEGRATIONS_REST_URL;
-        }
-
-        // Sync Call / Conferencing options
+        if (config.ELEMENT_DOMAIN) elConfig.element_domain = config.ELEMENT_DOMAIN;
+        if (config.APP_NAME) elConfig.brand = config.APP_NAME;
+        if (config.INTEGRATIONS_UI_URL) elConfig.integrations_ui_url = config.INTEGRATIONS_UI_URL;
+        if (config.INTEGRATIONS_REST_URL) elConfig.integrations_rest_url = config.INTEGRATIONS_REST_URL;
         if (config.ELEMENT_CALL_URL) {
           if (!elConfig.element_call) elConfig.element_call = {};
           elConfig.element_call.url = config.ELEMENT_CALL_URL;
         }
-
         if (config.JITSI_DOMAIN) {
           if (!elConfig.jitsi) elConfig.jitsi = {};
           elConfig.jitsi.preferred_domain = config.JITSI_DOMAIN;
         }
-
-        // Sync Client setting defaults
         if (!elConfig.setting_defaults) elConfig.setting_defaults = {};
         if (config.TYPING_NOTIFS_ENABLED !== undefined) {
           elConfig.setting_defaults.sendTypingNotifications = (String(config.TYPING_NOTIFS_ENABLED) === "true");
@@ -6845,144 +7000,90 @@ email:
         if (config.READ_RECEIPTS_ENABLED !== undefined) {
           elConfig.setting_defaults.sendReadReceipts = (String(config.READ_RECEIPTS_ENABLED) === "true");
         }
-
         await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2));
       } catch (e) {
         console.error("Failed to update Element defaults configuration:", e);
       }
-
-      if (config.LE_EMAIL) {
-        try {
-          const updateLeCmd = `sed -i 's/^email = .*/email = ${config.LE_EMAIL}/g' /etc/letsencrypt/renewal/*.conf 2>/dev/null || true`;
-          const activeConn = getActiveConnection();
-          if (activeConn && activeConn.id !== "local") {
-            if (activeConn.authType === "agent") {
-              await executeRemoteAgentTask(activeConn.id, "execute_command", { command: updateLeCmd });
-            } else {
-              const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-              await executeSSHCommand(activeConn, `${sudoPrefix}${updateLeCmd}`);
-            }
-          } else {
-            exec(updateLeCmd);
-          }
-        } catch (leErr) {
-          console.warn("Could not write Let's Encrypt renewal config email:", leErr);
-        }
-      }
     }
 
-    if (ldap) {
-      if (ldap.uri || ldap.base) {
-        const ldapConfContent = [
-          `LDAP_URI=${ldap.uri || ""}`,
-          `LDAP_BASE=${ldap.base || ""}`,
-          `LDAP_MODE=${ldap.mode || "search"}`,
-          `LDAP_START_TLS=${ldap.start_tls ? "true" : "false"}`,
-          `LDAP_BIND_DN=${ldap.bind_dn || ""}`,
-          `LDAP_BIND_PASSWORD=${ldap.bind_password || ""}`,
-          `LDAP_UID_ATTR=${ldap.uid_attr || "sAMAccountName"}`,
-          `LDAP_MAIL_ATTR=${ldap.mail_attr || "mail"}`,
-          `LDAP_NAME_ATTR=${ldap.name_attr || "displayName"}`
-        ].join("\n");
-        await writeConfigContent("/etc/matrix-stack-ldap.conf", ldapConfContent + "\n");
-      }
-
-      let yaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
-      if (!yaml.includes("modules:")) {
-        yaml += "\nmodules: []";
-      }
-
-      const modulesRegex = /modules:\s*(?:\[\]|[\s\S]*?(?=\n\S|$))/;
-      let newModulesBlock = "modules: []";
-
-      if (ldap.enabled) {
-        const ldapLines = [
-          "modules:",
-          "  - module: \"ldap_auth_provider.LdapAuthProviderModule\"",
-          "    config:",
-          `      enabled: true`,
-          `      uri: "${ldap.uri}"`,
-          `      mode: "${ldap.mode}"`,
-          `      start_tls: ${ldap.start_tls}`,
-          `      base: "${ldap.base}"`,
-          `      active_directory: ${ldap.active_directory || false}`
-        ];
-        if (ldap.mode === "search" && ldap.bind_dn) {
-          ldapLines.push(`      bind_dn: "${ldap.bind_dn}"`);
-          if (ldap.bind_password) {
-            ldapLines.push(`      bind_password: "${ldap.bind_password}"`);
-          }
-        }
-        ldapLines.push(
-          `      attributes:`,
-          `        uid: "${ldap.uid_attr}"`,
-          `        mail: "${ldap.mail_attr}"`,
-          `        name: "${ldap.name_attr}"`
-        );
-        newModulesBlock = ldapLines.join("\n");
-      }
-
-      yaml = yaml.replace(modulesRegex, newModulesBlock);
-      await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", yaml);
-    }
-
-    // Configuration Verification Check
-    let configValid = true;
-    let validationError = "";
-    if (activeConn && activeConn.id !== "local") {
-      const validateCmd = `
-if command -v python3 >/dev/null 2>&1; then
-  if ! python3 -c "import yaml; yaml.safe_load(open('/etc/matrix-synapse/homeserver.yaml'))" 2>&1; then
-    echo "YAML_INVALID"
-    exit 1
-  fi
-  if [ -f /opt/venvs/matrix-synapse/bin/python ]; then
-    /opt/venvs/matrix-synapse/bin/python -m synapse.app.homeserver --config-path /etc/matrix-synapse/homeserver.yaml --check-config 2>&1 || { echo "SYNAPSE_INVALID"; exit 1; }
-  else
-    python3 -m synapse.app.homeserver --config-path /etc/matrix-synapse/homeserver.yaml --check-config 2>&1 || { echo "SYNAPSE_INVALID"; exit 1; }
-  fi
-  echo "VALID"
-else
-  echo "VALID"
-fi
-`.trim();
-      try {
-        let validateOut = "";
-        if (activeConn.authType === "agent") {
-          validateOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: validateCmd });
-        } else {
-          validateOut = await executeSSHCommand(activeConn, validateCmd);
-        }
-        if (validateOut.includes("YAML_INVALID") || validateOut.includes("SYNAPSE_INVALID")) {
-          configValid = false;
-          validationError = validateOut.trim();
-        }
-      } catch (err: any) {
-        console.warn("Validation command check experienced an environment error:", err);
-      }
-    }
-
-    if (!configValid) {
-      // Rollback config files
-      if (backupStackConf) await writeConfigContent("/etc/matrix-stack.conf", backupStackConf);
-      if (backupStackLdapConf) await writeConfigContent("/etc/matrix-stack-ldap.conf", backupStackLdapConf);
-      if (backupYaml) await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", backupYaml);
-      if (backupElementJson) await writeConfigContent("/var/www/element/config.json", backupElementJson);
-
-      return res.status(400).json({
-        error: "Configuration Validation Failed",
-        message: `The configuration files could not be validated on the remote server. Your changes have been reverted.\n\nError diagnostics:\n${validationError}`
+    // 8. Restart Matrix Synapse Service
+    const restartSuccess = await restartSynapseService(activeConn);
+    if (!restartSuccess) {
+      // Auto Rollback
+      await rollbackHomeserverYaml(activeConn, backupYamlPath);
+      return res.status(500).json({
+        error: "Service Restart Failed",
+        message: "Failed to restart Matrix Synapse service after updating configuration. Configuration was automatically rolled back to backup."
       });
     }
 
-    // Service restart
-    const restartSuccess = await restartSynapseService(activeConn);
+    // 9. Post-restart health check: verify service status and listener port
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // Propagate rate limits and other defaults to all users in the DB
+    const checkPort = activeConn?.apiPort || 8008;
+    const healthCheckCmd = `
+if command -v systemctl >/dev/null 2>&1; then
+  if ! systemctl is-active --quiet matrix-synapse; then
+    echo "SERVICE_DOWN"
+    exit 1
+  fi
+fi
+
+if command -v ss >/dev/null 2>&1; then
+  if ss -tulpn | grep -q ":${checkPort} "; then
+    echo "HEALTH_OK"
+    exit 0
+  fi
+elif command -v netstat >/dev/null 2>&1; then
+  if netstat -tulpn | grep -q ":${checkPort} "; then
+    echo "HEALTH_OK"
+    exit 0
+  fi
+fi
+
+curl -s -m 3 http://127.0.0.1:${checkPort}/_matrix/client/versions >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+  echo "HEALTH_OK"
+  exit 0
+else
+  echo "LISTENER_UNREACHABLE"
+  exit 1
+fi
+`.trim();
+
+    let healthOut = "";
+    if (activeConn && activeConn.id !== "local") {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      try {
+        if (activeConn.authType === "agent") {
+          healthOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: healthCheckCmd });
+        } else {
+          healthOut = await executeSSHCommand(activeConn, `${sudoPrefix}${healthCheckCmd}`);
+        }
+      } catch (e: any) {
+        healthOut = "HEALTH_CHECK_FAILED";
+      }
+    } else {
+      try {
+        healthOut = execSync(healthCheckCmd).toString();
+      } catch (e: any) {
+        healthOut = "HEALTH_CHECK_FAILED";
+      }
+    }
+
+    if (!healthOut.includes("HEALTH_OK")) {
+      // Health check failed - automatic rollback
+      await rollbackHomeserverYaml(activeConn, backupYamlPath);
+      return res.status(400).json({
+        error: "Service Health Check Failed",
+        message: `Synapse failed to open listener on port ${checkPort} after applying configuration (${healthOut.trim()}). Automatically rolled back to backup configuration.`
+      });
+    }
+
+    // Propagate rate limits to all users in DB
     if (config) {
       const perSec = config.RATE_LIMIT_PER_SEC !== undefined ? parseFloat(config.RATE_LIMIT_PER_SEC) : undefined;
       const burst = config.RATE_LIMIT_BURST !== undefined ? parseInt(config.RATE_LIMIT_BURST, 10) : undefined;
-      
       if (!db.matrixUsers) db.matrixUsers = [];
       db.matrixUsers.forEach((u: any) => {
         if (!u.rateLimits) u.rateLimits = {};
@@ -6998,32 +7099,104 @@ fi
       action: "Save Configuration",
       target: activeConn ? activeConn.name : "Local",
       status: "success",
-      details: `Modified server stack parameters on ${activeConn ? activeConn.name : "local"} server. Validation passed and matrix-synapse service restarted.`
+      details: `Safely updated homeserver.yaml on ${activeConn ? activeConn.name : "local"}. Validation passed, service restarted, and listener verified on port ${checkPort}.`
     });
     writeDb(db);
 
-    // Read config again to get fresh parsed state
     let freshLdap = ldap;
     try {
       const freshYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
       freshLdap = parseLdapFromYaml(freshYaml);
     } catch (e) {}
 
-    res.json({ 
-      message: "Configurations saved, validated, and service restarted successfully.", 
+    res.json({
+      message: "Configurations saved, validated, and service restarted successfully with active listener.",
       ldap: freshLdap,
-      restartSuccess
+      restartSuccess: true
     });
 
   } catch (saveErr: any) {
-    // Rollback config files on unhandled error
-    if (backupStackConf) await writeConfigContent("/etc/matrix-stack.conf", backupStackConf);
-    if (backupStackLdapConf) await writeConfigContent("/etc/matrix-stack-ldap.conf", backupStackLdapConf);
-    if (backupYaml) await writeConfigContent("/etc/matrix-synapse/homeserver.yaml", backupYaml);
-    if (backupElementJson) await writeConfigContent("/var/www/element/config.json", backupElementJson);
-
+    if (backupYamlPath) {
+      await rollbackHomeserverYaml(activeConn, backupYamlPath);
+    }
     console.error("Save config unhandled error:", saveErr);
     res.status(500).json({ error: "Failed to save configuration", message: saveErr.message });
+  }
+});
+
+// API endpoint to list homeserver.yaml backup files
+app.get("/api/matrix/config/backups", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    const listCmd = `ls -la /etc/matrix-synapse/homeserver.yaml.bak_* 2>/dev/null || true`;
+    let rawList = "";
+    if (activeConn && activeConn.id !== "local") {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      if (activeConn.authType === "agent") {
+        rawList = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: listCmd });
+      } else {
+        rawList = await executeSSHCommand(activeConn, `${sudoPrefix}${listCmd}`);
+      }
+    } else {
+      try {
+        rawList = execSync(listCmd).toString();
+      } catch (e) {}
+    }
+
+    const backups: any[] = [];
+    const lines = rawList.split("\n");
+    lines.forEach((line) => {
+      const match = line.match(/(homeserver\.yaml\.bak_(\d+|latest))/);
+      if (match) {
+        const filename = match[1];
+        const tsRaw = match[2];
+        let timestamp = Date.now();
+        if (tsRaw && tsRaw !== "latest" && !isNaN(Number(tsRaw))) {
+          timestamp = Number(tsRaw);
+        }
+        backups.push({
+          filename,
+          timestamp,
+          dateStr: new Date(timestamp).toLocaleString(),
+          isLatest: filename.endsWith("_latest")
+        });
+      }
+    });
+
+    backups.sort((a, b) => b.timestamp - a.timestamp);
+    res.json({ backups });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch backups", message: err.message });
+  }
+});
+
+// API endpoint to rollback homeserver.yaml to a chosen backup file
+app.post("/api/matrix/config/rollback", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  try {
+    const { backupFilename } = req.body;
+    const activeConn = getActiveConnection();
+    const targetFile = backupFilename ? `/etc/matrix-synapse/${backupFilename.replace(/[^a-zA-Z0-9._-]/g, "")}` : "/etc/matrix-synapse/homeserver.yaml.bak_latest";
+
+    const restored = await rollbackHomeserverYaml(activeConn, targetFile);
+    if (!restored) {
+      return res.status(400).json({ error: "Rollback failed", message: "Specified backup file could not be restored." });
+    }
+
+    const db = readDb();
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Rollback Configuration",
+      target: activeConn ? activeConn.name : "Local",
+      status: "success",
+      details: `Restored homeserver.yaml configuration from ${targetFile} and restarted service.`
+    });
+    writeDb(db);
+
+    res.json({ message: "Homeserver configuration restored and Matrix Synapse service restarted successfully." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Rollback failed", message: err.message });
   }
 });
 

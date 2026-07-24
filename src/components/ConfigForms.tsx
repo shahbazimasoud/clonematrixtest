@@ -227,7 +227,7 @@ const configFormTranslations = {
   }
 };
 
-type TabType = 'homeserver' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security' | 'api';
+type TabType = 'homeserver' | 'network' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'users' | 'video' | 'security' | 'api';
 
 export default function ConfigForms({ 
   config, 
@@ -412,6 +412,71 @@ export default function ConfigForms({
   const [showApiSettings, setShowApiSettings] = useState<boolean>(false);
   const [savingApiConfig, setSavingApiConfig] = useState<boolean>(false);
 
+  // Network & Backups State
+  const [listenMode, setListenMode] = useState<'localhost' | 'all' | 'custom'>('all');
+  const [listenCustomIp, setListenCustomIp] = useState<string>('');
+  const [backupsList, setBackupsList] = useState<any[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState<boolean>(false);
+  const [rollingBack, setRollingBack] = useState<boolean>(false);
+
+  const fetchBackups = async () => {
+    if (!authToken) return;
+    setLoadingBackups(true);
+    try {
+      const res = await fetch('/api/matrix/config/backups', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBackupsList(data.backups || []);
+      }
+    } catch (e) {
+      console.error("Failed to load backups", e);
+    } finally {
+      setLoadingBackups(false);
+    }
+  };
+
+  const handleSaveNetworkSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    runAsyncSave(async () => {
+      await onSaveConfig({
+        config: {
+          LISTEN_MODE: listenMode,
+          LISTEN_CUSTOM_IP: listenCustomIp
+        }
+      });
+      fetchBackups();
+    });
+  };
+
+  const handleRollback = async (backupFilename?: string) => {
+    if (!window.confirm(lang === 'fa' ? "آیا از بازگردانی این نسخه پشتیبان مطمئن هستید؟ این کار تنظیمات و سرویس Matrix Synapse را ریستارت می‌کند." : "Are you sure you want to rollback to this configuration backup?")) return;
+    setRollingBack(true);
+    try {
+      const res = await fetch('/api/matrix/config/rollback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ backupFilename })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (showToast) showToast('success', lang === 'fa' ? 'پیکربندی با موفقیت بازگردانی شد!' : 'Configuration rolled back successfully!');
+        fetchBackups();
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        if (showToast) showToast('error', data.message || (lang === 'fa' ? 'بازگردانی با خطا مواجه شد.' : 'Rollback failed'));
+      }
+    } catch (e) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور.' : 'Server communication error.');
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
   const fetchApiReport = async () => {
     setLoadingApi(true);
     try {
@@ -514,6 +579,8 @@ export default function ConfigForms({
       setIntegrationsUiUrl(config.INTEGRATIONS_UI_URL || 'https://scalar.vector.im');
       setIntegrationsRestUrl(config.INTEGRATIONS_REST_URL || 'https://scalar.vector.im/api');
       setElementCallUrl(config.ELEMENT_CALL_URL || 'https://call.element.io');
+      setListenMode(config.LISTEN_MODE || 'all');
+      setListenCustomIp(config.LISTEN_CUSTOM_IP || '');
     }
   }, [config]);
 
@@ -551,6 +618,12 @@ export default function ConfigForms({
   useEffect(() => {
     if (activeTab === 'workers' && authToken) {
       fetchWorkersStatus();
+    }
+  }, [activeTab, authToken]);
+
+  useEffect(() => {
+    if ((activeTab === 'network' || activeTab === 'homeserver') && authToken) {
+      fetchBackups();
     }
   }, [activeTab, authToken]);
 
@@ -763,6 +836,19 @@ export default function ConfigForms({
         >
           <Settings className="w-5 h-5 text-indigo-400" />
           <span>{t.serverParams}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('network')}
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+            activeTab === 'network' 
+              ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(20,184,166,0.15)]' 
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+          id="tab-network"
+        >
+          <Globe className="w-5 h-5 text-teal-400" />
+          <span>{lang === 'fa' ? 'شبکه و پشتیبان‌گیری' : 'Network & Backups'}</span>
         </button>
 
         <button
@@ -1040,6 +1126,207 @@ export default function ConfigForms({
               </div>
             )}
           </form>
+        )}
+
+        {/* VIEW 1.5: NETWORK LISTENERS & BACKUPS */}
+        {activeTab === 'network' && (
+          <div className="space-y-6" id="form-network">
+            <div className="flex items-center justify-between pb-4 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <Globe className="w-6 h-6 text-teal-400" />
+                <div>
+                  <h2 className="text-xl font-display font-bold text-white">
+                    {lang === 'fa' ? 'تنظیمات شبکه و Listenerها' : 'Network Listener Settings'}
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    {lang === 'fa' ? 'مدیریت آدرس‌های Bind سرویس Synapse و فایل‌های پشتیبان کانفیگ' : 'Configure Synapse listener interfaces and manage config rollback backups.'}
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                type="button"
+                onClick={fetchBackups}
+                disabled={loadingBackups}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300 transition-all"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-teal-400 ${loadingBackups ? 'animate-spin' : ''}`} />
+                <span>{lang === 'fa' ? 'بروزرسانی لیست پشتیبان‌ها' : 'Refresh Backups'}</span>
+              </button>
+            </div>
+
+            {/* Listener Configuration */}
+            <form onSubmit={handleSaveNetworkSettings} className="space-y-4 bg-black/30 border border-white/5 p-5 rounded-2xl">
+              <h3 className="text-sm font-display font-semibold text-white flex items-center gap-2">
+                <Globe className="w-4 h-4 text-teal-400" />
+                <span>{lang === 'fa' ? 'رابط شبکه شنیداری (Bind Address)' : 'Network Binding Mode'}</span>
+              </h3>
+              
+              <p className="text-xs text-slate-400">
+                {lang === 'fa' ? 'تعیین کنید Synapse روی چه IP ای درخواست‌های ورودی Matrix API و پورت 8008 را دریافت کند:' : 'Choose which IP addresses Synapse listens on for port 8008 Matrix API traffic:'}
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                <label className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                  listenMode === 'all'
+                    ? 'bg-teal-500/10 border-teal-500/40 text-white'
+                    : 'bg-black/20 border-white/5 text-slate-400 hover:border-white/20'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-sm text-slate-200">0.0.0.0 (All Interfaces)</span>
+                    <input
+                      type="radio"
+                      name="listenMode"
+                      value="all"
+                      checked={listenMode === 'all'}
+                      onChange={() => setListenMode('all')}
+                      className="accent-teal-500"
+                    />
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    {lang === 'fa' ? 'قبول ترافیک ورودی از تمام کارت‌های شبکه (توصیه شده برای دسترسی از راه دور)' : 'Listen on all network interfaces (Recommended for public access)'}
+                  </span>
+                </label>
+
+                <label className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                  listenMode === 'localhost'
+                    ? 'bg-teal-500/10 border-teal-500/40 text-white'
+                    : 'bg-black/20 border-white/5 text-slate-400 hover:border-white/20'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-sm text-slate-200">127.0.0.1 (Localhost Only)</span>
+                    <input
+                      type="radio"
+                      name="listenMode"
+                      value="localhost"
+                      checked={listenMode === 'localhost'}
+                      onChange={() => setListenMode('localhost')}
+                      className="accent-teal-500"
+                    />
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    {lang === 'fa' ? 'محدودسازی دسترسی فقط به سرویس‌های محلی سرور' : 'Restrict access strictly to server local internal requests'}
+                  </span>
+                </label>
+
+                <label className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
+                  listenMode === 'custom'
+                    ? 'bg-teal-500/10 border-teal-500/40 text-white'
+                    : 'bg-black/20 border-white/5 text-slate-400 hover:border-white/20'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-sm text-slate-200">Custom IP Address</span>
+                    <input
+                      type="radio"
+                      name="listenMode"
+                      value="custom"
+                      checked={listenMode === 'custom'}
+                      onChange={() => setListenMode('custom')}
+                      className="accent-teal-500"
+                    />
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    {lang === 'fa' ? 'تنظیم روی یک IP اختصاصی خاص (مثلا کارت شبکه داخلی)' : 'Bind exclusively to a specific IP interface'}
+                  </span>
+                </label>
+              </div>
+
+              {listenMode === 'custom' && (
+                <div className="pt-2">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
+                    {lang === 'fa' ? 'آدرس IP اختصاصی' : 'Custom IP Address'}
+                  </label>
+                  <input
+                    type="text"
+                    value={listenCustomIp}
+                    onChange={(e) => setListenCustomIp(e.target.value)}
+                    placeholder="e.g. 172.16.50.216"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500/50"
+                  />
+                </div>
+              )}
+
+              <div className="pt-3 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSaving || isReadOnly}
+                  className="px-5 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white font-semibold text-sm transition-all shadow-[0_0_15px_rgba(20,184,166,0.3)] disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  <span>{lang === 'fa' ? 'ذخیره تنظیمات شبکه' : 'Save Network Settings'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Backups & Rollback Section */}
+            <div className="space-y-4 bg-black/30 border border-white/5 p-5 rounded-2xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-display font-semibold text-white flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-indigo-400" />
+                  <span>{lang === 'fa' ? 'نسخه‌های پشتیبان کانفیگ (Configuration Backups)' : 'Configuration Backups & Rollback'}</span>
+                </h3>
+
+                <button
+                  type="button"
+                  onClick={() => handleRollback()}
+                  disabled={rollingBack || backupsList.length === 0}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:bg-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${rollingBack ? 'animate-spin' : ''}`} />
+                  <span>{lang === 'fa' ? 'بازگردانی به آخرین پشتیبان' : 'Rollback to Latest'}</span>
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400">
+                {lang === 'fa' 
+                  ? 'قبل از هر تغییر در تنظیمات، یک نسخه پشتیبان ایمن ساخته می‌شود. در صورت بروز هرگونه مشکل می‌توانید کانفیگ قبلی را بازیابی کنید.'
+                  : 'An automatic backup is generated before every configuration update. Restore any previous configuration safely below.'}
+              </p>
+
+              {loadingBackups ? (
+                <div className="p-6 text-center text-slate-400 text-xs">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-teal-400" />
+                  <span>{lang === 'fa' ? 'در حال بارگذاری لیست پشتیبان‌ها...' : 'Loading backup files...'}</span>
+                </div>
+              ) : backupsList.length === 0 ? (
+                <div className="p-6 text-center text-slate-500 text-xs bg-black/20 rounded-xl border border-white/5">
+                  {lang === 'fa' ? 'هیچ نسخه پشتیبانی یافت نشد. پس از اولین تغییر، بک‌آپ‌ها در اینجا نمایش داده می‌شوند.' : 'No configuration backups found.'}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {backupsList.map((bak: any, idx: number) => (
+                    <div 
+                      key={bak.filename || idx}
+                      className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5 hover:border-white/10 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-mono font-medium text-slate-200">
+                            {bak.filename}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            {bak.dateStr || new Date(bak.timestamp).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRollback(bak.filename)}
+                        disabled={rollingBack || isReadOnly}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <span>{lang === 'fa' ? 'بازگردانی' : 'Rollback'}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* VIEW 2: LDAP AUTH AD CONNECTOR */}

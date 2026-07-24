@@ -179,6 +179,8 @@ export interface MatrixConfig {
   PROFILE_EDIT_AVATAR_ENABLED?: boolean;
   RATE_LIMIT_PER_SEC?: string;
   RATE_LIMIT_BURST?: string;
+  LISTEN_MODE?: 'localhost' | 'all' | 'custom';
+  LISTEN_CUSTOM_IP?: string;
 }
 
 export interface LDAPConfig {
