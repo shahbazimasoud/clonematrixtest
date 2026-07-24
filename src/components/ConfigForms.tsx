@@ -418,6 +418,32 @@ export default function ConfigForms({
   const [backupsList, setBackupsList] = useState<any[]>([]);
   const [loadingBackups, setLoadingBackups] = useState<boolean>(false);
   const [rollingBack, setRollingBack] = useState<boolean>(false);
+  const [networkStatus, setNetworkStatus] = useState<any>(null);
+  const [loadingNetworkStatus, setLoadingNetworkStatus] = useState<boolean>(false);
+
+  const fetchNetworkStatus = async () => {
+    if (!authToken) return;
+    setLoadingNetworkStatus(true);
+    try {
+      const res = await fetch('/api/matrix/config/network-status', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNetworkStatus(data);
+        if (data.listenMode) {
+          setListenMode(data.listenMode);
+        }
+        if (data.customIp) {
+          setListenCustomIp(data.customIp);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load network status", e);
+    } finally {
+      setLoadingNetworkStatus(false);
+    }
+  };
 
   const fetchBackups = async () => {
     if (!authToken) return;
@@ -447,6 +473,7 @@ export default function ConfigForms({
         }
       });
       fetchBackups();
+      fetchNetworkStatus();
     });
   };
 
@@ -624,6 +651,7 @@ export default function ConfigForms({
   useEffect(() => {
     if ((activeTab === 'network' || activeTab === 'homeserver') && authToken) {
       fetchBackups();
+      fetchNetworkStatus();
     }
   }, [activeTab, authToken]);
 
@@ -1146,16 +1174,92 @@ export default function ConfigForms({
               
               <button
                 type="button"
-                onClick={fetchBackups}
-                disabled={loadingBackups}
+                onClick={() => { fetchBackups(); fetchNetworkStatus(); }}
+                disabled={loadingBackups || loadingNetworkStatus}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-300 transition-all"
               >
-                <RefreshCw className={`w-3.5 h-3.5 text-teal-400 ${loadingBackups ? 'animate-spin' : ''}`} />
-                <span>{lang === 'fa' ? 'بروزرسانی لیست پشتیبان‌ها' : 'Refresh Backups'}</span>
+                <RefreshCw className={`w-3.5 h-3.5 text-teal-400 ${loadingBackups || loadingNetworkStatus ? 'animate-spin' : ''}`} />
+                <span>{lang === 'fa' ? 'بروزرسانی وضعیت' : 'Refresh Status'}</span>
               </button>
             </div>
 
-            {/* Listener Configuration */}
+            {/* Live Synapse Listener Status Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Card 1: Current Bind Address */}
+              <div className="bg-black/30 border border-white/5 p-4 rounded-2xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                  <span>{lang === 'fa' ? 'آدرس Bind فعلی' : 'Current Bind Address'}</span>
+                  <Globe className="w-4 h-4 text-teal-400" />
+                </div>
+                <div className="text-base font-mono font-bold text-white tracking-wide">
+                  {networkStatus?.bindAddresses ? networkStatus.bindAddresses.join(', ') : (listenMode === 'all' ? '0.0.0.0' : listenMode === 'localhost' ? '127.0.0.1' : listenCustomIp || '0.0.0.0')}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                  <span>Port: {networkStatus?.listenPort || 8008} (HTTP Matrix API)</span>
+                </div>
+              </div>
+
+              {/* Card 2: Service Status */}
+              <div className="bg-black/30 border border-white/5 p-4 rounded-2xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                  <span>{lang === 'fa' ? 'وضعیت سرویس Synapse' : 'Synapse Service Status'}</span>
+                  <Activity className="w-4 h-4 text-indigo-400" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${
+                    networkStatus?.synapseStatus === 'active' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' :
+                    networkStatus?.synapseStatus === 'inactive' ? 'bg-rose-500' : 'bg-amber-500 animate-pulse'
+                  }`} />
+                  <span className="text-sm font-bold text-white uppercase tracking-wider">
+                    {networkStatus?.synapseStatus === 'active' ? (lang === 'fa' ? 'فعال (Running)' : 'Active (Running)') :
+                     networkStatus?.synapseStatus === 'inactive' ? (lang === 'fa' ? 'غیرفعال (Inactive)' : 'Inactive') : (lang === 'fa' ? 'در حال بررسی...' : 'Checking...')}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Systemd service daemon
+                </div>
+              </div>
+
+              {/* Card 3: Listener Health */}
+              <div className="bg-black/30 border border-white/5 p-4 rounded-2xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                  <span>{lang === 'fa' ? 'وضعیت Listener پورت' : 'Listener Port Status'}</span>
+                  <Server className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${
+                    networkStatus?.listenerStatus === 'listening' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-rose-500'
+                  }`} />
+                  <span className="text-sm font-bold text-white">
+                    {networkStatus?.listenerStatus === 'listening' ? (lang === 'fa' ? 'درحال شنود (Listening)' : 'Listening') : (lang === 'fa' ? 'غیرقابل دسترس' : 'Unreachable')}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  {lang === 'fa' ? 'بررسی پورت 8008' : 'Port 8008 health check'}
+                </div>
+              </div>
+
+              {/* Card 4: Config Syntax Status */}
+              <div className="bg-black/30 border border-white/5 p-4 rounded-2xl flex flex-col justify-between">
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                  <span>{lang === 'fa' ? 'اعتبار کانفیگ Synapse' : 'Config Validation'}</span>
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${
+                    networkStatus?.configStatus === 'valid' ? 'bg-emerald-500' : 'bg-rose-500'
+                  }`} />
+                  <span className="text-sm font-bold text-white">
+                    {networkStatus?.configStatus === 'valid' ? (lang === 'fa' ? 'معتبر (Valid YAML)' : 'Valid Syntax') : (lang === 'fa' ? 'خطای ساختار YAML' : 'Syntax Error')}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 truncate">
+                  {networkStatus?.latestBackup?.filename ? `${lang === 'fa' ? 'آخرین بک‌آپ:' : 'Backup:'} ${networkStatus.latestBackup.filename}` : 'homeserver.yaml'}
+                </div>
+              </div>
+            </div>
+
+            {/* Listener Configuration Form */}
             <form onSubmit={handleSaveNetworkSettings} className="space-y-4 bg-black/30 border border-white/5 p-5 rounded-2xl">
               <h3 className="text-sm font-display font-semibold text-white flex items-center gap-2">
                 <Globe className="w-4 h-4 text-teal-400" />
@@ -1232,28 +1336,62 @@ export default function ConfigForms({
               </div>
 
               {listenMode === 'custom' && (
-                <div className="pt-2">
-                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
-                    {lang === 'fa' ? 'آدرس IP اختصاصی' : 'Custom IP Address'}
-                  </label>
-                  <input
-                    type="text"
-                    value={listenCustomIp}
-                    onChange={(e) => setListenCustomIp(e.target.value)}
-                    placeholder="e.g. 172.16.50.216"
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500/50"
-                  />
+                <div className="pt-2 space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
+                      {lang === 'fa' ? 'آدرس IP اختصاصی' : 'Custom IP Address'}
+                    </label>
+                    <input
+                      type="text"
+                      value={listenCustomIp}
+                      onChange={(e) => setListenCustomIp(e.target.value)}
+                      placeholder="e.g. 172.16.50.216"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500/50 font-mono"
+                    />
+                  </div>
+
+                  {/* Detected Server Network Interfaces */}
+                  {networkStatus?.availableInterfaces && networkStatus.availableInterfaces.length > 0 && (
+                    <div className="p-3 bg-black/20 border border-white/5 rounded-xl space-y-2">
+                      <div className="text-[11px] font-medium text-slate-400 flex items-center justify-between">
+                        <span>{lang === 'fa' ? 'کارت‌های شبکه شناسایی‌شده روی سرور:' : 'Detected Server Network Interfaces:'}</span>
+                        <span className="text-[10px] text-teal-400 font-normal">{lang === 'fa' ? 'برای انتخاب روی IP کلیک کنید' : 'Click to select'}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {networkStatus.availableInterfaces.map((ip: string) => (
+                          <button
+                            key={ip}
+                            type="button"
+                            onClick={() => { setListenMode('custom'); setListenCustomIp(ip); }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all border ${
+                              listenCustomIp === ip
+                                ? 'bg-teal-500/20 border-teal-500/50 text-teal-300 font-bold'
+                                : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300'
+                            }`}
+                          >
+                            {ip}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="pt-3 flex justify-end">
+              <div className="pt-3 flex items-center justify-between border-t border-white/5">
+                <div className="text-[11px] text-slate-400">
+                  {lang === 'fa'
+                    ? '🔒 تغییرات ابتدا اعتبارسنجی شده و تنها پس از تایید سلامت سرویس اعمال خواهند شد.'
+                    : '🔒 Changes are safely validated AST-first with automatic rollback if service health checks fail.'}
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSaving || isReadOnly}
                   className="px-5 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white font-semibold text-sm transition-all shadow-[0_0_15px_rgba(20,184,166,0.3)] disabled:opacity-50 flex items-center gap-2"
                 >
                   {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  <span>{lang === 'fa' ? 'ذخیره تنظیمات شبکه' : 'Save Network Settings'}</span>
+                  <span>{lang === 'fa' ? 'ذخیره ایمن تنظیمات شبکه' : 'Save Network Settings'}</span>
                 </button>
               </div>
             </form>

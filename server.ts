@@ -6810,6 +6810,32 @@ app.post("/api/matrix/config/save", authenticateToken, checkPermission(["Owner",
   const db = readDb();
   const activeConn = getActiveConnection();
 
+  // Validate Custom IP Address if custom binding mode is chosen
+  if (config && config.LISTEN_MODE === "custom") {
+    const customIp = (config.LISTEN_CUSTOM_IP || "").trim();
+    if (!customIp) {
+      return res.status(400).json({
+        error: "Custom IP Required",
+        message: "لطفاً یک آدرس IP اختصاصی معتبر وارد کنید."
+      });
+    }
+    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (!ipRegex.test(customIp)) {
+      return res.status(400).json({
+        error: "Invalid Custom IP Format",
+        message: `آدرس IP وارد شده (${customIp}) ساختار IPv4 معتبری ندارد.`
+      });
+    }
+
+    const availableIps = await getServerIpInterfaces(activeConn);
+    if (customIp !== "0.0.0.0" && customIp !== "127.0.0.1" && !availableIps.includes(customIp)) {
+      return res.status(400).json({
+        error: "Invalid Network Interface IP",
+        message: `آدرس IP وارد شده (${customIp}) روی هیچ‌یک از کارت‌های شبکه سرور یافت نشد.\nکارت‌های شبکه فعال سرور: ${availableIps.join(", ")}`
+      });
+    }
+  }
+
   if (activeConn && activeConn.id !== "local") {
     const connIndex = (db.connections || []).findIndex((c: any) => c.id === activeConn.id);
     if (connIndex !== -1) {
@@ -7119,6 +7145,193 @@ fi
     }
     console.error("Save config unhandled error:", saveErr);
     res.status(500).json({ error: "Failed to save configuration", message: saveErr.message });
+  }
+});
+
+// Helper: Query active server network IPv4 interfaces
+async function getServerIpInterfaces(activeConn: any): Promise<string[]> {
+  const getIpsCmd = `
+if command -v ip >/dev/null 2>&1; then
+  ip -o -4 addr show | awk '{print $4}' | cut -d/ -f1
+elif command -v hostname >/dev/null 2>&1; then
+  hostname -I
+elif command -v ifconfig >/dev/null 2>&1; then
+  ifconfig | grep -E 'inet ' | awk '{print $2}' | sed 's/addr://'
+fi
+`.trim();
+
+  let rawOut = "";
+  if (activeConn && activeConn.id !== "local") {
+    const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+    try {
+      if (activeConn.authType === "agent") {
+        rawOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: getIpsCmd });
+      } else {
+        rawOut = await executeSSHCommand(activeConn, `${sudoPrefix}${getIpsCmd}`);
+      }
+    } catch (e) {
+      console.warn("Failed to query remote IP interfaces:", e);
+    }
+  } else {
+    try {
+      rawOut = execSync(getIpsCmd).toString();
+    } catch (e) {
+      console.warn("Failed to query local IP interfaces:", e);
+    }
+  }
+
+  const ips = Array.from(
+    new Set(
+      rawOut
+        .split(/\s+/)
+        .map((s) => s.trim())
+        .filter((s) => /^(\d{1,3}\.){3}\d{1,3}$/.test(s))
+    )
+  );
+
+  if (!ips.includes("127.0.0.1")) ips.unshift("127.0.0.1");
+  return ips;
+}
+
+// API endpoint to get detailed live Synapse Network Listener & Service status
+app.get("/api/matrix/config/network-status", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    const hsYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml");
+
+    let bindAddresses: string[] = ["0.0.0.0"];
+    let listenPort = 8008;
+    let listenMode: "all" | "localhost" | "custom" = "all";
+    let customIp = "";
+    let configStatus: "valid" | "invalid" = "valid";
+    let configValidationMsg = "YAML syntax and structure valid.";
+
+    if (hsYaml) {
+      try {
+        const doc: any = yaml.load(hsYaml);
+        if (doc && Array.isArray(doc.listeners) && doc.listeners.length > 0) {
+          const l0 = doc.listeners.find((l: any) => l && (l.type === "http" || l.port === 8008)) || doc.listeners[0];
+          if (l0) {
+            bindAddresses = l0.bind_addresses || (l0.bind_address ? [l0.bind_address] : ["0.0.0.0"]);
+            listenPort = l0.port || 8008;
+            const primaryIp = bindAddresses[0] || "0.0.0.0";
+            if (primaryIp === "127.0.0.1" || primaryIp === "localhost") {
+              listenMode = "localhost";
+            } else if (primaryIp === "0.0.0.0") {
+              listenMode = "all";
+            } else {
+              listenMode = "custom";
+              customIp = primaryIp;
+            }
+          }
+        }
+      } catch (err: any) {
+        configStatus = "invalid";
+        configValidationMsg = `YAML Parse Error: ${err.message}`;
+      }
+    }
+
+    // Available server IP interfaces
+    const availableInterfaces = await getServerIpInterfaces(activeConn);
+
+    // Synapse Service Status & Listener Check
+    const checkPort = listenPort || 8008;
+    const statusCmd = `
+if command -v systemctl >/dev/null 2>&1; then
+  SYSTEMCTL_OUT=$(systemctl is-active matrix-synapse 2>&1)
+else
+  SYSTEMCTL_OUT="unknown"
+fi
+
+IS_LISTENING="no"
+if command -v ss >/dev/null 2>&1; then
+  if ss -tulpn | grep -q ":${checkPort} "; then IS_LISTENING="yes"; fi
+elif command -v netstat >/dev/null 2>&1; then
+  if netstat -tulpn | grep -q ":${checkPort} "; then IS_LISTENING="yes"; fi
+fi
+
+if [ "$IS_LISTENING" = "no" ]; then
+  curl -s -m 2 http://127.0.0.1:${checkPort}/_matrix/client/versions >/dev/null 2>&1
+  if [ $? -eq 0 ]; then IS_LISTENING="yes"; fi
+fi
+
+echo "SYNAPSE_SVC:$SYSTEMCTL_OUT"
+echo "LISTENER_ACTIVE:$IS_LISTENING"
+`.trim();
+
+    let rawStatus = "";
+    if (activeConn && activeConn.id !== "local") {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      try {
+        if (activeConn.authType === "agent") {
+          rawStatus = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: statusCmd });
+        } else {
+          rawStatus = await executeSSHCommand(activeConn, `${sudoPrefix}${statusCmd}`);
+        }
+      } catch (e) {}
+    } else {
+      try {
+        rawStatus = execSync(statusCmd).toString();
+      } catch (e) {}
+    }
+
+    let synapseStatus = "unknown";
+    let listenerStatus = "unknown";
+
+    if (rawStatus.includes("SYNAPSE_SVC:active")) synapseStatus = "active";
+    else if (rawStatus.includes("SYNAPSE_SVC:inactive")) synapseStatus = "inactive";
+    else if (rawStatus.includes("SYNAPSE_SVC:failed")) synapseStatus = "failed";
+
+    if (rawStatus.includes("LISTENER_ACTIVE:yes")) listenerStatus = "listening";
+    else if (rawStatus.includes("LISTENER_ACTIVE:no")) listenerStatus = "not_listening";
+
+    // Latest Backup details
+    const listCmd = `ls -la /etc/matrix-synapse/homeserver.yaml.bak_* 2>/dev/null | tail -n 1 || true`;
+    let latestBackupInfo: any = null;
+    let backupRaw = "";
+    if (activeConn && activeConn.id !== "local") {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      try {
+        if (activeConn.authType === "agent") {
+          backupRaw = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: listCmd });
+        } else {
+          backupRaw = await executeSSHCommand(activeConn, `${sudoPrefix}${backupRaw}`);
+        }
+      } catch (e) {}
+    } else {
+      try { backupRaw = execSync(listCmd).toString(); } catch (e) {}
+    }
+
+    const match = backupRaw.match(/(homeserver\.yaml\.bak_(\d+|latest))/);
+    if (match) {
+      const filename = match[1];
+      const tsRaw = match[2];
+      let timestamp = Date.now();
+      if (tsRaw && tsRaw !== "latest" && !isNaN(Number(tsRaw))) {
+        timestamp = Number(tsRaw);
+      }
+      latestBackupInfo = {
+        filename,
+        timestamp,
+        dateStr: new Date(timestamp).toLocaleString()
+      };
+    }
+
+    res.json({
+      bindAddresses,
+      listenPort,
+      listenMode,
+      customIp,
+      synapseStatus,
+      listenerStatus,
+      configStatus,
+      configValidationMsg,
+      availableInterfaces,
+      latestBackup: latestBackupInfo
+    });
+  } catch (error: any) {
+    console.error("Error fetching network status:", error);
+    res.status(500).json({ error: "Failed to fetch network listener status", message: error.message });
   }
 });
 
