@@ -870,19 +870,35 @@ async function getUserIdByAccessToken(req: any, activeConn: any): Promise<string
 
   const connAny = activeConn as any;
   const port = connAny?.apiPort || 8008;
-  const apiBaseUrl = connAny?.apiBaseUrl || `http://localhost:${port}`;
-  const url = `${apiBaseUrl}/_matrix/client/v3/user/whoami`;
-  const curlCmd = `curl -s -X GET -H "Authorization: Bearer ${token}" "${url}"`;
+  const hostIp = connAny?.host && connAny.host.trim() !== "localhost" && connAny.host.trim() !== "127.0.0.1" ? connAny.host.trim() : null;
+  const rawBaseUrl = connAny?.apiBaseUrl || (hostIp ? `http://${hostIp}:${port}` : `http://localhost:${port}`);
+
+  const urlsToTry = Array.from(new Set([
+    rawBaseUrl,
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    hostIp ? `http://${hostIp}:${port}` : null
+  ])).filter(Boolean) as string[];
 
   let whoamiResRaw = "";
-  if (activeConn.authType === "agent") {
-    whoamiResRaw = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
-  } else {
-    const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-    try {
-      whoamiResRaw = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd} 2>/dev/null || true`);
-    } catch (e) {
-      whoamiResRaw = "";
+  for (const baseUrl of urlsToTry) {
+    const url = `${baseUrl}/_matrix/client/v3/user/whoami`;
+    const curlCmd = `curl -s -X GET -H "Authorization: Bearer ${token}" "${url}"`;
+
+    if (activeConn.authType === "agent") {
+      whoamiResRaw = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: curlCmd });
+    } else {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      try {
+        whoamiResRaw = await executeSSHCommand(activeConn, `${sudoPrefix}${curlCmd} 2>/dev/null || true`);
+      } catch (e) {
+        whoamiResRaw = "";
+      }
+    }
+
+    const parsed = cleanAndParseJSON(whoamiResRaw, {});
+    if (parsed && parsed.user_id) {
+      return parsed.user_id;
     }
   }
 
@@ -901,61 +917,80 @@ async function forwardRequestToSynapse(req: any, res: any, method: string, activ
 
   const connAny = activeConn as any;
   const port = connAny?.apiPort || 8008;
-  const apiBaseUrl = connAny?.apiBaseUrl || `http://localhost:${port}`;
-  const forwardUrl = `${apiBaseUrl}${req.path}${req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''}`;
-  const forwardHeaders = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
-  const forwardData = req.body && Object.keys(req.body).length > 0 ? `-d '${JSON.stringify(req.body).replace(/'/g, "'\\''")}'` : '';
-  const forwardCurlCmd = `curl -s -X ${method} ${forwardHeaders} ${forwardData} "${forwardUrl}"`;
+  const hostIp = connAny?.host && connAny.host.trim() !== "localhost" && connAny.host.trim() !== "127.0.0.1" ? connAny.host.trim() : null;
+  const rawBaseUrl = connAny?.apiBaseUrl || (hostIp ? `http://${hostIp}:${port}` : `http://localhost:${port}`);
+
+  const urlsToTry = Array.from(new Set([
+    rawBaseUrl,
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    hostIp ? `http://${hostIp}:${port}` : null
+  ])).filter(Boolean) as string[];
 
   let forwardResRaw = "";
-  const isLocal = !activeConn || activeConn.id === "local";
-  if (!isLocal) {
-    if (activeConn.authType === "agent") {
-      forwardResRaw = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: forwardCurlCmd });
+  for (const baseUrl of urlsToTry) {
+    const forwardUrl = `${baseUrl}${req.path}${req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''}`;
+    const forwardHeaders = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
+    const forwardData = req.body && Object.keys(req.body).length > 0 ? `-d '${JSON.stringify(req.body).replace(/'/g, "'\\''")}'` : '';
+    const forwardCurlCmd = `curl -s -X ${method} ${forwardHeaders} ${forwardData} "${forwardUrl}"`;
+
+    const isLocal = !activeConn || activeConn.id === "local";
+    if (!isLocal) {
+      if (activeConn.authType === "agent") {
+        forwardResRaw = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: forwardCurlCmd });
+      } else {
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        try {
+          forwardResRaw = await executeSSHCommand(activeConn, `${sudoPrefix}${forwardCurlCmd} 2>/dev/null || true`);
+        } catch (e) {
+          forwardResRaw = "";
+        }
+      }
     } else {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
       try {
-        forwardResRaw = await executeSSHCommand(activeConn, `${sudoPrefix}${forwardCurlCmd} 2>/dev/null || true`);
-      } catch (e) {
+        forwardResRaw = execSync(forwardCurlCmd).toString();
+      } catch (err: any) {
         forwardResRaw = "";
       }
     }
-  } else {
-    try {
-      forwardResRaw = execSync(forwardCurlCmd).toString();
-    } catch (err: any) {
-      if (req.path.includes("/login")) {
-        const username = req.body?.user || req.body?.identifier?.user || "testuser";
-        forwardResRaw = JSON.stringify({
-          user_id: `@${username}:matrix.company.local`,
-          access_token: `syt_${username}_mock_token_${Date.now()}`,
-          device_id: "MOCK_DEVICE",
-          home_server: "matrix.company.local"
-        });
-      } else if (req.path.includes("/send") || req.path.includes("/state")) {
-        forwardResRaw = JSON.stringify({
-          event_id: `$mock_event_${Math.random().toString(36).substring(2, 15)}`
-        });
-      } else if (req.path.includes("/join")) {
-        forwardResRaw = JSON.stringify({
-          room_id: req.params.roomId || "!mock_room:matrix.company.local"
-        });
-      } else if (req.path.includes("/invite") || req.path.includes("/deactivate") || req.path.includes("/password") || req.path.includes("/avatar_url")) {
-        forwardResRaw = JSON.stringify({});
-      } else if (req.path.includes("/createRoom")) {
-        forwardResRaw = JSON.stringify({
-          room_id: `!mock_room_${Math.random().toString(36).substring(2, 15)}:matrix.company.local`
-        });
-      } else if (req.path.includes("/capabilities")) {
-        forwardResRaw = JSON.stringify({
-          capabilities: {
-            "m.change_password": { enabled: true },
-            "m.room_versions": { default: "10", available: { "10": "stable" } }
-          }
-        });
-      } else {
-        forwardResRaw = JSON.stringify({ error: "Failed to connect to homeserver", message: err.message });
-      }
+
+    if (forwardResRaw && (forwardResRaw.trim().startsWith("{") || forwardResRaw.trim().startsWith("["))) {
+      break;
+    }
+  }
+
+  if (!forwardResRaw) {
+    if (req.path.includes("/login")) {
+      const username = req.body?.user || req.body?.identifier?.user || "testuser";
+      forwardResRaw = JSON.stringify({
+        user_id: `@${username}:matrix.company.local`,
+        access_token: `syt_${username}_mock_token_${Date.now()}`,
+        device_id: "MOCK_DEVICE",
+        home_server: "matrix.company.local"
+      });
+    } else if (req.path.includes("/send") || req.path.includes("/state")) {
+      forwardResRaw = JSON.stringify({
+        event_id: `$mock_event_${Math.random().toString(36).substring(2, 15)}`
+      });
+    } else if (req.path.includes("/join")) {
+      forwardResRaw = JSON.stringify({
+        room_id: req.params.roomId || "!mock_room:matrix.company.local"
+      });
+    } else if (req.path.includes("/invite") || req.path.includes("/deactivate") || req.path.includes("/password") || req.path.includes("/avatar_url")) {
+      forwardResRaw = JSON.stringify({});
+    } else if (req.path.includes("/createRoom")) {
+      forwardResRaw = JSON.stringify({
+        room_id: `!mock_room_${Math.random().toString(36).substring(2, 15)}:matrix.company.local`
+      });
+    } else if (req.path.includes("/capabilities")) {
+      forwardResRaw = JSON.stringify({
+        capabilities: {
+          "m.change_password": { enabled: true },
+          "m.room_versions": { default: "10", available: { "10": "stable" } }
+        }
+      });
+    } else {
+      forwardResRaw = JSON.stringify({ error: "Failed to connect to homeserver" });
     }
   }
 
@@ -1570,7 +1605,8 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
 
     try {
       const port = profile.apiPort || 8008;
-      const rawBase = profile.apiBaseUrl || `http://127.0.0.1:${port}`;
+      const hostIp = profile.host && profile.host.trim() !== "localhost" && profile.host.trim() !== "127.0.0.1" ? profile.host.trim() : null;
+      const rawBase = profile.apiBaseUrl || (hostIp ? `http://${hostIp}:${port}` : `http://127.0.0.1:${port}`);
       const baseUrl = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
       const sudoPrefix = profile.username === "root" ? "" : "sudo ";
 
@@ -1587,8 +1623,11 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
       const urlsToTry = Array.from(new Set([
         `http://127.0.0.1:${port}`,
         `http://localhost:${port}`,
+        hostIp ? `http://${hostIp}:${port}` : null,
+        hostIp ? `https://${hostIp}:${port}` : null,
         `http://127.0.0.1:8008`,
         `http://localhost:8008`,
+        hostIp ? `http://${hostIp}:8008` : null,
         `http://127.0.0.1:8000`,
         `http://127.0.0.1:8448`,
         `http://127.0.0.1:80`,
@@ -2114,13 +2153,16 @@ async function getAdminToken(): Promise<string | null> {
         const adminUser = ((activeConn as any).adminUsername as string).trim();
         const adminPass = ((activeConn as any).adminPassword as string).trim();
         const port = (activeConn as any).apiPort || 8008;
-        const base = (activeConn as any).apiBaseUrl;
+        const hostIp = (activeConn as any).host && (activeConn as any).host.trim() !== "localhost" && (activeConn as any).host.trim() !== "127.0.0.1" ? (activeConn as any).host.trim() : null;
+        const base = (activeConn as any).apiBaseUrl || (hostIp ? `http://${hostIp}:${port}` : `http://127.0.0.1:${port}`);
         const localpart = adminUser.startsWith("@") ? adminUser.split(":")[0].substring(1) : adminUser;
         const fullMxid = adminUser.startsWith("@") ? adminUser : `@${adminUser}:${(activeConn as any).domain || 'matrix.company.local'}`;
 
         const urlsToTry = Array.from(new Set([
           `http://127.0.0.1:${port}`,
           `http://localhost:${port}`,
+          hostIp ? `http://${hostIp}:${port}` : null,
+          hostIp ? `https://${hostIp}:${port}` : null,
           base,
           base && base.startsWith("http://") ? base.replace("http://", "https://") : null
         ])).filter(Boolean) as string[];
@@ -2275,11 +2317,14 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
   const activeConn = getActiveConnection();
   const connAny = activeConn as any;
   const port = connAny?.apiPort || 8008;
-  const rawBase = connAny?.apiBaseUrl || `http://127.0.0.1:${port}`;
+  const hostIp = connAny?.host && connAny.host.trim() !== "localhost" && connAny.host.trim() !== "127.0.0.1" ? connAny.host.trim() : null;
+  const rawBase = connAny?.apiBaseUrl || (hostIp ? `http://${hostIp}:${port}` : `http://127.0.0.1:${port}`);
   const baseClean = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
   const urlsToTry = Array.from(new Set([
     `http://127.0.0.1:${port}`,
     `http://localhost:${port}`,
+    hostIp ? `http://${hostIp}:${port}` : null,
+    hostIp ? `https://${hostIp}:${port}` : null,
     baseClean,
     baseClean.startsWith("http://") ? baseClean.replace("http://", "https://") : null
   ])).filter(Boolean) as string[];
@@ -5937,38 +5982,42 @@ async function loadServerParametersFromRemoteServer(): Promise<{
     console.warn("Error loading Base Federation Domain:", e);
   }
 
-  // 4. Node Public IP -> read directly from remote server operating system
+  // 4. Node Public IP -> prefer user-configured Host/IP from active connection, else read directly from remote server operating system
   try {
-    let publicIpOut = "";
-    const ipCmd = `curl -s --connect-timeout 3 https://api.ipify.org || curl -s --connect-timeout 3 https://ifconfig.me || hostname -I | awk '{print $1}'`;
-    if (activeConn && activeConn.id !== "local") {
-      if (activeConn.authType === "agent") {
-        try {
-          publicIpOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: ipCmd });
-        } catch (err) {
-          console.warn("Agent execute_command for Public IP failed:", err);
+    if (activeConn && activeConn.id !== "local" && activeConn.host && activeConn.host.trim() && activeConn.host.trim() !== "localhost" && activeConn.host.trim() !== "127.0.0.1") {
+      params.PUBLIC_IP = activeConn.host.trim();
+    } else {
+      let publicIpOut = "";
+      const ipCmd = `curl -s --connect-timeout 3 https://api.ipify.org || curl -s --connect-timeout 3 https://ifconfig.me || hostname -I | awk '{print $1}'`;
+      if (activeConn && activeConn.id !== "local") {
+        if (activeConn.authType === "agent") {
+          try {
+            publicIpOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: ipCmd });
+          } catch (err) {
+            console.warn("Agent execute_command for Public IP failed:", err);
+          }
+        } else {
+          try {
+            const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+            publicIpOut = await executeSSHCommand(activeConn, `${sudoPrefix}${ipCmd}`);
+          } catch (err) {
+            console.warn("SSH command for Public IP failed:", err);
+          }
         }
       } else {
-        try {
-          const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-          publicIpOut = await executeSSHCommand(activeConn, `${sudoPrefix}${ipCmd}`);
-        } catch (err) {
-          console.warn("SSH command for Public IP failed:", err);
-        }
+        publicIpOut = await new Promise((resolve) => {
+          exec(ipCmd, (err, stdout) => resolve(stdout ? stdout.trim() : ""));
+        });
       }
-    } else {
-      publicIpOut = await new Promise((resolve) => {
-        exec(ipCmd, (err, stdout) => resolve(stdout ? stdout.trim() : ""));
-      });
-    }
 
-    if (publicIpOut) {
-      const cleanIp = publicIpOut.trim();
-      const ipMatch = cleanIp.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/) || cleanIp.match(/^[a-fA-F0-9:]+$/);
-      if (ipMatch) {
-        params.PUBLIC_IP = ipMatch[0];
-      } else if (cleanIp && !cleanIp.includes(" ") && !cleanIp.includes("<")) {
-        params.PUBLIC_IP = cleanIp;
+      if (publicIpOut) {
+        const cleanIp = publicIpOut.trim();
+        const ipMatch = cleanIp.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/) || cleanIp.match(/^[a-fA-F0-9:]+$/);
+        if (ipMatch) {
+          params.PUBLIC_IP = ipMatch[0];
+        } else if (cleanIp && !cleanIp.includes(" ") && !cleanIp.includes("<")) {
+          params.PUBLIC_IP = cleanIp;
+        }
       }
     }
   } catch (e) {

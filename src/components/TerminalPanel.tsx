@@ -383,7 +383,7 @@ export default function TerminalPanel({
   const hsDomain = config?.HS_DOMAIN || (activeConnection?.id !== 'local' && activeConnection?.host ? `matrix.${activeConnection?.host}` : 'matrix.company.local');
   const elementDomain = config?.ELEMENT_DOMAIN || (activeConnection?.id !== 'local' && activeConnection?.host ? `chat.${activeConnection?.host}` : 'chat.company.local');
   const baseDomain = config?.BASE_DOMAIN || (activeConnection?.id !== 'local' && activeConnection?.host ? activeConnection?.host : 'company.local');
-  const publicIp = config?.PUBLIC_IP || (activeConnection?.id !== 'local' && activeConnection?.host ? activeConnection?.host : '127.0.0.1');
+  const publicIp = (activeConnection?.id !== 'local' && activeConnection?.host) ? activeConnection.host : (config?.PUBLIC_IP || '127.0.0.1');
   const sslMode = (config?.SSL_MODE || 'selfsigned').toUpperCase();
 
   const pgHost = config?.PG_HOST || activeConnection?.dbHost || '127.0.0.1';
