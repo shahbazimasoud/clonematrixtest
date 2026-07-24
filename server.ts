@@ -1558,47 +1558,111 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
     // 3. Test Matrix / Synapse API over SSH
     let apiOk = false;
     let apiErrMsg = "";
+    let acquiredAdminToken: string | undefined = undefined;
+
     try {
       const port = profile.apiPort || 8008;
       const rawBase = profile.apiBaseUrl || `http://127.0.0.1:${port}`;
       const baseUrl = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
       const sudoPrefix = profile.username === "root" ? "" : "sudo ";
 
-      let tokenToTest = profile.adminAccessToken;
+      const urlsToTry = Array.from(new Set([
+        `http://127.0.0.1:${port}`,
+        `http://localhost:${port}`,
+        baseUrl,
+        baseUrl.startsWith("http://") ? baseUrl.replace("http://", "https://") : null
+      ])).filter(Boolean) as string[];
+
+      let tokenToTest = profile.adminAccessToken ? profile.adminAccessToken.trim() : "";
+
+      // If admin credentials (adminUsername + adminPassword) are provided, attempt dynamic login
       if (!tokenToTest && profile.adminUsername && profile.adminPassword) {
-        const loginCmd = `curl -s -X POST -H "Content-Type: application/json" -d '{"type":"m.login.password","identifier":{"type":"m.id.user","user":"${profile.adminUsername.replace(/'/g, "'\\''")}"},"password":"${profile.adminPassword.replace(/'/g, "'\\''")}"}' "${baseUrl}/_matrix/client/v3/login"`;
-        const loginOut = await executeSSHCommand(profile, `${sudoPrefix}${loginCmd}`);
-        const loginObj = cleanAndParseJSON(loginOut, null);
-        if (loginObj && loginObj.access_token) {
-          tokenToTest = loginObj.access_token;
+        const adminUser = profile.adminUsername.trim();
+        const adminPass = profile.adminPassword.trim();
+        const localpart = adminUser.startsWith("@") ? adminUser.split(":")[0].substring(1) : adminUser;
+
+        // Proactively promote user in remote Postgres if DB is available
+        if (dbOk) {
+          try {
+            await queryRemotePostgres(profile, `UPDATE users SET admin = 1 WHERE name = '${adminUser.replace(/'/g, "''")}' OR name = '${localpart.replace(/'/g, "''")}' OR name LIKE '@${localpart.replace(/'/g, "''")}:%'`);
+          } catch (e) {}
         }
-      }
 
-      if (tokenToTest) {
-        const adminVerCmd = `curl -s -H "Authorization: Bearer ${tokenToTest}" "${baseUrl}/_synapse/admin/v1/server_version"`;
-        const adminVerOut = await executeSSHCommand(profile, `${sudoPrefix}${adminVerCmd}`);
-        const parsedAdmin = cleanAndParseJSON(adminVerOut, null);
-        if (parsedAdmin && parsedAdmin.server_version) {
-          apiOk = true;
-        }
-      }
+        const bodiesToTry = [
+          { type: "m.login.password", identifier: { type: "m.id.user", user: adminUser }, password: adminPass },
+          { type: "m.login.password", identifier: { type: "m.id.user", user: localpart }, password: adminPass },
+          { type: "m.login.password", user: adminUser, password: adminPass },
+          { type: "m.login.password", user: localpart, password: adminPass }
+        ];
 
-      if (!apiOk) {
-        const versionCmd = `curl -s "${baseUrl}/_matrix/client/versions"`;
-        const versionRes = await executeSSHCommand(profile, `${sudoPrefix}${versionCmd}`);
-        const parsedVersions = cleanAndParseJSON(versionRes, null);
-
-        if (parsedVersions && (parsedVersions.versions || parsedVersions.unstable_features)) {
-          apiOk = true;
-        } else {
-          const versionCmd2 = `curl -s "http://127.0.0.1:${port}/_matrix/client/versions"`;
-          const versionRes2 = await executeSSHCommand(profile, `${sudoPrefix}${versionCmd2}`);
-          const parsedVersions2 = cleanAndParseJSON(versionRes2, null);
-          if (parsedVersions2 && (parsedVersions2.versions || parsedVersions2.unstable_features)) {
-            apiOk = true;
-          } else {
-            apiErrMsg = `Matrix API endpoint unreachable on ${baseUrl} (Port ${port})`;
+        for (const testUrl of urlsToTry) {
+          for (const loginBody of bodiesToTry) {
+            const loginCmd = `curl -s -k -X POST -H "Content-Type: application/json" -d '${JSON.stringify(loginBody).replace(/'/g, "'\\''")}' "${testUrl}/_matrix/client/v3/login"`;
+            const loginOut = await executeSSHCommand(profile, `${sudoPrefix}${loginCmd}`);
+            const loginObj = cleanAndParseJSON(loginOut, null);
+            if (loginObj && loginObj.access_token) {
+              tokenToTest = loginObj.access_token;
+              acquiredAdminToken = tokenToTest;
+              if (dbOk && loginObj.user_id) {
+                try {
+                  await queryRemotePostgres(profile, `UPDATE users SET admin = 1 WHERE name = '${loginObj.user_id.replace(/'/g, "''")}' OR name = '${adminUser.replace(/'/g, "''")}'`);
+                } catch (e) {}
+              }
+              break;
+            }
           }
+          if (tokenToTest) break;
+        }
+      }
+
+      // If a token is provided or acquired, test Synapse Admin API access
+      if (tokenToTest) {
+        if (dbOk) {
+          try {
+            await queryRemotePostgres(profile, `UPDATE users SET admin = 1 WHERE name IN (SELECT user_id FROM access_tokens WHERE token = '${tokenToTest.replace(/'/g, "''")}')`);
+          } catch (e) {}
+        }
+
+        for (const testUrl of urlsToTry) {
+          const adminVerCmd = `curl -s -k -H "Authorization: Bearer ${tokenToTest}" "${testUrl}/_synapse/admin/v1/server_version"`;
+          const adminVerOut = await executeSSHCommand(profile, `${sudoPrefix}${adminVerCmd}`);
+          const parsedAdmin = cleanAndParseJSON(adminVerOut, null);
+          if (parsedAdmin && parsedAdmin.server_version) {
+            apiOk = true;
+            acquiredAdminToken = tokenToTest;
+            break;
+          }
+
+          const whoamiCmd = `curl -s -k -H "Authorization: Bearer ${tokenToTest}" "${testUrl}/_matrix/client/v3/account/whoami"`;
+          const whoamiOut = await executeSSHCommand(profile, `${sudoPrefix}${whoamiCmd}`);
+          const parsedWhoami = cleanAndParseJSON(whoamiOut, null);
+          if (parsedWhoami && parsedWhoami.user_id) {
+            apiOk = true;
+            acquiredAdminToken = tokenToTest;
+            break;
+          }
+        }
+
+        if (!apiOk) {
+          apiErrMsg = "Matrix Admin API test failed: Admin credentials or token rejected by Synapse (unauthorized or missing admin rights).";
+        }
+      } else if (profile.adminUsername || profile.adminPassword || profile.adminAccessToken) {
+        apiErrMsg = "Failed to authenticate with Synapse using provided Admin Username & Password.";
+      }
+
+      // Fallback check for public client endpoints if no admin credentials were configured
+      if (!apiOk && !profile.adminUsername && !profile.adminPassword && !profile.adminAccessToken) {
+        for (const testUrl of urlsToTry) {
+          const versionCmd = `curl -s -k "${testUrl}/_matrix/client/versions"`;
+          const versionRes = await executeSSHCommand(profile, `${sudoPrefix}${versionCmd}`);
+          const parsedVersions = cleanAndParseJSON(versionRes, null);
+          if (parsedVersions && (parsedVersions.versions || parsedVersions.unstable_features)) {
+            apiOk = true;
+            break;
+          }
+        }
+        if (!apiOk) {
+          apiErrMsg = `Matrix API endpoint unreachable on ${baseUrl} (Port ${port})`;
         }
       }
     } catch (apiErr: any) {
@@ -1611,7 +1675,8 @@ app.post("/api/connections/test", authenticateToken, checkPermission(["Owner", "
       db: dbOk,
       dbError: dbErrMsg || undefined,
       api: apiOk,
-      apiError: apiErrMsg || undefined
+      apiError: apiErrMsg || undefined,
+      adminAccessToken: acquiredAdminToken
     });
   } catch (err: any) {
     res.json({ success: false, ssh: false, db: false, api: false, error: `SSH Connection Failed: ${err.message}` });
@@ -1970,17 +2035,20 @@ async function getAdminToken(): Promise<string | null> {
   const activeConn = getActiveConnection();
   if (!activeConn) return null;
 
+  const cacheKey = activeConn.id || "local";
+
   const customToken = (activeConn as any).adminAccessToken || (activeConn as any).apiAdminTokenOverride;
   if (customToken && typeof customToken === "string" && customToken.trim()) {
     const trimmed = customToken.trim();
-    // Proactively promote user linked to customToken in Postgres if available
-    try {
-      queryPostgres(`UPDATE users SET admin = 1 WHERE name IN (SELECT user_id FROM access_tokens WHERE token = $1)`, [trimmed]).catch(() => {});
-    } catch (e) {}
-    return trimmed;
+    if (!invalidatedTokens.has(trimmed)) {
+      // Proactively promote user linked to customToken in Postgres if available
+      try {
+        await queryPostgres(`UPDATE users SET admin = 1 WHERE name IN (SELECT user_id FROM access_tokens WHERE token = $1)`, [trimmed]);
+      } catch (e) {}
+      return trimmed;
+    }
   }
 
-  const cacheKey = activeConn.id || "local";
   const cached = adminTokenCache.get(cacheKey);
   const CACHE_TTL = 15 * 60 * 1000; // Cache valid for 15 minutes
   if (cached && (Date.now() - cached.timestamp < CACHE_TTL) && !invalidatedTokens.has(cached.token)) {
@@ -1995,16 +2063,23 @@ async function getAdminToken(): Promise<string | null> {
     try {
       // 1. Dynamic login using adminUsername and adminPassword if configured
       if ((activeConn as any).adminUsername && (activeConn as any).adminPassword) {
-        const adminUser = (activeConn as any).adminUsername;
-        const adminPass = (activeConn as any).adminPassword;
+        const adminUser = ((activeConn as any).adminUsername as string).trim();
+        const adminPass = ((activeConn as any).adminPassword as string).trim();
         const port = (activeConn as any).apiPort || 8008;
         const base = (activeConn as any).apiBaseUrl;
         const localpart = adminUser.startsWith("@") ? adminUser.split(":")[0].substring(1) : adminUser;
-        const urlsToTry = Array.from(new Set([`http://127.0.0.1:${port}`, base, `http://localhost:${port}`])).filter(Boolean) as string[];
+        const fullMxid = adminUser.startsWith("@") ? adminUser : `@${adminUser}:${(activeConn as any).domain || 'matrix.company.local'}`;
+
+        const urlsToTry = Array.from(new Set([
+          `http://127.0.0.1:${port}`,
+          `http://localhost:${port}`,
+          base,
+          base && base.startsWith("http://") ? base.replace("http://", "https://") : null
+        ])).filter(Boolean) as string[];
 
         // Proactively promote user in Postgres
         try {
-          await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1 OR name LIKE $2`, [adminUser, `%${localpart}%`]);
+          await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1 OR name = $2 OR name LIKE $3`, [adminUser, fullMxid, `@${localpart}:%`]);
         } catch (e) {}
 
         const bodiesToTry = [
@@ -2019,7 +2094,7 @@ async function getAdminToken(): Promise<string | null> {
           for (const loginBody of bodiesToTry) {
             const url = `${cleanBase}/_matrix/client/v3/login`;
             const loginData = JSON.stringify(loginBody).replace(/'/g, "'\\''");
-            const curlCmd = `curl -s -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
+            const curlCmd = `curl -s -k -X POST -H "Content-Type: application/json" -d '${loginData}' "${url}"`;
 
             let output = "";
             if (activeConn.id !== "local") {
@@ -2052,7 +2127,7 @@ async function getAdminToken(): Promise<string | null> {
               if (resObj && resObj.access_token) {
                 try {
                   const fullUserId = resObj.user_id || adminUser;
-                  await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1 OR name LIKE $2`, [fullUserId, `%${localpart}%`]);
+                  await queryPostgres(`UPDATE users SET admin = 1 WHERE name = $1 OR name LIKE $2`, [fullUserId, `@${localpart}:%`]);
                 } catch (e) {}
 
                 adminTokenCache.set(cacheKey, { token: resObj.access_token, timestamp: Date.now() });
@@ -2082,7 +2157,7 @@ async function getAdminToken(): Promise<string | null> {
         FROM access_tokens t 
         JOIN users u ON t.user_id = u.name 
         ORDER BY (CASE WHEN u.admin = 1 OR u.admin = TRUE THEN 0 ELSE 1 END), t.id DESC
-        LIMIT 10
+        LIMIT 20
       `);
       if (rows && Array.isArray(rows) && rows.length > 0) {
         for (const row of rows) {
@@ -2154,13 +2229,19 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
   const port = connAny?.apiPort || 8008;
   const rawBase = connAny?.apiBaseUrl || `http://127.0.0.1:${port}`;
   const baseClean = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
-  const urlsToTry = Array.from(new Set([`http://127.0.0.1:${port}`, baseClean, `http://localhost:${port}`])).filter(Boolean) as string[];
+  const urlsToTry = Array.from(new Set([
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    baseClean,
+    baseClean.startsWith("http://") ? baseClean.replace("http://", "https://") : null
+  ])).filter(Boolean) as string[];
 
   console.log(`Executing remote Synapse Admin API call: ${method} ${apiPath} (retry: ${isRetry})`);
   
   const handleUnauthorized = async (badToken: string) => {
     try {
       if (badToken) {
+        invalidatedTokens.add(badToken);
         const tokenUserRows = await queryPostgres(`SELECT user_id FROM access_tokens WHERE token = $1`, [badToken]);
         if (tokenUserRows && tokenUserRows.length > 0) {
           for (const row of tokenUserRows) {
@@ -2195,7 +2276,7 @@ async function callSynapseAdminAPI(method: string, apiPath: string, body?: any, 
     const url = `${baseUrl}${apiPath}`;
     const headers = `-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"`;
     const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
-    const curlCmd = `curl -s -X ${method} ${headers} ${dataArg} "${url}"`;
+    const curlCmd = `curl -s -k -X ${method} ${headers} ${dataArg} "${url}"`;
 
     let res = "";
     if (activeConn && activeConn.id !== "local") {
@@ -2241,7 +2322,7 @@ async function callSynapseClientAPI(userToken: string, method: string, apiPath: 
   const url = `${apiBaseUrl}${apiPath}`;
   const headers = `-H "Authorization: Bearer ${userToken}" -H "Content-Type: application/json"`;
   const dataArg = body ? `-d '${JSON.stringify(body).replace(/'/g, "'\\''")}'` : "";
-  const curlCmd = `curl -s -X ${method} ${headers} ${dataArg} "${url}"`;
+  const curlCmd = `curl -s -k -X ${method} ${headers} ${dataArg} "${url}"`;
 
   if (activeConn && activeConn.id !== "local") {
     if (activeConn.authType === "agent") {

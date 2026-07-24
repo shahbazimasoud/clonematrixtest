@@ -547,6 +547,9 @@ export default function ConnectionManager({
         }
       }));
       setTestingId(null);
+      if (data.adminAccessToken) {
+        setAdminAccessToken(data.adminAccessToken);
+      }
       if (data.ssh && data.db && data.api) {
         showToast('success', `SSH, Database, and Matrix API connection to ${profile.name} are fully healthy!`);
       } else if (data.ssh && data.db && !data.api) {
