@@ -29,7 +29,8 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Clock
+  Clock,
+  Server
 } from 'lucide-react';
 import { MatrixConfig, LDAPConfig, MatrixUser } from '../types';
 
