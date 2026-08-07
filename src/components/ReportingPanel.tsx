@@ -5730,6 +5730,61 @@ export default function ReportingPanel({
                   </div>
                 </div>
 
+                {connForm.protocol === 'sstp' && (
+                  <div className="space-y-3 pt-2 border-t border-dashed border-cyan-500/30">
+                    <div className="flex items-center justify-between">
+                      <label className={`block font-bold text-xs ${isLightMode ? 'text-cyan-700' : 'text-cyan-400'}`}>
+                        {isRtl ? 'تنظیمات تخصصی SSTP SSL / TLS' : 'SSTP Advanced SSL & PPP Settings'}
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          id="verifyCertCheck"
+                          checked={connForm.verifyServerCertificate !== false}
+                          onChange={(e) => setConnForm({ ...connForm, verifyServerCertificate: e.target.checked })}
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-cyan-600 focus:ring-0"
+                        />
+                        <label htmlFor="verifyCertCheck" className={`text-[11px] cursor-pointer ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                          {isRtl ? 'اعتبارسنجی گواهی SSL سرور' : 'Verify Server SSL Cert'}
+                        </label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={`block text-[11px] font-semibold mb-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {isRtl ? 'گواهی CA سرور (PEM Format / Path):' : 'CA Certificate (PEM or File Path):'}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={connForm.caCert || ''}
+                        onChange={(e) => setConnForm({ ...connForm, caCert: e.target.value })}
+                        placeholder="-----BEGIN CERTIFICATE-----\n..."
+                        className={`w-full rounded-xl p-2.5 font-mono text-[11px] border focus:outline-none ${
+                          isLightMode
+                            ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                            : 'bg-black/50 border-white/10 text-cyan-300 focus:border-cyan-500'
+                        }`}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={`block text-[11px] font-semibold mb-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {isRtl ? 'پارامترهای سفارشی PPP (Extra Options):' : 'PPP Custom Parameters:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={connForm.pppSettings || 'usepeerdns defaultroute refuse-eap require-mschap-v2'}
+                        onChange={(e) => setConnForm({ ...connForm, pppSettings: e.target.value })}
+                        className={`w-full rounded-xl px-3 py-1.5 font-mono text-[11px] border focus:outline-none ${
+                          isLightMode
+                            ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                            : 'bg-black/40 border-white/10 text-slate-200 focus:border-cyan-500'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 pt-2">
                   <input
                     type="checkbox"

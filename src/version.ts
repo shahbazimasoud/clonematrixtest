@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.2";
+export const PANEL_VERSION = "2.10.3";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.3",
+    date: "2026-08-07",
+    title: "Remote SSTP VPN Client Provider Implementation & Per-Connection Systemd Engine",
+    changes: [
+      "Remote WebSocket Execution: All SSTP operations (installation, configuration, start/stop/restart, status checks, and journalctl log retrieval) execute on target remote servers using the existing WebSocket agent connection without SSH.",
+      "Per-Connection Systemd Template Engine: Implemented per-profile SSTP connection architecture utilizing /etc/sstp-client/<profile>.conf configurations and dynamically generated /etc/systemd/system/sstp-client@.service template units.",
+      "Robust Connection State Verification: Status checks verify actual PPP interface creation (ip addr show grep ppp), IP address assignments, peer endpoints, and /proc/net/dev network traffic stats.",
+      "Full API & UI Integration: Provided dedicated REST endpoints for SSTP metadata detection, profile management, service control, and connection actions, alongside SSTP SSL/TLS and PPP parameter forms in the UI modal."
+    ]
+  },
   {
     version: "2.10.2",
     date: "2026-08-07",

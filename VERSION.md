@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.10.2** (Released: 2026-08-07)
+## Current Panel Version: **v2.10.3** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.10.3** - 2026-08-07
+- **Remote WebSocket Execution**: All SSTP operations (installation, configuration, start/stop/restart, status checks, and journalctl log retrieval) execute on target remote servers using the existing WebSocket agent connection without SSH.
+- **Per-Connection Systemd Template Engine**: Implemented per-profile SSTP connection architecture utilizing `/etc/sstp-client/<profile>.conf` configurations and dynamically generated `/etc/systemd/system/sstp-client@.service` template units.
+- **Robust Connection State Verification**: Status checks verify actual PPP interface creation (`ip addr show | grep ppp`), IP address assignments, peer endpoints, and `/proc/net/dev` network traffic stats.
+- **Full API & UI Integration**: Provided dedicated REST endpoints for SSTP metadata detection, profile management, service control, and connection actions, alongside SSTP SSL/TLS and PPP parameter forms in the UI modal.
 
 #### **v2.10.2** - 2026-08-07
 - **HttpOnly Cookie Persistence**: Integrated 90-day long-lived persistent JWT session tokens stored in HttpOnly cookies with `SameSite=Strict` and `Secure` flags when 'Remember Me' is enabled.

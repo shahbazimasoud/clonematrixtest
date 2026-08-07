@@ -18322,6 +18322,220 @@ async function runServerCommandOnTarget(targetId: string, cmd: string): Promise<
   }
 }
 
+// ============================================================================
+// SSTP VPN CLIENT PROVIDER CORE ENGINE
+// ============================================================================
+
+async function detectSstpProviderOnTarget(targetId: string = "local") {
+  const osReleaseOut = await runServerCommandOnTarget(targetId, "cat /etc/os-release 2>/dev/null || uname -a");
+  let distro = "ubuntu";
+  let pkgManager = "apt-get";
+  if (osReleaseOut.includes("fedora") || osReleaseOut.includes("centos") || osReleaseOut.includes("rhel") || osReleaseOut.includes("rocky") || osReleaseOut.includes("alma")) {
+    distro = "rhel";
+    pkgManager = "dnf";
+  } else if (osReleaseOut.includes("arch")) {
+    distro = "arch";
+    pkgManager = "pacman";
+  } else if (osReleaseOut.includes("zypper") || osReleaseOut.includes("suse")) {
+    distro = "suse";
+    pkgManager = "zypper";
+  }
+
+  const checkCmd = "command -v sstpc 2>/dev/null || which sstpc 2>/dev/null || dpkg-query -W -f='${Status}' sstp-client 2>/dev/null || rpm -q sstp-client 2>/dev/null";
+  const checkResult = await runServerCommandOnTarget(targetId, checkCmd);
+  const isInstalled = checkResult.includes("sstpc") || checkResult.includes("install ok") || checkResult.includes("sstp-client");
+
+  let binaryExec: string | null = null;
+  let version: string | null = null;
+
+  if (isInstalled) {
+    const binPath = await runServerCommandOnTarget(targetId, "which sstpc 2>/dev/null || command -v sstpc 2>/dev/null");
+    if (binPath && binPath.trim() && binPath.includes("sstpc")) {
+      binaryExec = binPath.trim().split("\n")[0];
+    } else {
+      binaryExec = "/usr/sbin/sstpc";
+    }
+
+    const verOut = await runServerCommandOnTarget(targetId, `${binaryExec} --version 2>/dev/null || sstpc -v 2>/dev/null || sstpc --help 2>/dev/null`);
+    const verMatch = verOut.match(/\d+\.\d+(\.\d+)?/);
+    if (verMatch) {
+      version = verMatch[0];
+    } else {
+      version = "1.0.18";
+    }
+  }
+
+  return {
+    provider: "sstp",
+    name: "SSTP (SSL VPN)",
+    binaryExec,
+    configDir: "/etc/sstp-client",
+    systemdUnit: "sstp-client@.service",
+    installed: isInstalled,
+    version,
+    distro,
+    pkgManager
+  };
+}
+
+async function ensureSstpSystemdUnit(targetId: string = "local") {
+  await runServerCommandOnTarget(targetId, "mkdir -p /etc/sstp-client && chmod 700 /etc/sstp-client");
+
+  const runScriptContent = `#!/bin/bash
+PROFILE="$1"
+CONF="/etc/sstp-client/\${PROFILE}.conf"
+if [ ! -f "$CONF" ]; then
+  echo "Error: Configuration file $CONF does not exist"
+  exit 1
+fi
+source "$CONF"
+
+NO_VERIFY=""
+if [ "$VERIFY_CERT" = "false" ] || [ "$VERIFY_CERT" = "0" ]; then
+  NO_VERIFY="--no-cert-verify"
+fi
+
+CA_ARG=""
+if [ -n "$CA_CERT" ] && [ -f "$CA_CERT" ]; then
+  CA_ARG="--ca-cert $CA_CERT"
+fi
+
+CLIENT_CERT_ARG=""
+if [ -n "$CLIENT_CERT" ] && [ -f "$CLIENT_CERT" ]; then
+  CLIENT_CERT_ARG="--cert $CLIENT_CERT"
+fi
+
+CLIENT_KEY_ARG=""
+if [ -n "$CLIENT_KEY" ] && [ -f "$CLIENT_KEY" ]; then
+  CLIENT_KEY_ARG="--key $CLIENT_KEY"
+fi
+
+SSTPC_BIN=$(which sstpc 2>/dev/null || echo "/usr/sbin/sstpc")
+exec $SSTPC_BIN --log-level info $NO_VERIFY $CA_ARG $CLIENT_CERT_ARG $CLIENT_KEY_ARG --user "$USER" --password "$PASSWORD" "\${SERVER}:\${PORT:-443}" usepeerdns defaultroute refuse-eap require-mschap-v2 nodetach notty $EXTRA_PPP
+`;
+
+  await runServerCommandOnTarget(targetId, `cat << 'EOF' > /etc/sstp-client/sstp-run.sh\n${runScriptContent}\nEOF\nchmod 755 /etc/sstp-client/sstp-run.sh`);
+
+  const unitContent = `[Unit]
+Description=SSTP VPN Client for %I
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/etc/sstp-client/sstp-run.sh %i
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+`;
+
+  await runServerCommandOnTarget(targetId, `cat << 'EOF' > /etc/systemd/system/sstp-client@.service\n${unitContent}\nEOF\nsystemctl daemon-reload`);
+}
+
+async function writeSstpProfileConfigFile(targetId: string, profileId: string, profile: any) {
+  const safeId = profileId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safeId) throw new Error("Invalid profile ID");
+
+  await ensureSstpSystemdUnit(targetId);
+
+  let caCertPath = profile.caCertPath || "";
+  if (profile.caCert && profile.caCert.includes("-----BEGIN CERTIFICATE-----")) {
+    caCertPath = `/etc/sstp-client/${safeId}-ca.crt`;
+    await runServerCommandOnTarget(targetId, `cat << 'EOF' > ${caCertPath}\n${profile.caCert}\nEOF\nchmod 600 ${caCertPath}`);
+  } else if (profile.caCert) {
+    caCertPath = profile.caCert;
+  }
+
+  let clientCertPath = profile.clientCertPath || "";
+  if (profile.clientCert && profile.clientCert.includes("-----BEGIN CERTIFICATE-----")) {
+    clientCertPath = `/etc/sstp-client/${safeId}-client.crt`;
+    await runServerCommandOnTarget(targetId, `cat << 'EOF' > ${clientCertPath}\n${profile.clientCert}\nEOF\nchmod 600 ${clientCertPath}`);
+  } else if (profile.clientCert) {
+    clientCertPath = profile.clientCert;
+  }
+
+  let clientKeyPath = profile.clientKeyPath || "";
+  if (profile.clientKey && profile.clientKey.includes("-----BEGIN")) {
+    clientKeyPath = `/etc/sstp-client/${safeId}-client.key`;
+    await runServerCommandOnTarget(targetId, `cat << 'EOF' > ${clientKeyPath}\n${profile.clientKey}\nEOF\nchmod 600 ${clientKeyPath}`);
+  } else if (profile.clientKey) {
+    clientKeyPath = profile.clientKey;
+  }
+
+  const confContent = `# SSTP Profile: ${safeId}
+SERVER="${profile.serverHost || profile.server || ''}"
+PORT="${profile.port || 443}"
+USER="${profile.username || ''}"
+PASSWORD="${profile.password || ''}"
+VERIFY_CERT="${profile.verifyServerCertificate !== false ? 'true' : 'false'}"
+CA_CERT="${caCertPath}"
+CLIENT_CERT="${clientCertPath}"
+CLIENT_KEY="${clientKeyPath}"
+EXTRA_PPP="${profile.pppSettings || ''}"
+`;
+
+  const confPath = `/etc/sstp-client/${safeId}.conf`;
+  await runServerCommandOnTarget(targetId, `cat << 'EOF' > ${confPath}\n${confContent}\nEOF\nchmod 600 ${confPath}\nchown root:root ${confPath}`);
+  return safeId;
+}
+
+async function getSstpRealStatusOnTarget(targetId: string, profileId: string) {
+  const safeId = profileId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const serviceUnit = `sstp-client@${safeId}.service`;
+
+  const sysActiveOut = await runServerCommandOnTarget(targetId, `systemctl is-active ${serviceUnit} 2>/dev/null`);
+  const serviceStatus = sysActiveOut.trim().includes("active") ? "active" : "inactive";
+
+  const sysEnabledOut = await runServerCommandOnTarget(targetId, `systemctl is-enabled ${serviceUnit} 2>/dev/null`);
+  const enabledAtBoot = sysEnabledOut.trim().includes("enabled");
+
+  const ipAddrOut = await runServerCommandOnTarget(targetId, `ip -o -4 addr show 2>/dev/null | grep ppp || true`);
+  let vpnStatus = "disconnected";
+  let ifaceName: string | null = null;
+  let localAddress: string | null = null;
+  let remoteAddress: string | null = null;
+  let rxBytes = 0;
+  let txBytes = 0;
+
+  if (ipAddrOut && ipAddrOut.includes("ppp")) {
+    vpnStatus = "connected";
+    const line = ipAddrOut.split("\n")[0];
+    const matchIface = line.match(/^\d+:\s+([^\s:]+)/);
+    if (matchIface) ifaceName = matchIface[1];
+    const matchIp = line.match(/inet\s+([0-9.]+)\/([0-9.]+)?\s+peer\s+([0-9.]+)/) || line.match(/inet\s+([0-9.]+)/);
+    if (matchIp) {
+      localAddress = matchIp[1];
+      if (matchIp[3]) remoteAddress = matchIp[3];
+    }
+
+    if (ifaceName) {
+      const devStat = await runServerCommandOnTarget(targetId, `cat /proc/net/dev 2>/dev/null | grep "${ifaceName}:" || true`);
+      if (devStat) {
+        const parts = devStat.trim().replace(`${ifaceName}:`, "").trim().split(/\s+/);
+        if (parts.length >= 9) {
+          rxBytes = parseInt(parts[0], 10) || 0;
+          txBytes = parseInt(parts[8], 10) || 0;
+        }
+      }
+    }
+  }
+
+  return {
+    installed: true,
+    service: serviceUnit,
+    serviceStatus,
+    vpnStatus,
+    enabledAtBoot,
+    interface: ifaceName,
+    localAddress,
+    remoteAddress,
+    rxBytes,
+    txBytes
+  };
+}
+
 // 1. GET /api/vpn-clients/packages
 app.get("/api/vpn-clients/packages", async (req: any, res: any) => {
   const targetId = (req.query.targetId as string) || "local";
@@ -18620,8 +18834,17 @@ app.post("/api/vpn-clients/package/install", (req: any, res: any) => {
       const verifyOut = await runServerCommandOnTarget(targetId, `which ${checkBin} 2>/dev/null`);
 
       job.logs.push(`[VERIFY] Binary verification on target: '${verifyOut.trim() || checkBin}'`);
-      job.logs.push(`[SYSTEMD] Registering system daemon service '${type}' on target server...`);
-      await runServerCommandOnTarget(targetId, `systemctl enable ${type} 2>/dev/null || true`);
+
+      if (type === "sstp") {
+        job.logs.push(`[SYSTEMD] Initializing SSTP systemd template unit (/etc/systemd/system/sstp-client@.service)...`);
+        await ensureSstpSystemdUnit(targetId);
+        const sstpMeta = await detectSstpProviderOnTarget(targetId);
+        job.logs.push(`[PROVIDER] SSTP client detected. Binary: ${sstpMeta.binaryExec || '/usr/sbin/sstpc'}, Version: ${sstpMeta.version || 'unknown'}`);
+      } else {
+        job.logs.push(`[SYSTEMD] Registering system daemon service '${type}' on target server...`);
+        await runServerCommandOnTarget(targetId, `systemctl enable ${type} 2>/dev/null || true`);
+      }
+
       job.logs.push(`[SUCCESS] Package ${type.toUpperCase()} successfully deployed and ready on target server [${targetId}].`);
 
       job.status = "completed";
@@ -18823,7 +19046,22 @@ app.post("/api/vpn-proxy/client-connections/:id/connect", async (req: any, res: 
   const conn = conns.find(c => c.id === id);
   if (conn) {
     try {
-      if (conn.protocol === "wireguard") {
+      if (conn.protocol === "sstp") {
+        await writeSstpProfileConfigFile(targetId, conn.id, conn);
+        await runServerCommandOnTarget(targetId, `systemctl start sstp-client@${conn.id}.service`);
+        await new Promise((r) => setTimeout(r, 3500));
+        const realStatus = await getSstpRealStatusOnTarget(targetId, conn.id);
+        conn.status = realStatus.vpnStatus;
+        if (realStatus.localAddress) conn.assignedIp = realStatus.localAddress;
+        saveVpnConnections(conns);
+        return res.json({
+          message: realStatus.vpnStatus === "connected"
+            ? `SSTP profile '${conn.name}' connected successfully on target server [${targetId}].`
+            : `SSTP service started, but PPP connection failed.`,
+          status: realStatus.vpnStatus,
+          realStatus
+        });
+      } else if (conn.protocol === "wireguard") {
         await runServerCommandOnTarget(targetId, `wg-quick up ${id} 2>/dev/null || wg-quick up /etc/wireguard/${id}.conf 2>/dev/null || true`);
       } else if (conn.protocol === "openvpn") {
         await runServerCommandOnTarget(targetId, `openvpn --config /etc/openvpn/${id}.ovpn --daemon 2>/dev/null || systemctl start openvpn@${id} 2>/dev/null || true`);
@@ -18848,7 +19086,14 @@ app.post("/api/vpn-proxy/client-connections/:id/disconnect", async (req: any, re
   const conn = conns.find(c => c.id === id);
   if (conn) {
     try {
-      if (conn.protocol === "wireguard") {
+      if (conn.protocol === "sstp") {
+        await runServerCommandOnTarget(targetId, `systemctl stop sstp-client@${conn.id}.service 2>/dev/null || true`);
+        await new Promise((r) => setTimeout(r, 1500));
+        const realStatus = await getSstpRealStatusOnTarget(targetId, conn.id);
+        conn.status = realStatus.vpnStatus;
+        saveVpnConnections(conns);
+        return res.json({ message: `SSTP profile '${conn.name}' disconnected on target server [${targetId}].`, status: realStatus.vpnStatus });
+      } else if (conn.protocol === "wireguard") {
         await runServerCommandOnTarget(targetId, `wg-quick down ${id} 2>/dev/null || wg-quick down /etc/wireguard/${id}.conf 2>/dev/null || true`);
       } else if (conn.protocol === "openvpn") {
         await runServerCommandOnTarget(targetId, `killall openvpn 2>/dev/null || systemctl stop openvpn@${id} 2>/dev/null || true`);
@@ -18874,6 +19119,8 @@ app.post("/api/vpn-clients/import-config", async (req: any, res: any) => {
     proto = "openvpn";
   } else if (rawConfig.includes("v2ray") || rawConfig.includes("vless://") || rawConfig.includes("vmess://")) {
     proto = "v2ray";
+  } else if (rawConfig.includes("sstp") || rawConfig.includes("sstpc")) {
+    proto = "sstp";
   }
 
   const connId = "conn-imp-" + Date.now();
@@ -18883,7 +19130,7 @@ app.post("/api/vpn-clients/import-config", async (req: any, res: any) => {
     name: name || "Imported Config Profile",
     protocol: proto,
     serverHost: "imported.server.net",
-    port: proto === "wireguard" ? 51820 : proto === "v2ray" ? 443 : 1194,
+    port: proto === "wireguard" ? 51820 : proto === "v2ray" ? 443 : proto === "sstp" ? 443 : 1194,
     username: "imported_user",
     password: "******",
     status: "disconnected",
@@ -18900,12 +19147,331 @@ app.post("/api/vpn-clients/import-config", async (req: any, res: any) => {
       await runServerCommandOnTarget(targetId, `mkdir -p /etc/openvpn && echo '${rawConfig.replace(/'/g, "'\\''")}' > /etc/openvpn/${connId}.ovpn 2>/dev/null || true`);
     } else if (proto === "v2ray") {
       await runServerCommandOnTarget(targetId, `mkdir -p /etc/xray && echo '${rawConfig.replace(/'/g, "'\\''")}' > /etc/xray/${connId}.json 2>/dev/null || true`);
+    } else if (proto === "sstp") {
+      await writeSstpProfileConfigFile(targetId, connId, newConn);
     }
   } catch (_) {}
 
   conns.push(newConn);
   saveVpnConnections(conns);
   res.json({ message: "Configuration file parsed and profile imported onto target server [" + targetId + "].", connection: newConn });
+});
+
+// ============================================================================
+// SSTP VPN CLIENT PROVIDER DEDICATED REST ENDPOINTS
+// ============================================================================
+
+// GET /api/vpn-clients/sstp/metadata
+app.get("/api/vpn-clients/sstp/metadata", async (req: any, res: any) => {
+  const targetId = (req.query.targetId as string) || "local";
+  try {
+    const meta = await detectSstpProviderOnTarget(targetId);
+    res.json(meta);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to detect SSTP provider", details: err.message || String(err) });
+  }
+});
+
+// GET /api/vpn-clients/sstp/profiles
+app.get("/api/vpn-clients/sstp/profiles", async (req: any, res: any) => {
+  const targetId = (req.query.targetId as string) || "local";
+  try {
+    const allConns = getSavedVpnConnections();
+    const sstpConns = allConns.filter(c => c.protocol === "sstp" && (c.targetId === targetId || !c.targetId));
+
+    const enriched = await Promise.all(sstpConns.map(async (conn) => {
+      try {
+        const realStatus = await getSstpRealStatusOnTarget(targetId, conn.id);
+        const copy = { ...conn, status: realStatus.vpnStatus, serviceStatus: realStatus.serviceStatus, realStatus };
+        delete copy.password;
+        return copy;
+      } catch (_) {
+        const copy = { ...conn };
+        delete copy.password;
+        return copy;
+      }
+    }));
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to list SSTP profiles", details: err.message || String(err) });
+  }
+});
+
+// POST /api/vpn-clients/sstp/profiles
+app.post("/api/vpn-clients/sstp/profiles", async (req: any, res: any) => {
+  const {
+    id,
+    targetId = "local",
+    name,
+    serverHost,
+    port = 443,
+    username,
+    password,
+    verifyServerCertificate = true,
+    caCert,
+    clientCert,
+    clientKey,
+    pppSettings,
+    autoConnect = false
+  } = req.body;
+
+  try {
+    const profileId = id || ("sstp-" + Date.now());
+    const safeProfileId = profileId.replace(/[^a-zA-Z0-9_-]/g, "");
+
+    const profileObj = {
+      id: safeProfileId,
+      targetId,
+      name: name || "SSTP VPN Profile",
+      protocol: "sstp",
+      serverHost: serverHost || "127.0.0.1",
+      port: port || 443,
+      username: username || "",
+      password: password || "",
+      verifyServerCertificate: verifyServerCertificate !== false,
+      caCert: caCert || "",
+      clientCert: clientCert || "",
+      clientKey: clientKey || "",
+      pppSettings: pppSettings || "usepeerdns defaultroute refuse-eap require-mschap-v2",
+      status: "disconnected",
+      autoConnect: !!autoConnect,
+      createdAt: new Date().toISOString()
+    };
+
+    await writeSstpProfileConfigFile(targetId, safeProfileId, profileObj);
+
+    if (autoConnect) {
+      await runServerCommandOnTarget(targetId, `systemctl enable sstp-client@${safeProfileId}.service 2>/dev/null || true`);
+    }
+
+    const conns = getSavedVpnConnections();
+    const idx = conns.findIndex(c => c.id === safeProfileId);
+    if (idx !== -1) {
+      conns[idx] = { ...conns[idx], ...profileObj };
+    } else {
+      conns.push(profileObj);
+    }
+    saveVpnConnections(conns);
+
+    const sanitizeReturn = { ...profileObj };
+    delete sanitizeReturn.password;
+
+    res.json({
+      message: `SSTP Profile '${profileObj.name}' saved and configured on target server [${targetId}].`,
+      profile: sanitizeReturn
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to create SSTP profile", details: err.message || String(err) });
+  }
+});
+
+// PUT /api/vpn-clients/sstp/profiles/:id
+app.put("/api/vpn-clients/sstp/profiles/:id", async (req: any, res: any) => {
+  const { id } = req.params;
+  const { targetId = "local", reconnect = false, ...updateData } = req.body;
+  const safeProfileId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+
+  try {
+    const conns = getSavedVpnConnections();
+    const conn = conns.find(c => c.id === safeProfileId);
+    if (!conn) {
+      return res.status(404).json({ error: "SSTP profile not found" });
+    }
+
+    await runServerCommandOnTarget(targetId, `systemctl stop sstp-client@${safeProfileId}.service 2>/dev/null || true`);
+
+    const updated = { ...conn, ...updateData, targetId };
+    await writeSstpProfileConfigFile(targetId, safeProfileId, updated);
+
+    let realStatus = await getSstpRealStatusOnTarget(targetId, safeProfileId);
+
+    if (reconnect) {
+      await runServerCommandOnTarget(targetId, `systemctl start sstp-client@${safeProfileId}.service`);
+      await new Promise(r => setTimeout(r, 3500));
+      realStatus = await getSstpRealStatusOnTarget(targetId, safeProfileId);
+    }
+
+    updated.status = realStatus.vpnStatus;
+    const idx = conns.findIndex(c => c.id === safeProfileId);
+    conns[idx] = updated;
+    saveVpnConnections(conns);
+
+    const sanitizeReturn = { ...updated };
+    delete sanitizeReturn.password;
+
+    res.json({
+      message: `SSTP Profile '${updated.name}' updated on target [${targetId}].`,
+      profile: sanitizeReturn,
+      realStatus
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to update SSTP profile", details: err.message || String(err) });
+  }
+});
+
+// DELETE /api/vpn-clients/sstp/profiles/:id
+app.delete("/api/vpn-clients/sstp/profiles/:id", async (req: any, res: any) => {
+  const { id } = req.params;
+  const targetId = (req.query.targetId as string) || req.body?.targetId || "local";
+  const safeProfileId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+
+  try {
+    await runServerCommandOnTarget(targetId, `systemctl stop sstp-client@${safeProfileId}.service 2>/dev/null || true`);
+    await runServerCommandOnTarget(targetId, `systemctl disable sstp-client@${safeProfileId}.service 2>/dev/null || true`);
+
+    await runServerCommandOnTarget(targetId, `rm -f /etc/sstp-client/${safeProfileId}.conf /etc/sstp-client/${safeProfileId}-*.crt /etc/sstp-client/${safeProfileId}-*.key`);
+    await runServerCommandOnTarget(targetId, `systemctl daemon-reload`);
+
+    let conns = getSavedVpnConnections();
+    conns = conns.filter(c => c.id !== safeProfileId);
+    saveVpnConnections(conns);
+
+    res.json({ message: `SSTP Profile '${safeProfileId}' cleanly deleted from target server [${targetId}].` });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to delete SSTP profile", details: err.message || String(err) });
+  }
+});
+
+// POST /api/vpn-clients/sstp/profiles/:id/connect
+app.post("/api/vpn-clients/sstp/profiles/:id/connect", async (req: any, res: any) => {
+  const { id } = req.params;
+  const { targetId = "local" } = req.body || {};
+  const safeProfileId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+
+  try {
+    const conns = getSavedVpnConnections();
+    const conn = conns.find(c => c.id === safeProfileId);
+    if (!conn) {
+      return res.status(404).json({ error: "SSTP profile not found" });
+    }
+
+    await writeSstpProfileConfigFile(targetId, safeProfileId, conn);
+    await runServerCommandOnTarget(targetId, `systemctl start sstp-client@${safeProfileId}.service`);
+    await new Promise(r => setTimeout(r, 3500));
+
+    const realStatus = await getSstpRealStatusOnTarget(targetId, safeProfileId);
+
+    conn.status = realStatus.vpnStatus;
+    if (realStatus.localAddress) conn.assignedIp = realStatus.localAddress;
+    saveVpnConnections(conns);
+
+    let logs = "";
+    if (realStatus.vpnStatus !== "connected") {
+      logs = await runServerCommandOnTarget(targetId, `journalctl -u sstp-client@${safeProfileId}.service -n 50 --no-pager`);
+    }
+
+    res.json({
+      success: realStatus.vpnStatus === "connected",
+      message: realStatus.vpnStatus === "connected"
+        ? `SSTP Connection established successfully on target server [${targetId}].`
+        : `Service started, but PPP tunnel was not established. Check logs.`,
+      status: realStatus.vpnStatus,
+      serviceStatus: realStatus.serviceStatus,
+      interface: realStatus.interface,
+      localAddress: realStatus.localAddress,
+      remoteAddress: realStatus.remoteAddress,
+      logs
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to connect SSTP profile", details: err.message || String(err) });
+  }
+});
+
+// POST /api/vpn-clients/sstp/profiles/:id/disconnect
+app.post("/api/vpn-clients/sstp/profiles/:id/disconnect", async (req: any, res: any) => {
+  const { id } = req.params;
+  const { targetId = "local" } = req.body || {};
+  const safeProfileId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+
+  try {
+    await runServerCommandOnTarget(targetId, `systemctl stop sstp-client@${safeProfileId}.service 2>/dev/null || true`);
+    await new Promise(r => setTimeout(r, 1500));
+
+    const realStatus = await getSstpRealStatusOnTarget(targetId, safeProfileId);
+
+    const conns = getSavedVpnConnections();
+    const conn = conns.find(c => c.id === safeProfileId);
+    if (conn) {
+      conn.status = realStatus.vpnStatus;
+      saveVpnConnections(conns);
+    }
+
+    res.json({
+      success: realStatus.vpnStatus === "disconnected",
+      message: `SSTP connection disconnected cleanly on target [${targetId}].`,
+      status: realStatus.vpnStatus,
+      serviceStatus: realStatus.serviceStatus
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to disconnect SSTP profile", details: err.message || String(err) });
+  }
+});
+
+// POST /api/vpn-clients/sstp/profiles/:id/service-control
+app.post("/api/vpn-clients/sstp/profiles/:id/service-control", async (req: any, res: any) => {
+  const { id } = req.params;
+  const { action, targetId = "local" } = req.body;
+  const safeProfileId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+  const unitName = `sstp-client@${safeProfileId}.service`;
+
+  try {
+    let output = "";
+    if (action === "start") {
+      output = await runServerCommandOnTarget(targetId, `systemctl start ${unitName}`);
+    } else if (action === "stop") {
+      output = await runServerCommandOnTarget(targetId, `systemctl stop ${unitName}`);
+    } else if (action === "restart") {
+      output = await runServerCommandOnTarget(targetId, `systemctl restart ${unitName}`);
+    } else if (action === "enable-boot") {
+      output = await runServerCommandOnTarget(targetId, `systemctl enable ${unitName}`);
+    } else if (action === "disable-boot") {
+      output = await runServerCommandOnTarget(targetId, `systemctl disable ${unitName}`);
+    }
+
+    await new Promise(r => setTimeout(r, 2000));
+    const realStatus = await getSstpRealStatusOnTarget(targetId, safeProfileId);
+
+    res.json({
+      message: `Service action '${action}' executed for ${unitName} on target [${targetId}].`,
+      output,
+      realStatus
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed service control action", details: err.message || String(err) });
+  }
+});
+
+// GET /api/vpn-clients/sstp/profiles/:id/status
+app.get("/api/vpn-clients/sstp/profiles/:id/status", async (req: any, res: any) => {
+  const { id } = req.params;
+  const targetId = (req.query.targetId as string) || "local";
+  const safeProfileId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+
+  try {
+    const status = await getSstpRealStatusOnTarget(targetId, safeProfileId);
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to retrieve SSTP status", details: err.message || String(err) });
+  }
+});
+
+// GET /api/vpn-clients/sstp/profiles/:id/logs
+app.get("/api/vpn-clients/sstp/profiles/:id/logs", async (req: any, res: any) => {
+  const { id } = req.params;
+  const targetId = (req.query.targetId as string) || "local";
+  const safeProfileId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+  const unitName = `sstp-client@${safeProfileId}.service`;
+
+  try {
+    const logs = await runServerCommandOnTarget(targetId, `journalctl -u ${unitName} -n 200 --no-pager 2>/dev/null || cat /var/log/syslog | grep sstpc | tail -n 200`);
+    res.json({
+      unit: unitName,
+      logs: logs || `[INFO] No journalctl records found for ${unitName}.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to retrieve SSTP logs", details: err.message || String(err) });
+  }
 });
 
 
