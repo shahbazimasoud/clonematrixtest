@@ -4938,23 +4938,23 @@ export default function ReportingPanel({
                         }`}
                       >
                         {/* Header info */}
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
+                        <div className="space-y-3 min-w-0">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
                               <h4 className={`text-sm font-bold flex items-center gap-2 ${
                                 isLightMode ? 'text-slate-900' : 'text-white'
                               }`}>
-                                <span>{conn.name}</span>
+                                <span className="truncate block" title={conn.name}>{conn.name}</span>
                               </h4>
-                              <p className={`text-[11px] font-mono mt-0.5 dir-ltr text-right rtl:text-left ${
+                              <p className={`text-[11px] font-mono mt-0.5 dir-ltr text-right rtl:text-left truncate block ${
                                 isLightMode ? 'text-slate-600' : 'text-slate-400'
                               }`}>
                                 {conn.serverHost}:{conn.port}
                               </p>
                             </div>
 
-                            <div className="flex items-center gap-1.5">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold font-mono uppercase ${
+                            <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-w-full">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold font-mono uppercase whitespace-nowrap ${
                                 conn.protocol === 'sstp'
                                   ? (isLightMode ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30')
                                   : conn.protocol === 'l2tp'
@@ -4966,7 +4966,7 @@ export default function ReportingPanel({
                                 {conn.protocol}
                               </span>
 
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${
                                 isConnected
                                   ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                                   : (isLightMode ? 'bg-slate-200 text-slate-600' : 'bg-slate-800 text-slate-400')
@@ -4977,38 +4977,38 @@ export default function ReportingPanel({
                           </div>
 
                           {/* Detail Badges */}
-                          <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                          <div className={`p-3 rounded-xl border text-xs space-y-1.5 min-w-0 ${
                             isLightMode ? 'bg-white border-slate-200 text-slate-700' : 'bg-slate-950/60 border-white/5 text-slate-300'
                           }`}>
-                            <div className="flex justify-between items-center">
-                              <span className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{isRtl ? 'نام کاربری:' : 'User:'}</span>
-                              <span className="font-mono font-semibold text-cyan-600 dark:text-cyan-300">{conn.username}</span>
+                            <div className="flex justify-between items-center gap-2">
+                              <span className={`text-[11px] shrink-0 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{isRtl ? 'نام کاربری:' : 'User:'}</span>
+                              <span className="font-mono font-semibold text-cyan-600 dark:text-cyan-300 truncate">{conn.username}</span>
                             </div>
 
                             {conn.protocol === 'sstp' && conn.ignoreCertErrors && (
-                              <div className="flex justify-between items-center text-[10px] pt-1 border-t border-slate-200 dark:border-white/5">
-                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                                  <ShieldCheck className="w-3 h-3" />
-                                  <span>{isRtl ? 'بدون نیاز به SSL (مشابه ویندوز)' : 'Windows SSTP No Cert Required'}</span>
+                              <div className="flex items-center text-[10px] pt-1 border-t border-slate-200 dark:border-white/5">
+                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 flex-wrap">
+                                  <ShieldCheck className="w-3 h-3 shrink-0" />
+                                  <span className="break-words leading-tight">{isRtl ? 'بدون نیاز به SSL (مشابه ویندوز)' : 'Windows SSTP No Cert Required'}</span>
                                 </span>
                               </div>
                             )}
 
                             {conn.protocol === 'l2tp' && conn.presharedKey && (
-                              <div className="flex justify-between items-center text-[10px] pt-1 border-t border-slate-200 dark:border-white/5">
-                                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>PSK Key:</span>
+                              <div className="flex justify-between items-center gap-2 text-[10px] pt-1 border-t border-slate-200 dark:border-white/5">
+                                <span className={`shrink-0 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>PSK Key:</span>
                                 <span className="font-mono text-indigo-600 dark:text-indigo-300">••••••••</span>
                               </div>
                             )}
 
                             {isConnected && (
                               <div className="pt-1.5 border-t border-slate-200 dark:border-white/5 space-y-1 text-[11px]">
-                                <div className="flex justify-between">
-                                  <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'IP اختصاصی تونل:' : 'Tunnel IP:'}</span>
-                                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{conn.assignedIp || '10.10.0.12'}</span>
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className={`shrink-0 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{isRtl ? 'IP اختصاصی تونل:' : 'Tunnel IP:'}</span>
+                                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate">{conn.assignedIp || '10.10.0.12'}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'پینگ تا سرور:' : 'Latency:'}</span>
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className={`shrink-0 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{isRtl ? 'پینگ تا سرور:' : 'Latency:'}</span>
                                   <span className="font-mono text-cyan-600 dark:text-cyan-300">{conn.latencyMs} ms</span>
                                 </div>
                               </div>

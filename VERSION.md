@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.9.1** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.2** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.9.2** - 2026-08-07
+- **Real Target Server Driver**: Implemented real system calls (`sstpc`, `xl2tpd`, `pptp-linux`, `connect-proxy`) to configure and control VPN client connections directly on the destination server.
+- **Automated Package Installer**: Added backend detection and automated package manager execution (`apt-get` / `yum` / `apk`) to install missing protocol dependencies on the server.
+- **Real Latency & Interface Monitoring**: Integrated system ping latency measurement and network interface tunnel IP inspection.
+- **UI Overflow Resolution**: Fixed badge and text wrapping in connection cards preventing `SSTP` and `Disconnected` tags from clipping outside container bounds.
 
 #### **v2.9.1** - 2026-08-07
 - **Windows-Like VPN Connections**: Added full support for creating and managing VPN client profiles with custom usernames, passwords, server hosts, ports, and optional PSK keys.

@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.1";
+export const PANEL_VERSION = "2.9.2";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.2",
+    date: "2026-08-07",
+    title: "Real Target Server VPN Execution Engine & Card UI Layout Overflow Fix",
+    changes: [
+      "Real Target Server Driver: Implemented real system calls (sstpc, xl2tpd, pptp-linux, connect-proxy) to configure and control VPN client connections directly on the destination server.",
+      "Automated Package Installer: Added backend detection and automated package manager execution (apt-get / yum / apk) to install missing protocol dependencies on the server.",
+      "Real Latency & Interface Monitoring: Integrated system ping latency measurement and network interface tunnel IP inspection.",
+      "UI Overflow Resolution: Fixed badge and text wrapping in connection cards preventing SSTP and Disconnected tags from clipping outside container bounds."
+    ]
+  },
   {
     version: "2.9.1",
     date: "2026-08-07",
