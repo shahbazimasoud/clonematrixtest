@@ -39,6 +39,7 @@ import {
   Search,
   Filter,
   Eye,
+  CheckCircle,
   CheckCircle2,
   XCircle,
   Clock,

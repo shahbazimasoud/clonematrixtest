@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.3";
+export const PANEL_VERSION = "2.9.4";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.4",
+    date: "2026-08-07",
+    title: "Fix CheckCircle Missing Import & PostgreSQL Row Type Resolution",
+    changes: [
+      "Fixed CheckCircle Icon Import: Added missing CheckCircle import from lucide-react in ReportingPanel.tsx, resolving the black screen runtime exception.",
+      "Fixed Server PostgreSQL Result Type: Resolved TypeScript type property mismatch in devices query handling."
+    ]
+  },
   {
     version: "2.9.3",
     date: "2026-08-07",

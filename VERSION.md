@@ -16,9 +16,13 @@
 
 ---
 
-## Current Panel Version: **v2.9.3** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.4** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.9.4** - 2026-08-07
+- **Fix CheckCircle Icon Import**: Added missing `CheckCircle` import from `lucide-react` in `ReportingPanel.tsx`, fixing the black screen `Uncaught ReferenceError: CheckCircle is not defined` crash.
+- **Fix PostgreSQL devRes Type**: Corrected device query row extraction in `server.ts`.
 
 #### **v2.9.3** - 2026-08-07
 - **Target Linux OS & Package Manager Auto-Detection**: Automatically reads `/etc/os-release` on target server to detect distribution (Ubuntu, Debian, CentOS, Rocky, AlmaLinux, Fedora, Arch, openSUSE) and package manager (`apt`, `dnf`, `yum`, `pacman`, `zypper`).

@@ -5698,13 +5698,14 @@ async function handleRoomKickOrBan(
     let userIp = "N/A";
     let userAgent = "N/A";
     try {
-      const devRes = await queryPostgres(
+      const devRes: any = await queryPostgres(
         "SELECT last_seen_ip, user_agent FROM devices WHERE LOWER(user_id) = LOWER($1) ORDER BY last_seen_ts DESC LIMIT 1",
         [targetMxid]
       );
-      if (devRes && devRes.rows && devRes.rows.length > 0) {
-        userIp = devRes.rows[0].last_seen_ip || "N/A";
-        userAgent = devRes.rows[0].user_agent || "N/A";
+      const rows = devRes?.rows || devRes;
+      if (Array.isArray(rows) && rows.length > 0) {
+        userIp = rows[0].last_seen_ip || "N/A";
+        userAgent = rows[0].user_agent || "N/A";
       }
     } catch (e) {}
 
