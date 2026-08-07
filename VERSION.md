@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.10.1** (Released: 2026-08-07)
+## Current Panel Version: **v2.10.2** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.10.2** - 2026-08-07
+- **HttpOnly Cookie Persistence**: Integrated 90-day long-lived persistent JWT session tokens stored in HttpOnly cookies with `SameSite=Strict` and `Secure` flags when 'Remember Me' is enabled.
+- **LocalStorage Token Elimination**: Security hardened so JavaScript cannot access persistent tokens via `document.cookie` or `localStorage`.
+- **Automatic Cookie Authentication**: Express backend middleware (`cookie-parser`) and React frontend (`credentials: 'include'`) seamlessly verify active sessions via HttpOnly cookies.
 
 #### **v2.10.1** - 2026-08-07
 - **Remote Server Command Execution**: All VPN package status queries, installations, uninstalls, systemd service controls, and journalctl log retrievals now execute on the selected target remote server via active SSH/Tunnel connection.

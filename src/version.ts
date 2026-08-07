@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.1";
+export const PANEL_VERSION = "2.10.2";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.2",
+    date: "2026-08-07",
+    title: "Persistent 'Remember Me' 90-Day Token via HttpOnly Cookie & LocalStorage Token Removal",
+    changes: [
+      "HttpOnly Cookie Persistence: Enabled long-lived 90-day JWT persistent session tokens stored in HttpOnly cookies with SameSite=Strict and Secure flags when 'Remember Me' is selected.",
+      "XSS & Security Hardening: JavaScript access to session tokens via document.cookie is completely blocked, and authentication tokens are no longer stored in localStorage.",
+      "Seamless Cookie Authentication: Express backend middleware (cookieParser) and frontend fetch requests (credentials: 'include') automatically authenticate sessions via HttpOnly cookies."
+    ]
+  },
   {
     version: "2.10.1",
     date: "2026-08-07",

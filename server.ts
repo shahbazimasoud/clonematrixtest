@@ -23,6 +23,7 @@ const yaml: any = (jsYaml as any).default || jsYaml;
 import nodemailer from "nodemailer";
 import { Client as LdapClient } from "ldapts";
 import cron from "node-cron";
+import cookieParser from "cookie-parser";
 import { PANEL_VERSION } from "./src/version";
 
 // Import modular DB and Agent services
@@ -906,6 +907,10 @@ function authenticateToken(req: any, res: any, next: any) {
   const authHeader = req.headers["authorization"];
   let token = authHeader && authHeader.split(" ")[1];
 
+  if (!token || token === "null" || token === "undefined") {
+    token = req.cookies?.admin_auth_token || req.cookies?.remember_me_token || req.cookies?.admin_token;
+  }
+
   if ((!token || token === "null" || token === "undefined") && req.query && req.query.token) {
     token = req.query.token as string;
   }
@@ -986,6 +991,7 @@ function checkPermission(requiredRoles: string[], requiredCustomPerm?: string) {
 // -------------------------------------------------------------
 // REST API Endpoints
 // -------------------------------------------------------------
+app.use(cookieParser());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -2428,12 +2434,23 @@ app.post("/api/auth/login", (req, res) => {
     db.securitySettings = sec;
   }
 
-  const tokenExpiry = rememberMe ? "30d" : "8h";
+  const tokenExpiry = rememberMe ? "90d" : "8h";
   const token = jwt.sign(
     { id: user.id, username: user.username, role: user.role, email: user.email, rememberMe: !!rememberMe },
     JWT_SECRET,
     { expiresIn: tokenExpiry }
   );
+
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production';
+  const cookieMaxAge = rememberMe ? (90 * 24 * 60 * 60 * 1000) : (8 * 60 * 60 * 1000);
+
+  res.cookie("admin_auth_token", token, {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: "strict",
+    path: "/",
+    maxAge: cookieMaxAge
+  });
 
   if (!db.activeSessions || !Array.isArray(db.activeSessions)) {
     db.activeSessions = [];
@@ -2469,9 +2486,15 @@ app.post("/api/auth/login", (req, res) => {
 app.get("/api/auth/verify", (req, res) => {
   const authHeader = req.headers["authorization"];
   let token = authHeader && authHeader.split(" ")[1];
+
+  if (!token || token === "null" || token === "undefined") {
+    token = req.cookies?.admin_auth_token || req.cookies?.remember_me_token || req.cookies?.admin_token;
+  }
+
   if ((!token || token === "null" || token === "undefined") && req.query && req.query.token) {
     token = req.query.token as string;
   }
+
   if (!token || token === "null" || token === "undefined") {
     return res.status(401).json({ valid: false, error: "No token provided" });
   }
@@ -2492,8 +2515,39 @@ app.get("/api/auth/verify", (req, res) => {
       return res.status(401).json({ valid: false, error: "Account disabled or not found" });
     }
     const { passwordHash, ...safeUser } = dbUser;
-    return res.json({ valid: true, user: safeUser });
+    return res.json({ valid: true, user: safeUser, token, rememberMe: decoded.rememberMe });
   });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production';
+  const cookieOptions = { path: "/", httpOnly: true, sameSite: "strict" as const, secure: isSecure };
+
+  res.clearCookie("admin_auth_token", cookieOptions);
+  res.clearCookie("remember_me_token", cookieOptions);
+  res.clearCookie("admin_token", cookieOptions);
+
+  const authHeader = req.headers["authorization"];
+  let token = authHeader && authHeader.split(" ")[1];
+  if (!token || token === "null" || token === "undefined") {
+    token = req.cookies?.admin_auth_token || req.cookies?.remember_me_token;
+  }
+
+  if (token) {
+    try {
+      const db = readDb();
+      if (!db.invalidatedTokens) db.invalidatedTokens = [];
+      if (!db.invalidatedTokens.includes(token)) {
+        db.invalidatedTokens.push(token);
+      }
+      if (db.activeSessions && Array.isArray(db.activeSessions)) {
+        db.activeSessions = db.activeSessions.filter((s: any) => s.token !== token);
+      }
+      writeDb(db);
+    } catch (_) {}
+  }
+
+  res.json({ success: true, message: "Logged out successfully" });
 });
 
 // Connection Profiles management

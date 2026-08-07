@@ -620,45 +620,46 @@ export default function App() {
     setConnectionStatus(connected ? 'connected' : 'disconnected');
   };
 
-  // Fetch Panel Database on boot and check token verification
+  // Fetch Panel Database on boot and check token verification via HttpOnly cookie or token
   useEffect(() => {
-    if (authToken) {
-      // Check auth token validity
-      fetch('/api/auth/verify', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      })
-      .then(res => {
-        if (!res.ok) throw new Error("Invalid token");
-        return res.json();
-      })
-      .then(data => {
-        if (!data.valid || !data.user) {
-          handleLogout();
-          return;
-        }
-        setCurrentUser(data.user);
-        fetchStats(authToken);
-        fetchConfig(authToken);
-        fetchLogs(authToken);
-        fetchPanelUsers(authToken);
-        fetchMatrixUsers(authToken);
-        fetchBackups(authToken);
-        setupWebSocket(authToken);
-        fetchConnections(authToken);
-        checkUpdates(authToken);
-      })
-      .catch(() => {
+    fetch('/api/auth/verify', {
+      credentials: 'include',
+      headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+    })
+    .then(res => {
+      if (!res.ok) throw new Error("Invalid token");
+      return res.json();
+    })
+    .then(data => {
+      if (!data.valid || !data.user) {
         handleLogout();
-      });
-    }
-  }, [authToken]);
+        return;
+      }
+      const activeTok = data.token || authToken || '';
+      setCurrentUser(data.user);
+      setAuthToken(activeTok);
+      fetchStats(activeTok);
+      fetchConfig(activeTok);
+      fetchLogs(activeTok);
+      fetchPanelUsers(activeTok);
+      fetchMatrixUsers(activeTok);
+      fetchBackups(activeTok);
+      setupWebSocket(activeTok);
+      fetchConnections(activeTok);
+      checkUpdates(activeTok);
+    })
+    .catch(() => {
+      handleLogout();
+    });
+  }, []);
 
   // Periodic session verification to instantly log out kicked users
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken && !currentUser) return;
     const interval = setInterval(() => {
       fetch('/api/auth/verify', {
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        credentials: 'include',
+        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
       })
       .then(res => res.json())
       .then(data => {
@@ -675,7 +676,7 @@ export default function App() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [authToken, lang]);
+  }, [authToken, currentUser, lang]);
 
   // Handle browser network status changes
   useEffect(() => {
@@ -926,6 +927,7 @@ export default function App() {
 
     fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         username: loginUser.trim(),
@@ -966,7 +968,7 @@ export default function App() {
       return data;
     })
     .then(data => {
-      localStorage.setItem('admin_token', data.token);
+      localStorage.removeItem('admin_token');
       localStorage.setItem('remember_me', rememberMe ? 'true' : 'false');
       if (rememberMe && loginUser.trim()) {
         localStorage.setItem('last_login_user', loginUser.trim());
@@ -974,7 +976,7 @@ export default function App() {
       localStorage.removeItem('last_login_error');
       localStorage.removeItem('last_login_error_data');
       setCurrentUser(data.user);
-      setAuthToken(data.token);
+      setAuthToken(data.token || null);
       setLoginUser('');
       setLoginPass('');
       setCaptchaCode('');
@@ -983,12 +985,13 @@ export default function App() {
       setLoginErrorData(null);
       
       // Instantly load data using the freshly acquired token
-      fetchConfig(data.token);
-      fetchLogs(data.token);
-      fetchPanelUsers(data.token);
-      fetchMatrixUsers(data.token);
-      fetchBackups(data.token);
-      setupWebSocket(data.token);
+      const activeTok = data.token || '';
+      fetchConfig(activeTok);
+      fetchLogs(activeTok);
+      fetchPanelUsers(activeTok);
+      fetchMatrixUsers(activeTok);
+      fetchBackups(activeTok);
+      setupWebSocket(activeTok);
     })
     .catch(err => {
       setLoginError(err.message);
@@ -997,6 +1000,7 @@ export default function App() {
 
   // Logout handler
   const handleLogout = () => {
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     localStorage.removeItem('admin_token');
     setAuthToken(null);
     setCurrentUser(null);
@@ -1006,10 +1010,11 @@ export default function App() {
 
   // Handler for navigation / view switching with session check
   const handleViewChange = async (view: string) => {
-    if (authToken) {
+    if (authToken || currentUser) {
       try {
         const res = await fetch('/api/auth/verify', {
-          headers: { 'Authorization': `Bearer ${authToken}` }
+          credentials: 'include',
+          headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
         const data = await res.json();
         if (!data.valid) {
@@ -1030,11 +1035,11 @@ export default function App() {
 
   // Global fetch response interceptor to instantly kick invalidated sessions on any API interaction
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken && !currentUser) return;
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       const response = await originalFetch(...args);
-      if (response.status === 401 && authToken) {
+      if (response.status === 401 && (authToken || currentUser)) {
         handleLogout();
         setLoginError(
           lang === 'fa'
@@ -1047,15 +1052,16 @@ export default function App() {
     return () => {
       window.fetch = originalFetch;
     };
-  }, [authToken, lang]);
+  }, [authToken, currentUser, lang]);
 
   // Periodic active session verification poll (every 10 seconds)
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken && !currentUser) return;
     const verifyInterval = setInterval(async () => {
       try {
         const res = await fetch('/api/auth/verify', {
-          headers: { 'Authorization': `Bearer ${authToken}` }
+          credentials: 'include',
+          headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
         if (res.status === 401) {
           handleLogout();
@@ -1069,7 +1075,7 @@ export default function App() {
     }, 10000);
 
     return () => clearInterval(verifyInterval);
-  }, [authToken, lang]);
+  }, [authToken, currentUser, lang]);
 
   // Inactivity Session Timeout Listener (Configurable: default 15 mins, 0 = unlimited)
   const lastActivityRef = useRef<number>(Date.now());
