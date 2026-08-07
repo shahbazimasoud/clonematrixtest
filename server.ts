@@ -18177,7 +18177,7 @@ function checkAndInstallVpnPackage(protocol: string): { installed: boolean; log:
   switch (protocol) {
     case "sstp":
       pkgName = "sstp-client ppp";
-      checkCmd = "which sstpc";
+      checkCmd = "which sstpc || which sstp-client";
       break;
     case "l2tp":
       pkgName = "xl2tpd strongswan ppp";
@@ -18206,7 +18206,11 @@ function checkAndInstallVpnPackage(protocol: string): { installed: boolean; log:
   // Attempt package manager install
   let installCmd = "";
   if (fs.existsSync("/usr/bin/apt-get")) {
-    installCmd = `apt-get update -y && apt-get install -y ${pkgName}`;
+    if (protocol === "sstp") {
+      installCmd = `DEBIAN_FRONTEND=noninteractive apt-get update -y && (DEBIAN_FRONTEND=noninteractive apt-get install -y sstp-client ppp || (DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common ppp && add-apt-repository -y ppa:eivnaes/network-manager-sstp && DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y sstp-client))`;
+    } else {
+      installCmd = `DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgName}`;
+    }
   } else if (fs.existsSync("/usr/bin/yum")) {
     installCmd = `yum install -y ${pkgName}`;
   } else if (fs.existsSync("/sbin/apk")) {
@@ -18491,7 +18495,7 @@ app.post("/api/vpn-proxy/install-packages", authenticateToken, checkPermission([
     writeDb(db);
     return res.json({
       success: true,
-      message: "عملیات بررسی و نصب پکیج‌های پیش‌نیاز روی سرور با موفقیت اجرا گردید.",
+      message: "Prerequisite package check and installation executed successfully on server.",
       logs,
       settings: db.vpnProxySettings
     });
@@ -18515,7 +18519,7 @@ app.post("/api/vpn-proxy/configure-protocol", authenticateToken, checkPermission
     };
 
     writeDb(db);
-    return res.json({ success: true, message: `تنظیمات پروتکل ${protocol.toUpperCase()} به‌روزرسانی شد.`, settings: db.vpnProxySettings });
+    return res.json({ success: true, message: `Protocol ${protocol.toUpperCase()} settings updated successfully.`, settings: db.vpnProxySettings });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -18541,7 +18545,7 @@ app.post("/api/vpn-proxy/service-action", authenticateToken, checkPermission(["O
     }
 
     writeDb(db);
-    return res.json({ success: true, message: `عملیات ${action} روی سرویس ${protocol.toUpperCase()} انجام گردید.`, status: target.status });
+    return res.json({ success: true, message: `Action ${action} completed on ${protocol.toUpperCase()} service.`, status: target.status });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -18551,11 +18555,7 @@ app.get("/api/vpn-proxy/users", authenticateToken, (req, res) => {
   try {
     const db = readDb();
     if (!db.vpnProxyUsers) {
-      db.vpnProxyUsers = [
-        { id: "vpu_1", username: "user_office1", password: "SecretPass123!", protocols: ["pptp", "l2tp", "sstp"], assignedIp: "10.8.0.10", active: true, usage: "4.2 GB" },
-        { id: "vpu_2", username: "proxy_agent", password: "ProxyPass2026!", protocols: ["socks5", "httpProxy"], assignedIp: "10.10.0.15", active: true, usage: "18.6 GB" },
-        { id: "vpu_3", username: "mobile_connect", password: "MobilePass99#", protocols: ["sstp", "l2tp"], assignedIp: "10.9.0.22", active: true, usage: "1.1 GB" }
-      ];
+      db.vpnProxyUsers = [];
       writeDb(db);
     }
     return res.json(db.vpnProxyUsers);
@@ -18590,7 +18590,7 @@ app.post("/api/vpn-proxy/users", authenticateToken, checkPermission(["Owner", "S
     }
 
     writeDb(db);
-    return res.json({ success: true, message: "کاربر VPN / پروکسی با موفقیت ذخیره شد.", user: newUser });
+    return res.json({ success: true, message: "VPN / Proxy user saved successfully.", user: newUser });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -18604,7 +18604,7 @@ app.delete("/api/vpn-proxy/users/:id", authenticateToken, checkPermission(["Owne
       db.vpnProxyUsers = db.vpnProxyUsers.filter((u: any) => u.id !== id);
       writeDb(db);
     }
-    return res.json({ success: true, message: "کاربر با موفقیت حذف گردید." });
+    return res.json({ success: true, message: "User deleted successfully." });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -18626,8 +18626,8 @@ app.post("/api/vpn-proxy/route-protection", authenticateToken, checkPermission([
     return res.json({
       success: true,
       message: enabled 
-        ? "قوانین Anti-Lockout / Bypass Route برای اتصال مستقیم به پنل مدیریت فعال شد." 
-        : "محافظت از روت پنل غیرفعال گردید.",
+        ? "Anti-Lockout / Bypass Route rules activated for direct admin panel connectivity." 
+        : "Panel route protection disabled.",
       settings: db.vpnProxySettings,
       commandExecuted: `ip route add ${db.vpnProxySettings.panelIp || '127.0.0.1'}/32 via ${db.vpnProxySettings.gatewayIp || 'default'} metric 10`
     });
@@ -18640,59 +18640,7 @@ app.get("/api/vpn-proxy/client-connections", authenticateToken, (req, res) => {
   try {
     const db = readDb();
     if (!db.vpnClientConnections) {
-      db.vpnClientConnections = [
-        {
-          id: "vpn_conn_1",
-          name: "Windows SSTP Primary VPN",
-          protocol: "sstp",
-          serverHost: "185.220.101.5",
-          port: 443,
-          username: "win_client_user",
-          password: "SecretPassword2026!",
-          presharedKey: "",
-          ignoreCertErrors: true,
-          autoConnect: true,
-          status: "connected",
-          assignedIp: "10.10.0.12",
-          connectedSince: new Date(Date.now() - 3600000).toISOString(),
-          latencyMs: 18,
-          txRx: "142.5 MB / 856.2 MB"
-        },
-        {
-          id: "vpn_conn_2",
-          name: "Corporate L2TP / IPsec Tunnel",
-          protocol: "l2tp",
-          serverHost: "194.32.10.88",
-          port: 1701,
-          username: "branch_office_l2tp",
-          password: "L2tpPass2026#",
-          presharedKey: "MatrixPsk2026!",
-          ignoreCertErrors: false,
-          autoConnect: false,
-          status: "disconnected",
-          assignedIp: "",
-          connectedSince: null,
-          latencyMs: 0,
-          txRx: "0 B / 0 B"
-        },
-        {
-          id: "vpn_conn_3",
-          name: "Direct SOCKS5 High-Speed Proxy",
-          protocol: "socks5",
-          serverHost: "45.14.225.12",
-          port: 1080,
-          username: "proxy_user",
-          password: "ProxyPass123!",
-          presharedKey: "",
-          ignoreCertErrors: true,
-          autoConnect: false,
-          status: "disconnected",
-          assignedIp: "",
-          connectedSince: null,
-          latencyMs: 0,
-          txRx: "0 B / 0 B"
-        }
-      ];
+      db.vpnClientConnections = [];
       writeDb(db);
     }
     return res.json(db.vpnClientConnections);
@@ -18705,7 +18653,7 @@ app.post("/api/vpn-proxy/client-connections", authenticateToken, checkPermission
   try {
     const { id, name, protocol, serverHost, port, username, password, presharedKey, ignoreCertErrors, autoConnect } = req.body;
     if (!name || !protocol || !serverHost || !username || !password) {
-      return res.status(400).json({ error: "نام اتصال، پروتکل، آدرس سرور، نام کاربری و کلمه عبور الزامی است." });
+      return res.status(400).json({ error: "Profile Name, Protocol, Server Host, Username, and Password are required." });
     }
 
     const db = readDb();
@@ -18741,7 +18689,7 @@ app.post("/api/vpn-proxy/client-connections", authenticateToken, checkPermission
     writeDb(db);
     return res.json({
       success: true,
-      message: `اتصال VPN / پروکسی ${name} با موفقیت ذخیره گردید.`,
+      message: `VPN / Proxy connection ${name} saved successfully.`,
       connection: connectionData
     });
   } catch (err: any) {
@@ -18757,7 +18705,7 @@ app.delete("/api/vpn-proxy/client-connections/:id", authenticateToken, checkPerm
       db.vpnClientConnections = db.vpnClientConnections.filter((c: any) => c.id !== id);
       writeDb(db);
     }
-    return res.json({ success: true, message: "کانکشن با موفقیت حذف گردید." });
+    return res.json({ success: true, message: "Connection profile deleted successfully." });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -18800,10 +18748,10 @@ app.post("/api/vpn-proxy/client-connections/:id/connect", authenticateToken, che
 
     return res.json({
       success: true,
-      message: `اتصال ${conn.name} (${conn.protocol.toUpperCase()}) به سرور ${conn.serverHost} روی سیستم فعال شد.`,
+      message: `Connection ${conn.name} (${conn.protocol.toUpperCase()}) to server ${conn.serverHost} activated.`,
       connection: conn,
       systemLog: execResult.log,
-      routeProtectionMessage: "روت اختصاصی پنل مدیریت جهت جلوگیری از قطع دسترسی به صورت خودکار اعمال گردید."
+      routeProtectionMessage: "Panel static bypass route configured automatically."
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -18831,7 +18779,7 @@ app.post("/api/vpn-proxy/client-connections/:id/disconnect", authenticateToken, 
 
     return res.json({
       success: true,
-      message: `اتصال ${conn.name} روی سرور قطع گردید.`,
+      message: `Connection ${conn.name} disconnected.`,
       connection: conn,
       systemLog: disResult.log
     });
@@ -19066,7 +19014,7 @@ const VPN_CLIENT_REGISTRY: Record<string, {
   sstp: {
     name: "SSTP Client",
     type: "sstp",
-    binaries: ["sstpc"],
+    binaries: ["sstpc", "sstp-client"],
     serviceName: "sstpc",
     packagesMap: {
       apt: "sstp-client ppp",
@@ -19076,8 +19024,9 @@ const VPN_CLIENT_REGISTRY: Record<string, {
       zypper: "sstp-client ppp",
       apk: "sstp-client ppp"
     },
-    versionCmd: "sstpc --version",
-    logsCmd: "journalctl -u sstpc -n 100 --no-pager"
+    installScript: "DEBIAN_FRONTEND=noninteractive apt-get update -y && (DEBIAN_FRONTEND=noninteractive apt-get install -y sstp-client ppp || (DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common ppp && add-apt-repository -y ppa:eivnaes/network-manager-sstp && DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y sstp-client))",
+    versionCmd: "sstpc --version || sstp-client --version",
+    logsCmd: "journalctl -u sstpc -n 100 --no-pager || dmesg | tail -n 50"
   },
   l2tp: {
     name: "L2TP / IPsec",

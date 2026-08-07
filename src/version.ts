@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.5";
+export const PANEL_VERSION = "2.9.6";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.6",
+    date: "2026-08-07",
+    title: "Tabbed VPN Interface, SSTP PPA Auto-Install, Full English Localization & UI Refactoring",
+    changes: [
+      "Tabbed Navigation Interface: Organized the VPN & Proxy Management suite into dedicated sub-tabs (VPN Clients, Proxy Services, Server Daemons, Users, Connection Profiles, Routing & Anti-Lockout) eliminating clutter.",
+      "SSTP Package Installation Resolution: Implemented automatic PPA repository addition (ppa:sstp-project/sstp) for Ubuntu/Debian target nodes when installing sstp-client.",
+      "Complete English Localization: Converted all UI labels, action buttons, status messages, modal forms, and notification alerts from Persian to English.",
+      "Mock Data Purge: Cleared hardcoded mock clients and proxy user instances, ensuring real system state and target connections are loaded.",
+      "Relocated Direct Panel Route Tester: Moved the 'Test Direct Panel Route' button and latency diagnostic panel to the bottom of the Routing & Anti-Lockout tab."
+    ]
+  },
   {
     version: "2.9.5",
     date: "2026-08-07",

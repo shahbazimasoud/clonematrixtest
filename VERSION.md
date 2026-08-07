@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.9.5** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.6** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.9.6** - 2026-08-07
+- **Tabbed Navigation Interface**: Re-architected the VPN & Proxy suite into 6 clean, dedicated sub-tabs (`VPN Clients`, `Proxy Services`, `Server Daemons`, `Users`, `Connection Profiles`, `Routing & Anti-Lockout`), eliminating visual clutter.
+- **SSTP Package Installation Resolution**: Implemented automatic PPA repository addition (`ppa:sstp-project/sstp`) for Ubuntu/Debian target nodes when installing `sstp-client`.
+- **Complete English Localization**: Translated all UI labels, action buttons, status messages, modal forms, and notification alerts from Persian to English.
+- **Mock Data Purge**: Removed hardcoded mock client connections and proxy user accounts, ensuring real system state is fetched from target nodes.
+- **Relocated Direct Panel Route Tester**: Moved the 'Test Direct Panel Route' button and latency diagnostic panel to the bottom of the Routing & Anti-Lockout tab.
 
 #### **v2.9.5** - 2026-08-07
 - **Dropdown VPN Client Interface**: Replaced the 10-card grid with a clean dropdown menu and quick selection pills, eliminating visual clutter.
