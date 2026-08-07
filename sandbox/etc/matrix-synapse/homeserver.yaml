@@ -1,0 +1,34 @@
+# Matrix Synapse Homeserver Configuration
+server_name: "matrix.company.local"
+public_baseurl: "https://matrix.company.local/"
+registration_shared_secret: "99f8c0b2d3e4f5a6a7b8c9d0e1f2a3b4"
+turn_shared_secret: "a8b9c1d2e3f4a5b6c7d8e9f0a1b2c3d4"
+enable_registration: true
+enable_registration_without_verification: true
+max_upload_size: "50M"
+database: "synapse"
+  name: "psycopg2"
+  args:
+    user: "synapse_user"
+    password: "a3f8b09d2e1c4f5a6b7c8d9e"
+    database: "synapse"
+    host: "localhost"
+    port: 5432
+    cp_min: 5
+    cp_max: 10
+turn_uris:
+  - "turn:matrix.company.local:3478?transport=udp"
+  - "turns:matrix.company.local:5349?transport=tcp"
+presence:
+  enabled: true
+rc_message:
+  per_second: 0.2
+  burst_count: 10
+rc_login:
+  address:
+    per_second: 0.17
+    burst_count: 5
+  failed_attempts:
+    per_second: 0.17
+    burst_count: 5
+modules: []

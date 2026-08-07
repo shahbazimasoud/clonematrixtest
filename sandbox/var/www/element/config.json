@@ -1,0 +1,23 @@
+{
+  "default_server_config": {
+    "m.homeserver": {
+      "base_url": "https://matrix.company.local",
+      "server_name": "matrix.company.local"
+    }
+  },
+  "disable_custom_urls": false,
+  "disable_guests": true,
+  "brand": "Element",
+  "settingDefaults": {
+    "features": {
+      "feature_e2ee": false,
+      "feature_video_rooms": "enable"
+    },
+    "sendTypingNotifications": true,
+    "showTypingNotifications": true,
+    "sendReadReceipts": true
+  },
+  "jitsi": {
+    "preferredDomain": "meet.jit.si"
+  }
+}
