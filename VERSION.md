@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.9.0** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.1** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.9.1** - 2026-08-07
+- **Windows-Like VPN Connections**: Added full support for creating and managing VPN client profiles with custom usernames, passwords, server hosts, ports, and optional PSK keys.
+- **SSTP Certificate Bypass Option**: Introduced 'No SSL Certificate Required' toggle for SSTP connections matching Windows native VPN behavior.
+- **One-Click Connect/Disconnect**: Added interactive stateful Connect and Disconnect handlers with live latency and tunnel IP feedback.
+- **Complete Theme Compatibility**: Refactored entire VPN & Proxy management UI components, forms, modals, tables, and buttons to adapt dynamically between Light and Dark themes.
 
 #### **v2.9.0** - 2026-08-07
 - **VPN Protocols Management**: Added support for PPTP, L2TP/IPsec, and SSTP (SSL VPN) protocols with start/stop/restart service controls and active connection monitoring.

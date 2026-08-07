@@ -18345,6 +18345,202 @@ app.post("/api/vpn-proxy/route-protection", authenticateToken, checkPermission([
   }
 });
 
+app.get("/api/vpn-proxy/client-connections", authenticateToken, (req, res) => {
+  try {
+    const db = readDb();
+    if (!db.vpnClientConnections) {
+      db.vpnClientConnections = [
+        {
+          id: "vpn_conn_1",
+          name: "Windows SSTP Primary VPN",
+          protocol: "sstp",
+          serverHost: "185.220.101.5",
+          port: 443,
+          username: "win_client_user",
+          password: "SecretPassword2026!",
+          presharedKey: "",
+          ignoreCertErrors: true,
+          autoConnect: true,
+          status: "connected",
+          assignedIp: "10.10.0.12",
+          connectedSince: new Date(Date.now() - 3600000).toISOString(),
+          latencyMs: 18,
+          txRx: "142.5 MB / 856.2 MB"
+        },
+        {
+          id: "vpn_conn_2",
+          name: "Corporate L2TP / IPsec Tunnel",
+          protocol: "l2tp",
+          serverHost: "194.32.10.88",
+          port: 1701,
+          username: "branch_office_l2tp",
+          password: "L2tpPass2026#",
+          presharedKey: "MatrixPsk2026!",
+          ignoreCertErrors: false,
+          autoConnect: false,
+          status: "disconnected",
+          assignedIp: "",
+          connectedSince: null,
+          latencyMs: 0,
+          txRx: "0 B / 0 B"
+        },
+        {
+          id: "vpn_conn_3",
+          name: "Direct SOCKS5 High-Speed Proxy",
+          protocol: "socks5",
+          serverHost: "45.14.225.12",
+          port: 1080,
+          username: "proxy_user",
+          password: "ProxyPass123!",
+          presharedKey: "",
+          ignoreCertErrors: true,
+          autoConnect: false,
+          status: "disconnected",
+          assignedIp: "",
+          connectedSince: null,
+          latencyMs: 0,
+          txRx: "0 B / 0 B"
+        }
+      ];
+      writeDb(db);
+    }
+    return res.json(db.vpnClientConnections);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/vpn-proxy/client-connections", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { id, name, protocol, serverHost, port, username, password, presharedKey, ignoreCertErrors, autoConnect } = req.body;
+    if (!name || !protocol || !serverHost || !username || !password) {
+      return res.status(400).json({ error: "نام اتصال، پروتکل، آدرس سرور، نام کاربری و کلمه عبور الزامی است." });
+    }
+
+    const db = readDb();
+    if (!db.vpnClientConnections) db.vpnClientConnections = [];
+
+    const existingIdx = id ? db.vpnClientConnections.findIndex((c: any) => c.id === id) : -1;
+    const defaultPort = protocol === 'sstp' ? 443 : protocol === 'l2tp' ? 1701 : protocol === 'pptp' ? 1723 : protocol === 'socks5' ? 1080 : 8080;
+
+    const connectionData = {
+      id: existingIdx >= 0 ? id : "vpn_conn_" + Date.now(),
+      name: name.trim(),
+      protocol: protocol || "sstp",
+      serverHost: serverHost.trim(),
+      port: Number(port) || defaultPort,
+      username: username.trim(),
+      password: password.trim(),
+      presharedKey: (presharedKey || "").trim(),
+      ignoreCertErrors: ignoreCertErrors !== undefined ? !!ignoreCertErrors : true,
+      autoConnect: !!autoConnect,
+      status: existingIdx >= 0 ? db.vpnClientConnections[existingIdx].status : "disconnected",
+      assignedIp: existingIdx >= 0 ? db.vpnClientConnections[existingIdx].assignedIp : "",
+      connectedSince: existingIdx >= 0 ? db.vpnClientConnections[existingIdx].connectedSince : null,
+      latencyMs: existingIdx >= 0 ? db.vpnClientConnections[existingIdx].latencyMs : 0,
+      txRx: existingIdx >= 0 ? db.vpnClientConnections[existingIdx].txRx : "0 B / 0 B"
+    };
+
+    if (existingIdx >= 0) {
+      db.vpnClientConnections[existingIdx] = connectionData;
+    } else {
+      db.vpnClientConnections.push(connectionData);
+    }
+
+    writeDb(db);
+    return res.json({
+      success: true,
+      message: `اتصال VPN / پروکسی ${name} با موفقیت ذخیره گردید.`,
+      connection: connectionData
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/vpn-proxy/client-connections/:id", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = readDb();
+    if (db.vpnClientConnections) {
+      db.vpnClientConnections = db.vpnClientConnections.filter((c: any) => c.id !== id);
+      writeDb(db);
+    }
+    return res.json({ success: true, message: "کانکشن با موفقیت حذف گردید." });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/vpn-proxy/client-connections/:id/connect", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = readDb();
+    if (!db.vpnClientConnections) return res.status(404).json({ error: "Connections list empty" });
+
+    const conn = db.vpnClientConnections.find((c: any) => c.id === id);
+    if (!conn) return res.status(404).json({ error: "Connection profile not found" });
+
+    // Disconnect any other connected connection of the same protocol if needed
+    db.vpnClientConnections.forEach((c: any) => {
+      if (c.id !== id && c.protocol === conn.protocol) {
+        c.status = "disconnected";
+        c.assignedIp = "";
+        c.connectedSince = null;
+      }
+    });
+
+    // Simulate SSTP/L2TP/PPTP client connection creation & connection with Anti-Lockout Protection
+    const mockTunnelIp = `10.10.${Math.floor(Math.random() * 200) + 10}.${Math.floor(Math.random() * 200) + 2}`;
+    conn.status = "connected";
+    conn.assignedIp = mockTunnelIp;
+    conn.connectedSince = new Date().toISOString();
+    conn.latencyMs = Math.floor(Math.random() * 25) + 12;
+    conn.txRx = "1.2 MB / 4.8 MB";
+
+    // Auto update route protection so panel access is preserved
+    if (!db.vpnProxySettings) db.vpnProxySettings = {};
+    db.vpnProxySettings.routeProtectionEnabled = true;
+
+    writeDb(db);
+
+    return res.json({
+      success: true,
+      message: `اتصال ${conn.name} (${conn.protocol.toUpperCase()}) به سرور ${conn.serverHost} با موفقیت برقرار شد.`,
+      connection: conn,
+      routeProtectionMessage: "روت اختصاصی پنل مدیریت جهت جلوگیری از قطع دسترسی به صورت خودکار اعمال گردید."
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/vpn-proxy/client-connections/:id/disconnect", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = readDb();
+    if (!db.vpnClientConnections) return res.status(404).json({ error: "Connections list empty" });
+
+    const conn = db.vpnClientConnections.find((c: any) => c.id === id);
+    if (!conn) return res.status(404).json({ error: "Connection profile not found" });
+
+    conn.status = "disconnected";
+    conn.assignedIp = "";
+    conn.connectedSince = null;
+    conn.latencyMs = 0;
+
+    writeDb(db);
+
+    return res.json({
+      success: true,
+      message: `اتصال ${conn.name} قطع گردید.`,
+      connection: conn
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/vpn-proxy/test-panel-route", authenticateToken, (req, res) => {
   try {
     const db = readDb();

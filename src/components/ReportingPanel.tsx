@@ -914,6 +914,36 @@ export default function ReportingPanel({
   const [routeTestResult, setRouteTestResult] = useState<any>(null);
   const [isTestingRoute, setIsTestingRoute] = useState<boolean>(false);
 
+  // Windows-like VPN / Proxy Client Connections State
+  const [vpnClientConnections, setVpnClientConnections] = useState<any[]>([]);
+  const [isLoadingConnections, setIsLoadingConnections] = useState<boolean>(false);
+  const [isConnectingId, setIsConnectingId] = useState<string | null>(null);
+  const [showConnModal, setShowConnModal] = useState<boolean>(false);
+  const [showModalPassword, setShowModalPassword] = useState<boolean>(false);
+  const [connForm, setConnForm] = useState<{
+    id: string;
+    name: string;
+    protocol: string;
+    serverHost: string;
+    port: number | string;
+    username: string;
+    password: string;
+    presharedKey: string;
+    ignoreCertErrors: boolean;
+    autoConnect: boolean;
+  }>({
+    id: '',
+    name: '',
+    protocol: 'sstp',
+    serverHost: '',
+    port: 443,
+    username: '',
+    password: '',
+    presharedKey: '',
+    ignoreCertErrors: true,
+    autoConnect: true
+  });
+
   // New VPN User state
   const [newVpnUser, setNewVpnUser] = useState<string>('');
   const [newVpnPass, setNewVpnPass] = useState<string>('');
@@ -924,9 +954,10 @@ export default function ReportingPanel({
   const fetchVpnProxyData = async () => {
     setIsLoadingVpnProxy(true);
     try {
-      const [resSettings, resUsers] = await Promise.all([
+      const [resSettings, resUsers, resConns] = await Promise.all([
         fetch('/api/vpn-proxy/status', { headers: { 'Authorization': `Bearer ${authToken}` } }),
-        fetch('/api/vpn-proxy/users', { headers: { 'Authorization': `Bearer ${authToken}` } })
+        fetch('/api/vpn-proxy/users', { headers: { 'Authorization': `Bearer ${authToken}` } }),
+        fetch('/api/vpn-proxy/client-connections', { headers: { 'Authorization': `Bearer ${authToken}` } })
       ]);
       if (resSettings.ok) {
         const data = await resSettings.json();
@@ -935,6 +966,10 @@ export default function ReportingPanel({
       if (resUsers.ok) {
         const data = await resUsers.json();
         setVpnProxyUsers(data);
+      }
+      if (resConns.ok) {
+        const data = await resConns.json();
+        setVpnClientConnections(data);
       }
     } catch (err) {
       console.error('Error fetching VPN Proxy data:', err);
@@ -948,6 +983,128 @@ export default function ReportingPanel({
       fetchVpnProxyData();
     }
   }, [activeSubTab]);
+
+  const handleOpenAddConnModal = () => {
+    setConnForm({
+      id: '',
+      name: '',
+      protocol: 'sstp',
+      serverHost: '',
+      port: 443,
+      username: '',
+      password: '',
+      presharedKey: '',
+      ignoreCertErrors: true,
+      autoConnect: true
+    });
+    setShowModalPassword(false);
+    setShowConnModal(true);
+  };
+
+  const handleOpenEditConnModal = (conn: any) => {
+    setConnForm({
+      id: conn.id || '',
+      name: conn.name || '',
+      protocol: conn.protocol || 'sstp',
+      serverHost: conn.serverHost || '',
+      port: conn.port || (conn.protocol === 'sstp' ? 443 : conn.protocol === 'l2tp' ? 1701 : conn.protocol === 'pptp' ? 1723 : 1080),
+      username: conn.username || '',
+      password: conn.password || '',
+      presharedKey: conn.presharedKey || '',
+      ignoreCertErrors: conn.ignoreCertErrors !== undefined ? conn.ignoreCertErrors : true,
+      autoConnect: !!conn.autoConnect
+    });
+    setShowModalPassword(false);
+    setShowConnModal(true);
+  };
+
+  const handleSaveConnProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!connForm.name.trim() || !connForm.serverHost.trim() || !connForm.username.trim() || !connForm.password.trim()) {
+      showToast('error', isRtl ? 'لطفا تمام فیلدهای الزامی را تکمیل کنید' : 'Please complete required fields');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/vpn-proxy/client-connections', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(connForm)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message || (isRtl ? 'کانکشن با موفقیت ذخیره گردید' : 'Connection saved successfully'));
+        setShowConnModal(false);
+        fetchVpnProxyData();
+      } else {
+        const errData = await res.json();
+        showToast('error', errData.error || (isRtl ? 'خطا در ذخیره کانکشن' : 'Failed to save connection'));
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در ارتباط با سرور' : 'Connection error');
+    }
+  };
+
+  const handleDeleteConnProfile = async (id: string) => {
+    if (!window.confirm(isRtl ? 'آیا از حذف این کانکشن اطمینان دارید؟' : 'Delete this connection profile?')) return;
+    try {
+      const res = await fetch(`/api/vpn-proxy/client-connections/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        showToast('success', isRtl ? 'کانکشن حذف گردید' : 'Connection deleted');
+        fetchVpnProxyData();
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در حذف کانکشن' : 'Delete failed');
+    }
+  };
+
+  const handleConnectTunnel = async (id: string) => {
+    setIsConnectingId(id);
+    try {
+      const res = await fetch(`/api/vpn-proxy/client-connections/${id}/connect`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        fetchVpnProxyData();
+      } else {
+        showToast('error', isRtl ? 'خطا در برقرار اتصال' : 'Connect failed');
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در ارتباط با سرور' : 'Server connection error');
+    } finally {
+      setIsConnectingId(null);
+    }
+  };
+
+  const handleDisconnectTunnel = async (id: string) => {
+    setIsConnectingId(id);
+    try {
+      const res = await fetch(`/api/vpn-proxy/client-connections/${id}/disconnect`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        fetchVpnProxyData();
+      } else {
+        showToast('error', isRtl ? 'خطا در قطع اتصال' : 'Disconnect failed');
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در ارتباط با سرور' : 'Server connection error');
+    } finally {
+      setIsConnectingId(null);
+    }
+  };
 
   const handleInstallVpnPackages = async (targetProtos?: string[]) => {
     setIsDeployingPackages(true);
@@ -4600,26 +4757,30 @@ export default function ReportingPanel({
 
         {/* VPN & PROXY MANAGEMENT TAB */}
         {activeSubTab === 'vpnProxy' && (
-          <div className="space-y-6 animate-fadeIn">
+          <div className="space-y-6 animate-fadeIn" dir={isRtl ? "rtl" : "ltr"}>
             {/* Top Overview Header */}
-            <div className={`p-6 rounded-3xl border shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 ${
-              isLightMode ? 'bg-white border-cyan-200 shadow-cyan-500/5' : 'bg-slate-900/80 border-cyan-500/20 shadow-cyan-950/20'
+            <div className={`p-6 rounded-3xl border shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 transition-colors ${
+              isLightMode ? 'bg-white border-cyan-200 shadow-cyan-500/5 text-slate-800' : 'bg-slate-900/80 border-cyan-500/20 shadow-cyan-950/20 text-white'
             }`}>
               <div className="flex items-center gap-4">
-                <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                <div className={`p-3.5 rounded-2xl border ${
+                  isLightMode ? 'bg-cyan-50 border-cyan-200 text-cyan-600' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                }`}>
                   <Network className="w-8 h-8 animate-pulse" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                    <span>{isRtl ? 'مدیریت و راه‌اندازی VPN و پروکسی سرور' : 'VPN & Proxy Services Management'}</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <span>{isRtl ? 'مدیریت و اتصال VPN و پروکسی سرور' : 'Windows-Like VPN & Proxy Client Connections'}</span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                      isLightMode ? 'bg-cyan-100 text-cyan-800 border-cyan-300' : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                    }`}>
                       SSTP / L2TP / PPTP / SOCKS5
                     </span>
                   </h2>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
                     {isRtl 
-                      ? 'نصب خودکار پکیج‌های پیش‌نیاز سرور، پیکربندی پروتکل‌های ارتباطی و محافظت از روت پنل جهت جلوگیری از قطعی دسترسی' 
-                      : 'Automated package setup, protocol management, and anti-lockout route protection for remote server links.'}
+                      ? 'ایجاد و پیکربندی کانکشن‌های وی‌پی‌ان سرور مقصد با امکان اتصال/قطع سریع، عدم نیاز به گواهی SSL در حالت SSTP (مشابه ویندوز) و محافظت از روت پنل' 
+                      : 'Windows-style VPN client profile manager with instant Connect/Disconnect, SSTP SSL bypass, and panel anti-lockout protection.'}
                   </p>
                 </div>
               </div>
@@ -4627,42 +4788,63 @@ export default function ReportingPanel({
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
+                  onClick={handleOpenAddConnModal}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{isRtl ? 'ایجاد کانکشن جدید (New Connection)' : 'New Connection Profile'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => handleInstallVpnPackages()}
                   disabled={isDeployingPackages}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                    isLightMode ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                  }`}
                 >
-                  <Server className="w-4 h-4" />
-                  <span>{isRtl ? 'نصب پکیج‌های پیش‌نیاز روی سرور مقصد' : 'Install Packages on Target Server'}</span>
+                  <Server className="w-4 h-4 text-cyan-500" />
+                  <span>{isRtl ? 'نصب پکیج‌های پیش‌نیاز سرور مقصد' : 'Install Target Server Packages'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleTestPanelRoute}
                   disabled={isTestingRoute}
-                  className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    isLightMode ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                  }`}
                 >
-                  {isTestingRoute ? <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" /> : <Zap className="w-4 h-4 text-cyan-400" />}
+                  {isTestingRoute ? <RefreshCw className="w-4 h-4 animate-spin text-cyan-500" /> : <Zap className="w-4 h-4 text-cyan-500" />}
                   <span>{isRtl ? 'تست پایداری مسیر پنل' : 'Test Direct Panel Route'}</span>
                 </button>
               </div>
             </div>
 
             {/* Anti-Lockout / Route Protection Banner */}
-            <div className="p-5 rounded-3xl bg-slate-950/60 border border-emerald-500/30 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className={`p-5 rounded-3xl border shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${
+              isLightMode ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-emerald-500/5' : 'bg-slate-950/60 border-emerald-500/30 text-white shadow-lg'
+            }`}>
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <div className={`p-2.5 rounded-xl border ${
+                  isLightMode ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                }`}>
                   <Radio className="w-6 h-6 animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-emerald-300 flex items-center gap-2">
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLightMode ? 'text-emerald-900' : 'text-emerald-300'}`}>
                     <span>{isRtl ? 'محافظت از روت پنل مدیریت (Anti-Lockout Protection)' : 'Panel Route Anti-Lockout Protection'}</span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                      vpnProxySettings?.routeProtectionEnabled 
+                        ? (isLightMode ? 'bg-emerald-200 text-emerald-900 border border-emerald-400' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30')
+                        : (isLightMode ? 'bg-slate-200 text-slate-700' : 'bg-slate-800 text-slate-400')
+                    }`}>
                       {vpnProxySettings?.routeProtectionEnabled ? (isRtl ? 'فعال' : 'ACTIVE') : (isRtl ? 'غیرفعال' : 'INACTIVE')}
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className={`text-xs mt-0.5 ${isLightMode ? 'text-emerald-800' : 'text-slate-400'}`}>
                     {isRtl 
-                      ? 'با فعال بودن این گزینه، روت ارتباطی پنل مدیریت (ای‌پی پنل) به صورت مستقیم در جدول مسیربندی سرور تعریف شده تا اتصال شما به پنل پس از اتصال وی‌پی‌ان هرگز قطع نشود.' 
+                      ? 'با فعال بودن این گزینه، استثنای روت پنل مدیریت به جدول مسیربندی اضافه می‌شود تا هنگام اتصال/قطع تونل‌های VPN، ارتباط شما با این پنل هرگز قطعی پیدا نکند.' 
                       : 'Ensures direct static bypass routes are added so your connection to this admin panel stays active when VPN tunnels connect.'}
                   </p>
                 </div>
@@ -4676,212 +4858,448 @@ export default function ReportingPanel({
                     onChange={(e) => handleToggleRouteProtection(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                 </label>
               </div>
             </div>
 
             {/* Test Route Result Alert */}
             {routeTestResult && (
-              <div className="p-4 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 text-xs text-cyan-200 flex items-center justify-between">
+              <div className={`p-4 rounded-2xl border text-xs flex items-center justify-between transition-colors ${
+                isLightMode ? 'bg-cyan-50 border-cyan-300 text-cyan-900' : 'bg-cyan-950/40 border-cyan-500/30 text-cyan-200'
+              }`}>
                 <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-cyan-400" />
+                  <Zap className="w-4 h-4 text-cyan-600" />
                   <span>{routeTestResult.message} (Latency: {routeTestResult.latencyMs}ms)</span>
                 </div>
-                <button onClick={() => setRouteTestResult(null)} className="text-slate-400 hover:text-white">✕</button>
+                <button onClick={() => setRouteTestResult(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
               </div>
             )}
 
-            {/* VPN Protocols Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* PPTP */}
-              <div className="p-5 rounded-3xl bg-slate-900/60 border border-white/10 hover:border-cyan-500/30 transition-all space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 font-bold text-xs">PPTP</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">PPTP VPN</h4>
-                      <p className="text-[11px] text-slate-400">Point-to-Point Tunneling</p>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    vpnProxySettings?.protocols?.pptp?.status === 'running' 
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+            {/* SECTION 1: WINDOWS-LIKE CONFIGURED CLIENT CONNECTIONS */}
+            <div className={`p-6 rounded-3xl border space-y-6 transition-colors ${
+              isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-slate-900/60 border-white/10 text-white'
+            }`}>
+              <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4 ${
+                isLightMode ? 'border-slate-200' : 'border-white/10'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-2xl border ${
+                    isLightMode ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-blue-500/20 border-blue-500/30 text-blue-400'
                   }`}>
-                    {vpnProxySettings?.protocols?.pptp?.status || 'stopped'}
-                  </span>
+                    <Wifi className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold flex items-center gap-2">
+                      <span>{isRtl ? 'کانکشن‌های VPN و پروکسی (Windows VPN Profiles)' : 'Configured VPN & Proxy Profiles'}</span>
+                      <span className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold ${
+                        isLightMode ? 'bg-slate-100 text-slate-700 border border-slate-300' : 'bg-white/10 text-slate-300'
+                      }`}>
+                        {vpnClientConnections.length} {isRtl ? 'کانکشن' : 'Profiles'}
+                      </span>
+                    </h3>
+                    <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {isRtl ? 'مشاهده، ویرایش، اتصال یا قطع اتصال مستقیم کانکشن‌های SSTP, L2TP, PPTP, SOCKS5' : 'Connect, disconnect, or edit client connections in one click.'}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-2 text-xs text-slate-300 bg-black/30 p-3 rounded-2xl border border-white/5">
-                  <div className="flex justify-between"><span className="text-slate-500">Port:</span><span className="font-mono text-cyan-300">{vpnProxySettings?.protocols?.pptp?.port || 1723}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Subnet:</span><span className="font-mono text-cyan-300">{vpnProxySettings?.protocols?.pptp?.subnet || '10.8.0.0/24'}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Package Installed:</span><span className="font-mono text-emerald-400">Yes (pptpd)</span></div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    onClick={() => handleVpnServiceAction('pptp', 'restart')}
-                    className="flex-1 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 transition-all"
-                  >
-                    {isRtl ? 'راه‌اندازی مجدد' : 'Restart'}
-                  </button>
-                  <button
-                    onClick={() => handleVpnServiceAction('pptp', vpnProxySettings?.protocols?.pptp?.status === 'running' ? 'stop' : 'start')}
-                    className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                      vpnProxySettings?.protocols?.pptp?.status === 'running'
-                        ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30'
-                        : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30'
-                    }`}
-                  >
-                    {vpnProxySettings?.protocols?.pptp?.status === 'running' ? (isRtl ? 'توقف' : 'Stop') : (isRtl ? 'شروع' : 'Start')}
-                  </button>
-                </div>
+                <button
+                  onClick={handleOpenAddConnModal}
+                  className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{isRtl ? 'افزودن کانکشن' : 'Add Connection'}</span>
+                </button>
               </div>
 
-              {/* L2TP / IPsec */}
-              <div className="p-5 rounded-3xl bg-slate-900/60 border border-white/10 hover:border-cyan-500/30 transition-all space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 font-bold text-xs">L2TP</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">L2TP / IPsec</h4>
-                      <p className="text-[11px] text-slate-400">Layer 2 Tunneling + PSK</p>
+              {/* Connections Grid */}
+              {vpnClientConnections.length === 0 ? (
+                <div className={`text-center py-12 rounded-2xl border ${
+                  isLightMode ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-black/30 border-white/5 text-slate-400'
+                }`}>
+                  <Network className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm font-semibold">{isRtl ? 'هیچ کانکشنی تعریف نشده است.' : 'No VPN or Proxy connection profiles created yet.'}</p>
+                  <p className="text-xs mt-1">{isRtl ? 'برای ایجاد کانکشن جدید مانند ویندوز، روی دکمه افزودن کانکشن کلیک کنید.' : 'Click "Add Connection" to setup SSTP, L2TP, or Proxy profile.'}</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {vpnClientConnections.map((conn) => {
+                    const isConnected = conn.status === 'connected';
+                    const isConnecting = isConnectingId === conn.id;
+
+                    return (
+                      <div
+                        key={conn.id}
+                        className={`p-5 rounded-2xl border transition-all space-y-4 flex flex-col justify-between ${
+                          isConnected
+                            ? (isLightMode ? 'bg-emerald-50/80 border-emerald-300 shadow-md shadow-emerald-500/5' : 'bg-slate-900/90 border-emerald-500/40 shadow-lg shadow-emerald-950/20')
+                            : (isLightMode ? 'bg-slate-50/80 border-slate-200 hover:border-slate-300' : 'bg-black/40 border-white/10 hover:border-white/20')
+                        }`}
+                      >
+                        {/* Header info */}
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h4 className={`text-sm font-bold flex items-center gap-2 ${
+                                isLightMode ? 'text-slate-900' : 'text-white'
+                              }`}>
+                                <span>{conn.name}</span>
+                              </h4>
+                              <p className={`text-[11px] font-mono mt-0.5 dir-ltr text-right rtl:text-left ${
+                                isLightMode ? 'text-slate-600' : 'text-slate-400'
+                              }`}>
+                                {conn.serverHost}:{conn.port}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold font-mono uppercase ${
+                                conn.protocol === 'sstp'
+                                  ? (isLightMode ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30')
+                                  : conn.protocol === 'l2tp'
+                                  ? (isLightMode ? 'bg-indigo-100 text-indigo-800 border border-indigo-300' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30')
+                                  : conn.protocol === 'pptp'
+                                  ? (isLightMode ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30')
+                                  : (isLightMode ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30')
+                              }`}>
+                                {conn.protocol}
+                              </span>
+
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isConnected
+                                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                  : (isLightMode ? 'bg-slate-200 text-slate-600' : 'bg-slate-800 text-slate-400')
+                              }`}>
+                                {isConnected ? (isRtl ? 'متصل' : 'Connected') : (isRtl ? 'قطع' : 'Disconnected')}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Detail Badges */}
+                          <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                            isLightMode ? 'bg-white border-slate-200 text-slate-700' : 'bg-slate-950/60 border-white/5 text-slate-300'
+                          }`}>
+                            <div className="flex justify-between items-center">
+                              <span className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{isRtl ? 'نام کاربری:' : 'User:'}</span>
+                              <span className="font-mono font-semibold text-cyan-600 dark:text-cyan-300">{conn.username}</span>
+                            </div>
+
+                            {conn.protocol === 'sstp' && conn.ignoreCertErrors && (
+                              <div className="flex justify-between items-center text-[10px] pt-1 border-t border-slate-200 dark:border-white/5">
+                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                  <ShieldCheck className="w-3 h-3" />
+                                  <span>{isRtl ? 'بدون نیاز به SSL (مشابه ویندوز)' : 'Windows SSTP No Cert Required'}</span>
+                                </span>
+                              </div>
+                            )}
+
+                            {conn.protocol === 'l2tp' && conn.presharedKey && (
+                              <div className="flex justify-between items-center text-[10px] pt-1 border-t border-slate-200 dark:border-white/5">
+                                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>PSK Key:</span>
+                                <span className="font-mono text-indigo-600 dark:text-indigo-300">••••••••</span>
+                              </div>
+                            )}
+
+                            {isConnected && (
+                              <div className="pt-1.5 border-t border-slate-200 dark:border-white/5 space-y-1 text-[11px]">
+                                <div className="flex justify-between">
+                                  <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'IP اختصاصی تونل:' : 'Tunnel IP:'}</span>
+                                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{conn.assignedIp || '10.10.0.12'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'پینگ تا سرور:' : 'Latency:'}</span>
+                                  <span className="font-mono text-cyan-600 dark:text-cyan-300">{conn.latencyMs} ms</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-white/5">
+                          {isConnected ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDisconnectTunnel(conn.id)}
+                              disabled={isConnecting}
+                              className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md shadow-rose-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              {isConnecting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                              <span>{isRtl ? 'قطع اتصال' : 'Disconnect'}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleConnectTunnel(conn.id)}
+                              disabled={isConnecting}
+                              className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              {isConnecting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                              <span>{isRtl ? 'اتصال (Connect)' : 'Connect'}</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditConnModal(conn)}
+                            className={`p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                              isLightMode ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                            }`}
+                            title={isRtl ? 'ویرایش کانکشن' : 'Edit Profile'}
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteConnProfile(conn.id)}
+                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30 text-xs font-semibold transition-all cursor-pointer"
+                            title={isRtl ? 'حذف کانکشن' : 'Delete Profile'}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* SECTION 2: TARGET SERVER VPN DAEMONS STATUS */}
+            <div className={`p-6 rounded-3xl border space-y-6 transition-colors ${
+              isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-slate-900/60 border-white/10 text-white'
+            }`}>
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Server className="w-5 h-5 text-cyan-500" />
+                <span>{isRtl ? 'سرویس‌های دیمون VPN سرور مقصد (Destination Server Services)' : 'Destination Server Daemon Services'}</span>
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* PPTP Daemon */}
+                <div className={`p-5 rounded-3xl border transition-all space-y-4 ${
+                  isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-white/10'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-blue-500/20 text-blue-500 font-bold text-xs">PPTP</div>
+                      <div>
+                        <h4 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>PPTP Service</h4>
+                        <p className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Point-to-Point Tunneling</p>
+                      </div>
                     </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      vpnProxySettings?.protocols?.pptp?.status === 'running' 
+                        ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
+                        : 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                    }`}>
+                      {vpnProxySettings?.protocols?.pptp?.status || 'stopped'}
+                    </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    vpnProxySettings?.protocols?.l2tp?.status === 'running' 
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+
+                  <div className={`space-y-2 text-xs p-3 rounded-2xl border ${
+                    isLightMode ? 'bg-white border-slate-200 text-slate-700' : 'bg-black/30 border-white/5 text-slate-300'
                   }`}>
-                    {vpnProxySettings?.protocols?.l2tp?.status || 'stopped'}
-                  </span>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Port:</span><span className="font-mono text-cyan-600 dark:text-cyan-300">{vpnProxySettings?.protocols?.pptp?.port || 1723}</span></div>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Subnet:</span><span className="font-mono text-cyan-600 dark:text-cyan-300">{vpnProxySettings?.protocols?.pptp?.subnet || '10.8.0.0/24'}</span></div>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Package:</span><span className="font-mono text-emerald-600 dark:text-emerald-400">pptpd</span></div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      onClick={() => handleVpnServiceAction('pptp', 'restart')}
+                      className={`flex-1 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                        isLightMode ? 'bg-white border-slate-300 hover:bg-slate-100 text-slate-800' : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
+                      }`}
+                    >
+                      {isRtl ? 'راه‌اندازی مجدد' : 'Restart'}
+                    </button>
+                    <button
+                      onClick={() => handleVpnServiceAction('pptp', vpnProxySettings?.protocols?.pptp?.status === 'running' ? 'stop' : 'start')}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        vpnProxySettings?.protocols?.pptp?.status === 'running'
+                          ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-600 dark:text-rose-300 border border-rose-500/30'
+                          : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
+                      }`}
+                    >
+                      {vpnProxySettings?.protocols?.pptp?.status === 'running' ? (isRtl ? 'توقف' : 'Stop') : (isRtl ? 'شروع' : 'Start')}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="space-y-2 text-xs text-slate-300 bg-black/30 p-3 rounded-2xl border border-white/5">
-                  <div className="flex justify-between"><span className="text-slate-500">Port:</span><span className="font-mono text-cyan-300">{vpnProxySettings?.protocols?.l2tp?.port || 1701}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">IPsec PSK Key:</span><span className="font-mono text-cyan-300">{vpnProxySettings?.protocols?.l2tp?.ipsecKey || 'MatrixPsk2026!'}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Package Installed:</span><span className="font-mono text-emerald-400">Yes (xl2tpd)</span></div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    onClick={() => handleVpnServiceAction('l2tp', 'restart')}
-                    className="flex-1 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 transition-all"
-                  >
-                    {isRtl ? 'راه‌اندازی مجدد' : 'Restart'}
-                  </button>
-                  <button
-                    onClick={() => handleVpnServiceAction('l2tp', vpnProxySettings?.protocols?.l2tp?.status === 'running' ? 'stop' : 'start')}
-                    className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                      vpnProxySettings?.protocols?.l2tp?.status === 'running'
-                        ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30'
-                        : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30'
-                    }`}
-                  >
-                    {vpnProxySettings?.protocols?.l2tp?.status === 'running' ? (isRtl ? 'توقف' : 'Stop') : (isRtl ? 'شروع' : 'Start')}
-                  </button>
-                </div>
-              </div>
-
-              {/* SSTP */}
-              <div className="p-5 rounded-3xl bg-slate-900/60 border border-white/10 hover:border-cyan-500/30 transition-all space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 font-bold text-xs">SSTP</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">SSTP VPN (SSL)</h4>
-                      <p className="text-[11px] text-slate-400">Secure Socket Tunneling (HTTPS)</p>
+                {/* L2TP / IPsec Daemon */}
+                <div className={`p-5 rounded-3xl border transition-all space-y-4 ${
+                  isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-white/10'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-500 font-bold text-xs">L2TP</div>
+                      <div>
+                        <h4 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>L2TP / IPsec</h4>
+                        <p className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Layer 2 + PSK</p>
+                      </div>
                     </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      vpnProxySettings?.protocols?.l2tp?.status === 'running' 
+                        ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
+                        : 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                    }`}>
+                      {vpnProxySettings?.protocols?.l2tp?.status || 'stopped'}
+                    </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    vpnProxySettings?.protocols?.sstp?.status === 'running' 
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+
+                  <div className={`space-y-2 text-xs p-3 rounded-2xl border ${
+                    isLightMode ? 'bg-white border-slate-200 text-slate-700' : 'bg-black/30 border-white/5 text-slate-300'
                   }`}>
-                    {vpnProxySettings?.protocols?.sstp?.status || 'stopped'}
-                  </span>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Port:</span><span className="font-mono text-cyan-600 dark:text-cyan-300">{vpnProxySettings?.protocols?.l2tp?.port || 1701}</span></div>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>IPsec Key:</span><span className="font-mono text-cyan-600 dark:text-cyan-300">{vpnProxySettings?.protocols?.l2tp?.ipsecKey || 'MatrixPsk2026!'}</span></div>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Package:</span><span className="font-mono text-emerald-600 dark:text-emerald-400">xl2tpd</span></div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      onClick={() => handleVpnServiceAction('l2tp', 'restart')}
+                      className={`flex-1 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                        isLightMode ? 'bg-white border-slate-300 hover:bg-slate-100 text-slate-800' : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
+                      }`}
+                    >
+                      {isRtl ? 'راه‌اندازی مجدد' : 'Restart'}
+                    </button>
+                    <button
+                      onClick={() => handleVpnServiceAction('l2tp', vpnProxySettings?.protocols?.l2tp?.status === 'running' ? 'stop' : 'start')}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        vpnProxySettings?.protocols?.l2tp?.status === 'running'
+                          ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-600 dark:text-rose-300 border border-rose-500/30'
+                          : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
+                      }`}
+                    >
+                      {vpnProxySettings?.protocols?.l2tp?.status === 'running' ? (isRtl ? 'توقف' : 'Stop') : (isRtl ? 'شروع' : 'Start')}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="space-y-2 text-xs text-slate-300 bg-black/30 p-3 rounded-2xl border border-white/5">
-                  <div className="flex justify-between"><span className="text-slate-500">Port:</span><span className="font-mono text-cyan-300">{vpnProxySettings?.protocols?.sstp?.port || 443}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">SSL Certificate:</span><span className="font-mono text-cyan-300">{vpnProxySettings?.protocols?.sstp?.certType || "Let's Encrypt"}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Package Installed:</span><span className="font-mono text-emerald-400">Yes (sstp-server)</span></div>
-                </div>
+                {/* SSTP Daemon */}
+                <div className={`p-5 rounded-3xl border transition-all space-y-4 ${
+                  isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-white/10'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 font-bold text-xs">SSTP</div>
+                      <div>
+                        <h4 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>SSTP Server</h4>
+                        <p className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>SSL / HTTPS Tunneling</p>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      vpnProxySettings?.protocols?.sstp?.status === 'running' 
+                        ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
+                        : 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                    }`}>
+                      {vpnProxySettings?.protocols?.sstp?.status || 'stopped'}
+                    </span>
+                  </div>
 
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    onClick={() => handleVpnServiceAction('sstp', 'restart')}
-                    className="flex-1 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-200 transition-all"
-                  >
-                    {isRtl ? 'راه‌اندازی مجدد' : 'Restart'}
-                  </button>
-                  <button
-                    onClick={() => handleVpnServiceAction('sstp', vpnProxySettings?.protocols?.sstp?.status === 'running' ? 'stop' : 'start')}
-                    className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                      vpnProxySettings?.protocols?.sstp?.status === 'running'
-                        ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30'
-                        : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30'
-                    }`}
-                  >
-                    {vpnProxySettings?.protocols?.sstp?.status === 'running' ? (isRtl ? 'توقف' : 'Stop') : (isRtl ? 'شروع' : 'Start')}
-                  </button>
+                  <div className={`space-y-2 text-xs p-3 rounded-2xl border ${
+                    isLightMode ? 'bg-white border-slate-200 text-slate-700' : 'bg-black/30 border-white/5 text-slate-300'
+                  }`}>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Port:</span><span className="font-mono text-cyan-600 dark:text-cyan-300">{vpnProxySettings?.protocols?.sstp?.port || 443}</span></div>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Mode:</span><span className="font-mono text-emerald-600 dark:text-emerald-400">{isRtl ? 'کلاینت و سرور ویندوزی' : 'Windows Compat'}</span></div>
+                    <div className="flex justify-between"><span className={isLightMode ? 'text-slate-500' : 'text-slate-500'}>Package:</span><span className="font-mono text-emerald-600 dark:text-emerald-400">sstp-server</span></div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      onClick={() => handleVpnServiceAction('sstp', 'restart')}
+                      className={`flex-1 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                        isLightMode ? 'bg-white border-slate-300 hover:bg-slate-100 text-slate-800' : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
+                      }`}
+                    >
+                      {isRtl ? 'راه‌اندازی مجدد' : 'Restart'}
+                    </button>
+                    <button
+                      onClick={() => handleVpnServiceAction('sstp', vpnProxySettings?.protocols?.sstp?.status === 'running' ? 'stop' : 'start')}
+                      className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        vpnProxySettings?.protocols?.sstp?.status === 'running'
+                          ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-600 dark:text-rose-300 border border-rose-500/30'
+                          : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
+                      }`}
+                    >
+                      {vpnProxySettings?.protocols?.sstp?.status === 'running' ? (isRtl ? 'توقف' : 'Stop') : (isRtl ? 'شروع' : 'Start')}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* PROXY SERVICES SECTION */}
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-white/10 space-y-6">
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            {/* SECTION 3: PROXY SERVICES */}
+            <div className={`p-6 rounded-3xl border space-y-6 transition-colors ${
+              isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-slate-900/60 border-white/10 text-white'
+            }`}>
+              <div className={`flex items-center justify-between border-b pb-4 ${
+                isLightMode ? 'border-slate-200' : 'border-white/10'
+              }`}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <div className={`p-2.5 rounded-2xl border ${
+                    isLightMode ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                  }`}>
                     <Globe className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-white">{isRtl ? 'مدیریت پروکسی سرور (SOCKS5 & HTTP Proxy)' : 'Proxy Services (SOCKS5 & HTTP Proxy)'}</h3>
-                    <p className="text-xs text-slate-400">{isRtl ? 'تنظیم پروکسی با احراز هویت و پورت اختصاصی روی سرور' : 'Configure SOCKS5 and HTTP proxy instances with user auth'}</p>
+                    <h3 className="text-base font-bold">{isRtl ? 'مدیریت پروکسی سرور (SOCKS5 & HTTP Proxy)' : 'Proxy Services (SOCKS5 & HTTP Proxy)'}</h3>
+                    <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {isRtl ? 'تنظیم پروکسی با احراز هویت و پورت اختصاصی روی سرور مقصد' : 'Configure SOCKS5 and HTTP proxy instances with user auth'}
+                    </p>
                   </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* SOCKS5 */}
-                <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                <div className={`p-5 rounded-2xl border space-y-3 ${
+                  isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/10'
+                }`}>
                   <div className="flex justify-between items-center">
-                    <span className="font-bold text-sm text-white flex items-center gap-2">
-                      <Terminal className="w-4 h-4 text-amber-400" />
+                    <span className={`font-bold text-sm flex items-center gap-2 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                      <Terminal className="w-4 h-4 text-amber-500" />
                       <span>SOCKS5 Proxy</span>
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">Active</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">Active</span>
                   </div>
-                  <div className="text-xs text-slate-400 space-y-1">
-                    <p>{isRtl ? 'پورت ارتباطی:' : 'Port:'} <span className="font-mono text-amber-300">1080</span></p>
-                    <p>{isRtl ? 'نیازمند نام کاربر و پسورد:' : 'Authentication:'} <span className="text-emerald-400">{isRtl ? 'فعال' : 'Required'}</span></p>
+                  <div className={`text-xs space-y-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                    <p>{isRtl ? 'پورت ارتباطی:' : 'Port:'} <span className="font-mono font-bold text-amber-600 dark:text-amber-300">1080</span></p>
+                    <p>{isRtl ? 'احراز هویت:' : 'Authentication:'} <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{isRtl ? 'فعال' : 'Required'}</span></p>
                   </div>
                   <button
                     onClick={() => handleVpnServiceAction('socks5', 'restart')}
-                    className="w-full py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all cursor-pointer"
+                    className="w-full py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-300 text-xs font-bold transition-all cursor-pointer"
                   >
                     {isRtl ? 'راه‌اندازی مجدد پروکسی SOCKS5' : 'Restart SOCKS5 Proxy'}
                   </button>
                 </div>
 
                 {/* HTTP Proxy */}
-                <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                <div className={`p-5 rounded-2xl border space-y-3 ${
+                  isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/10'
+                }`}>
                   <div className="flex justify-between items-center">
-                    <span className="font-bold text-sm text-white flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-cyan-400" />
+                    <span className={`font-bold text-sm flex items-center gap-2 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                      <Globe className="w-4 h-4 text-cyan-500" />
                       <span>HTTP / HTTPS Proxy</span>
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-bold">Stopped</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      isLightMode ? 'bg-slate-200 text-slate-600' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      Stopped
+                    </span>
                   </div>
-                  <div className="text-xs text-slate-400 space-y-1">
-                    <p>{isRtl ? 'پورت ارتباطی:' : 'Port:'} <span className="font-mono text-cyan-300">8080</span></p>
-                    <p>{isRtl ? 'پکیج 3proxy / Squid:' : 'Proxy Engine:'} <span className="text-slate-300">3proxy</span></p>
+                  <div className={`text-xs space-y-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                    <p>{isRtl ? 'پورت ارتباطی:' : 'Port:'} <span className="font-mono text-cyan-600 dark:text-cyan-300">8080</span></p>
+                    <p>{isRtl ? 'موتور پروکسی:' : 'Proxy Engine:'} <span className={isLightMode ? 'text-slate-800' : 'text-slate-300'}>3proxy</span></p>
                   </div>
                   <button
                     onClick={() => handleVpnServiceAction('httpProxy', 'start')}
-                    className="w-full py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-bold transition-all cursor-pointer"
+                    className="w-full py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-600 dark:text-cyan-300 text-xs font-bold transition-all cursor-pointer"
                   >
                     {isRtl ? 'شروع سرویس HTTP Proxy' : 'Start HTTP Proxy'}
                   </button>
@@ -4889,47 +5307,57 @@ export default function ReportingPanel({
               </div>
             </div>
 
-            {/* VPN & PROXY USER ACCOUNTS */}
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-white/10 space-y-6">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-400" />
+            {/* SECTION 4: VPN & PROXY USER ACCOUNTS */}
+            <div className={`p-6 rounded-3xl border space-y-6 transition-colors ${
+              isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-slate-900/60 border-white/10 text-white'
+            }`}>
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-500" />
                 <span>{isRtl ? 'تعریف و مدیریت کاربران VPN و پروکسی' : 'VPN & Proxy User Credentials'}</span>
               </h3>
 
               {/* Create User Form */}
-              <form onSubmit={handleCreateVpnUser} className="p-4 rounded-2xl bg-black/40 border border-white/10 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <form onSubmit={handleCreateVpnUser} className={`p-4 rounded-2xl border grid grid-cols-1 md:grid-cols-4 gap-4 items-end ${
+                isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/10'
+              }`}>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">{isRtl ? 'نام کاربری:' : 'Username:'}</label>
+                  <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'نام کاربری:' : 'Username:'}</label>
                   <input
                     type="text"
                     value={newVpnUser}
                     onChange={(e) => setNewVpnUser(e.target.value)}
                     placeholder="e.g. client_vpn_1"
                     required
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-indigo-500/50"
+                    className={`w-full rounded-xl px-3 py-2 text-xs outline-none transition-colors ${
+                      isLightMode ? 'bg-white border border-slate-300 text-slate-900 focus:border-indigo-500' : 'bg-slate-900 border border-white/10 text-white focus:border-indigo-500/50'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">{isRtl ? 'کلمه عبور:' : 'Password:'}</label>
+                  <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'کلمه عبور:' : 'Password:'}</label>
                   <input
                     type="text"
                     value={newVpnPass}
                     onChange={(e) => setNewVpnPass(e.target.value)}
                     placeholder="Secret Password"
                     required
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-indigo-500/50"
+                    className={`w-full rounded-xl px-3 py-2 text-xs outline-none transition-colors ${
+                      isLightMode ? 'bg-white border border-slate-300 text-slate-900 focus:border-indigo-500' : 'bg-slate-900 border border-white/10 text-white focus:border-indigo-500/50'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">{isRtl ? 'IP اختصاصی (اختیاری):' : 'Assigned Static IP:'}</label>
+                  <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'IP اختصاصی (اختیاری):' : 'Assigned Static IP:'}</label>
                   <input
                     type="text"
                     value={newVpnAssignedIp}
                     onChange={(e) => setNewVpnAssignedIp(e.target.value)}
                     placeholder="e.g. 10.8.0.50"
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-indigo-500/50"
+                    className={`w-full rounded-xl px-3 py-2 text-xs outline-none transition-colors ${
+                      isLightMode ? 'bg-white border border-slate-300 text-slate-900 focus:border-indigo-500' : 'bg-slate-900 border border-white/10 text-white focus:border-indigo-500/50'
+                    }`}
                   />
                 </div>
 
@@ -4938,14 +5366,14 @@ export default function ReportingPanel({
                   disabled={isSavingVpnUser}
                   className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-500/20 cursor-pointer disabled:opacity-50"
                 >
-                  {isSavingVpnUser ? <RefreshCw className="w-4 h-4 animate-spin mx-auto" /> : (isRtl ? 'افزایش / ذخیره کاربر' : 'Add User')}
+                  {isSavingVpnUser ? <RefreshCw className="w-4 h-4 animate-spin mx-auto" /> : (isRtl ? 'ذخیره / تعریف کاربر' : 'Add User')}
                 </button>
               </form>
 
               {/* Users Table */}
               <div className="overflow-x-auto">
-                <table className="w-full text-xs text-right rtl:text-right text-slate-300">
-                  <thead className="bg-white/5 text-slate-400 font-bold uppercase">
+                <table className={`w-full text-xs text-right rtl:text-right ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                  <thead className={`font-bold uppercase ${isLightMode ? 'bg-slate-100 text-slate-600' : 'bg-white/5 text-slate-400'}`}>
                     <tr>
                       <th className="p-3 rounded-s-xl">{isRtl ? 'نام کاربر' : 'Username'}</th>
                       <th className="p-3">{isRtl ? 'رمز عبور' : 'Password'}</th>
@@ -4955,26 +5383,26 @@ export default function ReportingPanel({
                       <th className="p-3 text-center rounded-e-xl">{isRtl ? 'عملیات' : 'Actions'}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className={`divide-y ${isLightMode ? 'divide-slate-200' : 'divide-white/5'}`}>
                     {vpnProxyUsers.map((u, idx) => (
-                      <tr key={idx} className="hover:bg-white/5 transition-colors">
-                        <td className="p-3 font-bold text-white">{u.username}</td>
-                        <td className="p-3 font-mono text-cyan-300">{u.password}</td>
+                      <tr key={idx} className={isLightMode ? 'hover:bg-slate-50' : 'hover:bg-white/5'}>
+                        <td className={`p-3 font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{u.username}</td>
+                        <td className="p-3 font-mono text-cyan-600 dark:text-cyan-300">{u.password}</td>
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
                             {u.protocols?.map((p: string, pIdx: number) => (
-                              <span key={pIdx} className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] uppercase font-mono">
+                              <span key={pIdx} className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[10px] uppercase font-mono">
                                 {p}
                               </span>
                             ))}
                           </div>
                         </td>
-                        <td className="p-3 font-mono text-slate-400">{u.assignedIp || 'Dynamic'}</td>
-                        <td className="p-3 font-mono text-amber-400">{u.usage || '0 B'}</td>
+                        <td className={`p-3 font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>{u.assignedIp || 'Dynamic'}</td>
+                        <td className="p-3 font-mono text-amber-600 dark:text-amber-400">{u.usage || '0 B'}</td>
                         <td className="p-3 text-center">
                           <button
                             onClick={() => handleDeleteVpnUser(u.id)}
-                            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-600 dark:text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all cursor-pointer"
                           >
                             {isRtl ? 'حذف' : 'Delete'}
                           </button>
@@ -4986,16 +5414,246 @@ export default function ReportingPanel({
               </div>
             </div>
 
+            {/* MODAL: WINDOWS-LIKE VPN CONNECTION CREATOR */}
+            {showConnModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
+                <div className={`max-w-xl w-full rounded-3xl p-6 border shadow-2xl space-y-5 transition-all ${
+                  isLightMode ? 'bg-white border-slate-300 text-slate-800 shadow-2xl' : 'bg-slate-950 border-cyan-500/30 text-white shadow-2xl'
+                }`}>
+                  {/* Modal Header */}
+                  <div className={`flex items-center justify-between pb-4 border-b ${
+                    isLightMode ? 'border-slate-200' : 'border-white/10'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-500 border border-cyan-500/30">
+                        <Network className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold">
+                          {connForm.id ? (isRtl ? 'ویرایش کانکشن VPN' : 'Edit VPN Connection') : (isRtl ? 'ایجاد کانکشن VPN جدید (Windows-Like)' : 'New Windows-Like VPN Profile')}
+                        </h3>
+                        <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {isRtl ? 'پیکربندی مشخصات اتصال به سرور مقصد مشابه کانکشن‌های ویندوز' : 'Specify destination host, protocol, and login credentials'}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={() => setShowConnModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+                      <XCircle className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Modal Form */}
+                  <form onSubmit={handleSaveConnProfile} className="space-y-4">
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {isRtl ? 'نام کانکشن / عنوان:' : 'Connection Name:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={connForm.name}
+                        onChange={(e) => setConnForm({ ...connForm, name: e.target.value })}
+                        placeholder="e.g. Windows SSTP Gateway 1"
+                        required
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-xs outline-none transition-colors ${
+                          isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-cyan-600 focus:bg-white' : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                          {isRtl ? 'پروتکل ارتباطی:' : 'Protocol:'}
+                        </label>
+                        <select
+                          value={connForm.protocol}
+                          onChange={(e) => {
+                            const p = e.target.value;
+                            const defPort = p === 'sstp' ? 443 : p === 'l2tp' ? 1701 : p === 'pptp' ? 1723 : p === 'socks5' ? 1080 : 8080;
+                            setConnForm({ ...connForm, protocol: p, port: defPort });
+                          }}
+                          className={`w-full rounded-xl px-3.5 py-2.5 text-xs outline-none transition-colors ${
+                            isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-cyan-600' : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
+                          }`}
+                        >
+                          <option value="sstp">SSTP (SSL VPN - Windows Compatible)</option>
+                          <option value="l2tp">L2TP / IPsec (With Pre-Shared Key)</option>
+                          <option value="pptp">PPTP VPN</option>
+                          <option value="socks5">SOCKS5 Proxy</option>
+                          <option value="httpProxy">HTTP / HTTPS Proxy</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                          {isRtl ? 'پورت سرور:' : 'Server Port:'}
+                        </label>
+                        <input
+                          type="number"
+                          value={connForm.port}
+                          onChange={(e) => setConnForm({ ...connForm, port: e.target.value })}
+                          required
+                          className={`w-full rounded-xl px-3.5 py-2.5 text-xs font-mono outline-none transition-colors ${
+                            isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-cyan-600' : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {isRtl ? 'آدرس سرور مقصد (Domain or IP):' : 'Destination Server Host / IP:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={connForm.serverHost}
+                        onChange={(e) => setConnForm({ ...connForm, serverHost: e.target.value })}
+                        placeholder="185.220.101.5 or vpn.mydomain.com"
+                        required
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-xs font-mono outline-none transition-colors ${
+                          isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-cyan-600 focus:bg-white' : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                          {isRtl ? 'نام کاربری (Username):' : 'Username:'}
+                        </label>
+                        <input
+                          type="text"
+                          value={connForm.username}
+                          onChange={(e) => setConnForm({ ...connForm, username: e.target.value })}
+                          placeholder="vpn_user_1"
+                          required
+                          className={`w-full rounded-xl px-3.5 py-2.5 text-xs outline-none transition-colors ${
+                            isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-cyan-600' : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
+                          }`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                          {isRtl ? 'کلمه عبور (Password):' : 'Password:'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showModalPassword ? "text" : "password"}
+                            value={connForm.password}
+                            onChange={(e) => setConnForm({ ...connForm, password: e.target.value })}
+                            placeholder="Secret Password"
+                            required
+                            className={`w-full rounded-xl px-3.5 py-2.5 text-xs outline-none transition-colors ${
+                              isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-cyan-600' : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowModalPassword(!showModalPassword)}
+                            className="absolute top-1/2 -translate-y-1/2 left-3 rtl:right-auto rtl:left-3 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                          >
+                            {showModalPassword ? <Eye className="w-4 h-4 text-cyan-500" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {connForm.protocol === 'l2tp' && (
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                          {isRtl ? 'کلید اشتراکی IPsec Pre-Shared Key (PSK):' : 'IPsec Pre-Shared Key (PSK):'}
+                        </label>
+                        <input
+                          type="text"
+                          value={connForm.presharedKey}
+                          onChange={(e) => setConnForm({ ...connForm, presharedKey: e.target.value })}
+                          placeholder="e.g. MatrixPsk2026!"
+                          className={`w-full rounded-xl px-3.5 py-2.5 text-xs font-mono outline-none transition-colors ${
+                            isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-indigo-600' : 'bg-slate-900 border border-white/10 text-white focus:border-indigo-500/50'
+                          }`}
+                        />
+                      </div>
+                    )}
+
+                    {/* SSTP SSL Certification Requirement Bypass checkbox (Like Windows) */}
+                    {connForm.protocol === 'sstp' && (
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between transition-colors ${
+                        isLightMode ? 'bg-cyan-50/80 border-cyan-200' : 'bg-cyan-950/30 border-cyan-500/30'
+                      }`}>
+                        <div className="space-y-0.5">
+                          <label htmlFor="ignoreCertErrors" className={`text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                            isLightMode ? 'text-cyan-900' : 'text-cyan-200'
+                          }`}>
+                            <ShieldCheck className="w-4 h-4 text-cyan-600" />
+                            <span>{isRtl ? 'عدم نیاز به گواهی SSL (SSTP Certificate Bypass - مشابه ویندوز)' : 'Windows SSTP Certificate Bypass'}</span>
+                          </label>
+                          <p className={`text-[11px] ${isLightMode ? 'text-cyan-800' : 'text-slate-400'}`}>
+                            {isRtl 
+                              ? 'نیازی به اپلود یا وارد کردن فایل SSL Certificate نیست؛ متصل شدن صرفاً با نام کاربری و رمز انجام می‌شود.' 
+                              : 'Connects directly with username and password without forcing manual SSL certificate installation.'}
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          id="ignoreCertErrors"
+                          checked={connForm.ignoreCertErrors}
+                          onChange={(e) => setConnForm({ ...connForm, ignoreCertErrors: e.target.checked })}
+                          className="w-4 h-4 rounded text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <input
+                        type="checkbox"
+                        id="autoConnect"
+                        checked={connForm.autoConnect}
+                        onChange={(e) => setConnForm({ ...connForm, autoConnect: e.target.checked })}
+                        className="w-4 h-4 rounded text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                      />
+                      <label htmlFor="autoConnect" className={`text-xs font-medium cursor-pointer ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {isRtl ? 'اتصال خودکار هنگام بوت شدن پنل' : 'Auto-connect when panel boots'}
+                      </label>
+                    </div>
+
+                    <div className={`flex items-center justify-end gap-3 pt-4 border-t ${isLightMode ? 'border-slate-200' : 'border-white/10'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setShowConnModal(false)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                        }`}
+                      >
+                        {isRtl ? 'انصراف' : 'Cancel'}
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>{isRtl ? 'ذخیره کانکشن' : 'Save Profile'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
             {/* DEPLOY LOGS MODAL */}
             {showDeployLogsModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-                <div className="max-w-2xl w-full bg-slate-950 border border-cyan-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Terminal className="w-5 h-5 text-cyan-400" />
+                <div className={`max-w-2xl w-full border rounded-3xl p-6 shadow-2xl space-y-4 ${
+                  isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-950 border-cyan-500/30 text-white'
+                }`}>
+                  <div className={`flex items-center justify-between pb-3 border-b ${
+                    isLightMode ? 'border-slate-200' : 'border-white/10'
+                  }`}>
+                    <h3 className="text-base font-bold flex items-center gap-2">
+                      <Terminal className="w-5 h-5 text-cyan-500" />
                       <span>{isRtl ? 'لاگ نصب پکیج‌ها و تنظیمات سرور مقصد' : 'Target Server Deployment Logs'}</span>
                     </h3>
-                    <button onClick={() => setShowDeployLogsModal(false)} className="text-slate-400 hover:text-white">✕</button>
+                    <button onClick={() => setShowDeployLogsModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
                   </div>
 
                   <div className="bg-black p-4 rounded-2xl border border-white/10 font-mono text-xs text-emerald-400 max-h-80 overflow-y-auto space-y-1">
@@ -5008,7 +5666,9 @@ export default function ReportingPanel({
                   <div className="flex justify-end pt-2">
                     <button
                       onClick={() => setShowDeployLogsModal(false)}
-                      className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold cursor-pointer"
+                      className={`px-5 py-2 rounded-xl text-xs font-bold cursor-pointer ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-800' : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
                     >
                       {isRtl ? 'بستن' : 'Close'}
                     </button>

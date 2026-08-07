@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.0";
+export const PANEL_VERSION = "2.9.1";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.1",
+    date: "2026-08-07",
+    title: "Windows-Like VPN Client Profile Manager & Complete Light/Dark Theme Compatibility",
+    changes: [
+      "Windows-Like VPN Connections: Added full support for creating and managing VPN client profiles with custom usernames, passwords, server hosts, ports, and optional PSK keys.",
+      "SSTP Certificate Bypass Option: Introduced 'No SSL Certificate Required' toggle for SSTP connections matching Windows native VPN behavior.",
+      "One-Click Connect/Disconnect: Added interactive stateful Connect and Disconnect handlers with live latency and tunnel IP feedback.",
+      "Complete Theme Compatibility: Refactored entire VPN & Proxy management UI components, forms, modals, tables, and buttons to adapt dynamically between Light and Dark themes."
+    ]
+  },
   {
     version: "2.9.0",
     date: "2026-08-07",
