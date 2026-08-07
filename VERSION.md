@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.9.8** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.9** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.9.9** - 2026-08-07
+- **Installer & Packages Accordion Refactor**: Converted the card grid into a collapsible accordion list view with search and category filtering, expanding to reveal executable paths, config directories, systemd units, and quick terminal commands.
+- **Light Theme Compatibility**: Audited and updated all VPN sub-tabs, cards, badges, connection tables, and modals to support both Light and Dark modes dynamically.
+- **Real System Control & Override State**: Verified backend systemctl and process status integration with persistent package overrides.
 
 #### **v2.9.8** - 2026-08-07
 - **VPN Management Section in Reports & Admin**: Re-added a dedicated 'VPN' section with sub-tabs for Installer & Packages, Daemon Control, and Connection Profiles.

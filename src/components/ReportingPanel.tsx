@@ -55,7 +55,9 @@ import {
   Server,
   Terminal,
   Radio,
-  Zap
+  Zap,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -932,6 +934,12 @@ export default function ReportingPanel({
   const [osInfo, setOsInfo] = useState<any>(null);
   const [isLoadingVpnData, setIsLoadingVpnData] = useState<boolean>(false);
   const [pkgFilterCategory, setPkgFilterCategory] = useState<string>('all');
+  const [pkgSearchQuery, setPkgSearchQuery] = useState<string>('');
+  const [expandedPkgs, setExpandedPkgs] = useState<Record<string, boolean>>({ wireguard: true, v2ray: false });
+
+  const togglePkgAccordion = (type: string) => {
+    setExpandedPkgs(prev => ({ ...prev, [type]: !prev[type] }));
+  };
 
   // Installation Modal & Job Streaming State
   const [activeInstallJob, setActiveInstallJob] = useState<any>(null);
@@ -4749,29 +4757,41 @@ export default function ReportingPanel({
         {activeSubTab === 'vpn' && (
           <div className="space-y-6">
             {/* Header & Target Server Selector */}
-            <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/5 ${isRtl ? 'md:flex-row-reverse text-right' : 'text-left'}`}>
+            <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b ${
+              isLightMode ? 'border-slate-200' : 'border-white/5'
+            } ${isRtl ? 'md:flex-row-reverse text-right' : 'text-left'}`}>
               <div className="flex items-center gap-3">
-                <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                <div className={`p-3 rounded-2xl ${
+                  isLightMode ? 'bg-cyan-100 text-cyan-700 border border-cyan-200' : 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400'
+                }`}>
                   <Network className="w-6 h-6" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-display font-bold text-white">
+                  <h2 className={`text-xl font-display font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                     {isRtl ? 'مدیریت کلاینت و سرویس‌های VPN' : 'VPN Clients & Daemon Management'}
                   </h2>
-                  <p className="text-xs text-slate-400">
+                  <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                     {isRtl ? 'نصب، پیکربندی و مدیریت سرویس‌های VPN روی سرور ریموت انتخابی' : 'Install, configure, and control VPN protocols on target remote servers'}
                   </p>
                 </div>
               </div>
 
               {/* Target Server Selector */}
-              <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-2xl p-1.5">
-                <Server className="w-4 h-4 text-cyan-400 ml-2" />
-                <span className="text-xs text-slate-400 font-semibold">{isRtl ? 'سرور هدف:' : 'Target Server:'}</span>
+              <div className={`flex items-center gap-2 rounded-2xl p-1.5 border ${
+                isLightMode ? 'bg-slate-100 border-slate-200' : 'bg-black/30 border-white/10'
+              }`}>
+                <Server className={`w-4 h-4 ml-2 ${isLightMode ? 'text-cyan-600' : 'text-cyan-400'}`} />
+                <span className={`text-xs font-semibold ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                  {isRtl ? 'سرور هدف:' : 'Target Server:'}
+                </span>
                 <select
                   value={selectedTargetId}
                   onChange={(e) => setSelectedTargetId(e.target.value)}
-                  className="bg-black/50 text-xs font-bold text-cyan-300 rounded-xl px-3 py-1.5 border border-cyan-500/30 focus:outline-none"
+                  className={`text-xs font-bold rounded-xl px-3 py-1.5 border focus:outline-none ${
+                    isLightMode
+                      ? 'bg-white text-slate-800 border-slate-300 focus:border-cyan-600'
+                      : 'bg-black/50 text-cyan-300 border-cyan-500/30 focus:border-cyan-400'
+                  }`}
                 >
                   <option value="local">{isRtl ? 'سرور جاری (Local Host)' : 'Local Host Server'}</option>
                   {targetConnections.map((conn) => (
@@ -4785,14 +4805,16 @@ export default function ReportingPanel({
 
             {/* Active Installation Re-attachable Floating Banner */}
             {activeInstallJob && activeInstallJob.status === 'running' && !showInstallModal && (
-              <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-between animate-pulse">
+              <div className={`p-4 rounded-2xl border flex items-center justify-between animate-pulse ${
+                isLightMode ? 'bg-cyan-50 border-cyan-200' : 'bg-cyan-500/10 border-cyan-500/30'
+              }`}>
                 <div className="flex items-center gap-3">
-                  <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin" />
+                  <RefreshCw className={`w-5 h-5 animate-spin ${isLightMode ? 'text-cyan-600' : 'text-cyan-400'}`} />
                   <div>
-                    <h4 className="text-sm font-bold text-cyan-200">
+                    <h4 className={`text-sm font-bold ${isLightMode ? 'text-cyan-900' : 'text-cyan-200'}`}>
                       {isRtl ? `فرآیند نصب پکیج ${activeInstallJob.packageType.toUpperCase()} در حال اجراست...` : `Installation of ${activeInstallJob.packageType.toUpperCase()} is running in background...`}
                     </h4>
-                    <p className="text-xs text-cyan-400/80">
+                    <p className={`text-xs ${isLightMode ? 'text-cyan-700' : 'text-cyan-400/80'}`}>
                       {isRtl ? 'جهت مشاهده لاگ زنده و وضعیت لحظه‌ای کلیک کنید' : 'Click to re-open the installation stream modal'}
                     </p>
                   </div>
@@ -4808,13 +4830,19 @@ export default function ReportingPanel({
             )}
 
             {/* VPN Sub-Tabs Navigation */}
-            <div className="flex items-center gap-2 border-b border-white/10 pb-3 overflow-x-auto">
+            <div className={`flex items-center gap-2 border-b pb-3 overflow-x-auto ${
+              isLightMode ? 'border-slate-200' : 'border-white/10'
+            }`}>
               <button
                 onClick={() => setActiveVpnSubTab('packages')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeVpnSubTab === 'packages'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    ? isLightMode
+                      ? 'bg-cyan-600 text-white shadow-md'
+                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : isLightMode
+                      ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Download className="w-4 h-4" />
@@ -4825,8 +4853,12 @@ export default function ReportingPanel({
                 onClick={() => setActiveVpnSubTab('services')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeVpnSubTab === 'services'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    ? isLightMode
+                      ? 'bg-cyan-600 text-white shadow-md'
+                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : isLightMode
+                      ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Zap className="w-4 h-4" />
@@ -4837,8 +4869,12 @@ export default function ReportingPanel({
                 onClick={() => setActiveVpnSubTab('connections')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   activeVpnSubTab === 'connections'
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    ? isLightMode
+                      ? 'bg-cyan-600 text-white shadow-md'
+                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : isLightMode
+                      ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Globe className="w-4 h-4" />
@@ -4846,126 +4882,372 @@ export default function ReportingPanel({
               </button>
             </div>
 
-            {/* SUB-TAB 1: PACKAGE INSTALLER */}
+            {/* SUB-TAB 1: PACKAGE INSTALLER - ACCORDION LIST VIEW */}
             {activeVpnSubTab === 'packages' && (
               <div className="space-y-5">
                 {/* OS Environment Card */}
                 {osInfo && (
-                  <div className="p-4 rounded-2xl bg-black/30 border border-white/5 flex flex-wrap items-center justify-between gap-4">
+                  <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 ${
+                    isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'
+                  }`}>
                     <div className="flex items-center gap-3">
-                      <Server className="w-5 h-5 text-indigo-400" />
+                      <Server className={`w-5 h-5 ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`} />
                       <div>
-                        <span className="text-xs text-slate-400 block font-semibold">{isRtl ? 'سیستم‌عامل سرور هدف:' : 'Target Server OS:'}</span>
-                        <span className="text-sm font-bold text-white">{osInfo.distroName} ({osInfo.arch})</span>
+                        <span className={`text-xs block font-semibold ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {isRtl ? 'سیستم‌عامل سرور هدف:' : 'Target Server OS:'}
+                        </span>
+                        <span className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                          {osInfo.distroName} ({osInfo.arch})
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-xs font-mono text-slate-300">
-                      <span className="bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">Pkg: {osInfo.pkgManager}</span>
-                      <span className="bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">Kernel: {osInfo.kernel}</span>
+                    <div className="flex items-center gap-3 text-xs font-mono">
+                      <span className={`px-2.5 py-1 rounded-lg border ${
+                        isLightMode ? 'bg-white border-slate-200 text-slate-700' : 'bg-white/5 border-white/10 text-slate-300'
+                      }`}>Pkg: {osInfo.pkgManager}</span>
+                      <span className={`px-2.5 py-1 rounded-lg border ${
+                        isLightMode ? 'bg-white border-slate-200 text-slate-700' : 'bg-white/5 border-white/10 text-slate-300'
+                      }`}>Kernel: {osInfo.kernel}</span>
                     </div>
                   </div>
                 )}
 
-                {/* Filter Category Chips */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-                  {['all', 'Modern VPN', 'Anti-Censorship', 'SSL VPN', 'Enterprise VPN', 'Mesh VPN'].map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setPkgFilterCategory(cat)}
-                      className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                        pkgFilterCategory === cat
-                          ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20'
-                          : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
-                      }`}
-                    >
-                      {cat === 'all' ? (isRtl ? 'همه پروتکل‌ها' : 'All Protocols') : cat}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Packages Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {vpnPackages
-                    .filter((p) => pkgFilterCategory === 'all' || p.category === pkgFilterCategory)
-                    .map((pkg) => (
-                      <div
-                        key={pkg.type}
-                        className={`p-5 rounded-2xl border transition-all ${
-                          pkg.installed
-                            ? 'bg-cyan-950/20 border-cyan-500/30 hover:border-cyan-500/50'
-                            : 'bg-black/20 border-white/5 hover:border-white/15'
+                {/* Filter Search & Category Chips */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  {/* Category Chips */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                    {['all', 'Modern VPN', 'Anti-Censorship', 'SSL VPN', 'Enterprise VPN', 'Mesh VPN'].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setPkgFilterCategory(cat)}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap ${
+                          pkgFilterCategory === cat
+                            ? isLightMode
+                              ? 'bg-cyan-600 text-white shadow-sm'
+                              : 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20'
+                            : isLightMode
+                              ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-3 mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className={`p-2.5 rounded-xl border ${
-                              pkg.installed ? 'bg-cyan-500/20 border-cyan-500/30 text-cyan-300' : 'bg-white/5 border-white/10 text-slate-400'
-                            }`}>
-                              <Shield className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                                {pkg.name}
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400 font-mono">
-                                  {pkg.category}
+                        {cat === 'all' ? (isRtl ? 'همه پروتکل‌ها' : 'All Protocols') : cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Search Input */}
+                  <div className="relative w-full md:w-64">
+                    <Search className={`w-4 h-4 absolute top-2.5 ${isRtl ? 'right-3' : 'left-3'} ${
+                      isLightMode ? 'text-slate-400' : 'text-slate-500'
+                    }`} />
+                    <input
+                      type="text"
+                      value={pkgSearchQuery}
+                      onChange={(e) => setPkgSearchQuery(e.target.value)}
+                      placeholder={isRtl ? 'جستجوی پکیج...' : 'Search packages...'}
+                      className={`w-full text-xs rounded-xl py-2 ${isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'} border focus:outline-none ${
+                        isLightMode
+                          ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-600'
+                          : 'bg-black/40 border-white/10 text-white placeholder-slate-500 focus:border-cyan-500'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* ACCORDION LIST CONTAINER */}
+                <div className={`rounded-2xl border overflow-hidden ${
+                  isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/25 border-white/5'
+                }`}>
+                  <div className="divide-y divide-slate-200 dark:divide-white/5" dir={isRtl ? 'rtl' : 'ltr'}>
+                    {/* Accordion Table Header */}
+                    <div className={`hidden sm:flex items-center justify-between p-3.5 text-[11px] font-bold uppercase tracking-wider ${
+                      isLightMode ? 'bg-slate-100 text-slate-600 border-b border-slate-200' : 'bg-white/5 text-slate-400 border-b border-white/5'
+                    }`}>
+                      <div className="flex items-center gap-3 w-1/3">
+                        <span className="w-5"></span>
+                        <span>{isRtl ? 'پکیج و پروتکل' : 'Package & Protocol'}</span>
+                      </div>
+                      <div className="w-1/5">{isRtl ? 'دیناری / دمون' : 'Binary / Service'}</div>
+                      <div className="w-1/6">{isRtl ? 'نسخه' : 'Version'}</div>
+                      <div className="w-1/6">{isRtl ? 'وضعیت نصب' : 'Status'}</div>
+                      <div className="w-1/6 text-center">{isRtl ? 'عملیات' : 'Actions'}</div>
+                    </div>
+
+                    {/* Accordion List Items */}
+                    {vpnPackages
+                      .filter((p) => pkgFilterCategory === 'all' || p.category === pkgFilterCategory)
+                      .filter((p) => {
+                        if (!pkgSearchQuery) return true;
+                        const q = pkgSearchQuery.toLowerCase();
+                        return (
+                          p.name.toLowerCase().includes(q) ||
+                          p.type.toLowerCase().includes(q) ||
+                          p.binary.toLowerCase().includes(q) ||
+                          (p.description && p.description.toLowerCase().includes(q))
+                        );
+                      })
+                      .map((pkg) => {
+                        const isExpanded = !!expandedPkgs[pkg.type];
+                        return (
+                          <div key={pkg.type} className={`transition-colors ${
+                            isExpanded
+                              ? isLightMode
+                                ? 'bg-cyan-50/50'
+                                : 'bg-cyan-950/20'
+                              : isLightMode
+                                ? 'hover:bg-slate-50'
+                                : 'hover:bg-white/5'
+                          }`}>
+                            {/* Accordion Main Row */}
+                            <div
+                              onClick={() => togglePkgAccordion(pkg.type)}
+                              className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none"
+                            >
+                              {/* Title & Icon */}
+                              <div className="flex items-center gap-3 sm:w-1/3">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    togglePkgAccordion(pkg.type);
+                                  }}
+                                  className={`p-1 rounded-lg transition-colors ${
+                                    isLightMode ? 'hover:bg-slate-200 text-slate-600' : 'hover:bg-white/10 text-slate-400'
+                                  }`}
+                                >
+                                  {isExpanded ? <ChevronUp className="w-4 h-4 text-cyan-500" /> : <ChevronDown className="w-4 h-4" />}
+                                </button>
+
+                                <div className={`p-2 rounded-xl border ${
+                                  pkg.installed
+                                    ? isLightMode
+                                      ? 'bg-cyan-100 border-cyan-200 text-cyan-700'
+                                      : 'bg-cyan-500/20 border-cyan-500/30 text-cyan-300'
+                                    : isLightMode
+                                      ? 'bg-slate-100 border-slate-200 text-slate-500'
+                                      : 'bg-white/5 border-white/10 text-slate-400'
+                                }`}>
+                                  <Shield className="w-4 h-4" />
+                                </div>
+
+                                <div>
+                                  <h3 className={`text-xs font-bold flex items-center gap-2 ${
+                                    isLightMode ? 'text-slate-900' : 'text-white'
+                                  }`}>
+                                    {pkg.name}
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                                      isLightMode ? 'bg-slate-100 text-slate-600' : 'bg-white/5 text-slate-400'
+                                    }`}>
+                                      {pkg.category}
+                                    </span>
+                                  </h3>
+                                  <p className={`text-[11px] truncate max-w-xs ${
+                                    isLightMode ? 'text-slate-500' : 'text-slate-400'
+                                  }`}>
+                                    {pkg.description}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Binary / Service */}
+                              <div className="sm:w-1/5 text-xs font-mono">
+                                <span className={isLightMode ? 'text-slate-700 font-semibold' : 'text-slate-300'}>
+                                  {pkg.binary}
                                 </span>
-                              </h3>
-                              <p className="text-xs text-slate-400 mt-0.5">{pkg.description}</p>
+                                <span className={`block text-[10px] ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  {pkg.serviceName}
+                                </span>
+                              </div>
+
+                              {/* Version */}
+                              <div className="sm:w-1/6 text-xs font-mono">
+                                {pkg.installed ? (
+                                  <span className={isLightMode ? 'text-slate-800 font-semibold' : 'text-slate-300'}>
+                                    v{pkg.version || '1.0'}
+                                  </span>
+                                ) : (
+                                  <span className={isLightMode ? 'text-slate-400' : 'text-slate-600'}>—</span>
+                                )}
+                              </div>
+
+                              {/* Status Badge */}
+                              <div className="sm:w-1/6">
+                                {pkg.installed ? (
+                                  <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg ${
+                                    isLightMode
+                                      ? 'bg-emerald-100 border border-emerald-300 text-emerald-800'
+                                      : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                                  }`}>
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    {isRtl ? 'نصب شده' : 'Installed'}
+                                  </span>
+                                ) : (
+                                  <span className={`inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-lg ${
+                                    isLightMode
+                                      ? 'bg-slate-100 border border-slate-300 text-slate-600'
+                                      : 'bg-slate-800 border border-slate-700 text-slate-400'
+                                  }`}>
+                                    {isRtl ? 'نصب نشده' : 'Not Installed'}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="sm:w-1/6 flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                {pkg.installed ? (
+                                  <>
+                                    <button
+                                      onClick={() => handleViewServiceLogs(pkg.type, pkg.name)}
+                                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                        isLightMode
+                                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                                          : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                                      }`}
+                                    >
+                                      <Terminal className="w-3.5 h-3.5" />
+                                      <span>{isRtl ? 'لاگ' : 'Logs'}</span>
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleUninstallPackage(pkg.type)}
+                                      disabled={isServiceOpLoading === `uninstall_${pkg.type}`}
+                                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                        isLightMode
+                                          ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-200'
+                                          : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300'
+                                      }`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>{isRtl ? 'حذف' : 'Uninstall'}</span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    onClick={() => handleInstallPackage(pkg.type)}
+                                    disabled={installingType === pkg.type}
+                                    className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-cyan-500/20 cursor-pointer flex items-center gap-1.5"
+                                  >
+                                    {installingType === pkg.type ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                                    <span>{isRtl ? 'نصب' : 'Install'}</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          </div>
 
-                          {/* Installed Badge */}
-                          {pkg.installed ? (
-                            <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              {isRtl ? 'نصب شده' : 'Installed'}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-400">
-                              {isRtl ? 'نصب نشده' : 'Not Installed'}
-                            </span>
-                          )}
-                        </div>
+                            {/* Accordion Expanded Details */}
+                            {isExpanded && (
+                              <div className={`p-4 sm:p-5 border-t text-xs space-y-4 animate-fadeIn ${
+                                isLightMode
+                                  ? 'bg-slate-50 border-slate-200 text-slate-800'
+                                  : 'bg-black/40 border-white/5 text-slate-200'
+                              }`}>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  {/* Section 1: Directory Paths */}
+                                  <div className="space-y-2">
+                                    <h4 className={`font-bold flex items-center gap-1.5 ${
+                                      isLightMode ? 'text-slate-900' : 'text-cyan-300'
+                                    }`}>
+                                      <Server className="w-4 h-4" />
+                                      <span>{isRtl ? 'مسیرهای فایل و دمون' : 'System Paths & Daemon'}</span>
+                                    </h4>
+                                    <div className="space-y-1 font-mono text-[11px]">
+                                      <div className="flex justify-between">
+                                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Binary Exec:</span>
+                                        <span className={isLightMode ? 'text-slate-900 font-bold' : 'text-white'}>/usr/bin/{pkg.binary}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Config Dir:</span>
+                                        <span className={isLightMode ? 'text-slate-900 font-bold' : 'text-white'}>/etc/{pkg.type}/</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Systemd Unit:</span>
+                                        <span className={isLightMode ? 'text-slate-900 font-bold' : 'text-white'}>{pkg.serviceName}.service</span>
+                                      </div>
+                                    </div>
+                                  </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center justify-between pt-3 border-t border-white/5 text-xs">
-                          <span className="font-mono text-slate-400 text-[11px]">
-                            {pkg.installed ? `v${pkg.version || '1.0'}` : `Binary: ${pkg.binary}`}
-                          </span>
+                                  {/* Section 2: Dependencies */}
+                                  <div className="space-y-2">
+                                    <h4 className={`font-bold flex items-center gap-1.5 ${
+                                      isLightMode ? 'text-slate-900' : 'text-cyan-300'
+                                    }`}>
+                                      <ShieldCheck className="w-4 h-4" />
+                                      <span>{isRtl ? 'پروتکل و نیازمندی‌ها' : 'Protocols & Dependencies'}</span>
+                                    </h4>
+                                    <p className={`text-[11px] leading-relaxed ${
+                                      isLightMode ? 'text-slate-600' : 'text-slate-300'
+                                    }`}>
+                                      {pkg.description}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      <span className={`px-2 py-0.5 rounded font-mono text-[10px] ${
+                                        isLightMode ? 'bg-slate-200 text-slate-800' : 'bg-white/10 text-slate-300'
+                                      }`}>
+                                        tun/tap
+                                      </span>
+                                      <span className={`px-2 py-0.5 rounded font-mono text-[10px] ${
+                                        isLightMode ? 'bg-slate-200 text-slate-800' : 'bg-white/10 text-slate-300'
+                                      }`}>
+                                        iptables
+                                      </span>
+                                      <span className={`px-2 py-0.5 rounded font-mono text-[10px] ${
+                                        isLightMode ? 'bg-slate-200 text-slate-800' : 'bg-white/10 text-slate-300'
+                                      }`}>
+                                        systemd
+                                      </span>
+                                    </div>
+                                  </div>
 
-                          <div className="flex items-center gap-2">
-                            {pkg.installed ? (
-                              <>
-                                <button
-                                  onClick={() => handleViewServiceLogs(pkg.type, pkg.name)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
-                                >
-                                  <Terminal className="w-3.5 h-3.5" />
-                                  <span>{isRtl ? 'لاگ' : 'Logs'}</span>
-                                </button>
-                                <button
-                                  onClick={() => handleUninstallPackage(pkg.type)}
-                                  disabled={isServiceOpLoading === `uninstall_${pkg.type}`}
-                                  className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>{isRtl ? 'حذف' : 'Uninstall'}</span>
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => handleInstallPackage(pkg.type)}
-                                disabled={installingType === pkg.type}
-                                className="px-4 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-cyan-500/20 cursor-pointer flex items-center gap-1.5"
-                              >
-                                {installingType === pkg.type ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                                <span>{isRtl ? 'نصب پکیج' : 'Install Package'}</span>
-                              </button>
+                                  {/* Section 3: Commands & Service Control */}
+                                  <div className="space-y-2">
+                                    <h4 className={`font-bold flex items-center gap-1.5 ${
+                                      isLightMode ? 'text-slate-900' : 'text-cyan-300'
+                                    }`}>
+                                      <Terminal className="w-4 h-4" />
+                                      <span>{isRtl ? 'دستورات ترمینال' : 'System Terminal Snippets'}</span>
+                                    </h4>
+                                    <div className={`p-2.5 rounded-xl font-mono text-[10px] overflow-x-auto ${
+                                      isLightMode ? 'bg-slate-200 text-slate-800 border border-slate-300' : 'bg-black/70 text-cyan-300 border border-white/10'
+                                    }`}>
+                                      <code>sudo systemctl status {pkg.serviceName}</code>
+                                    </div>
+
+                                    {pkg.installed && (
+                                      <div className="flex items-center gap-2 pt-1">
+                                        <button
+                                          onClick={() => handleServiceControl(pkg.type, 'start')}
+                                          disabled={pkg.status === 'running' || isServiceOpLoading === `${pkg.type}_start`}
+                                          className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                                        >
+                                          <Play className="w-3 h-3" />
+                                          <span>{isRtl ? 'استارت' : 'Start'}</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleServiceControl(pkg.type, 'stop')}
+                                          disabled={pkg.status !== 'running' || isServiceOpLoading === `${pkg.type}_stop`}
+                                          className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-700 dark:text-rose-300 font-bold text-[11px] transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                                        >
+                                          <Square className="w-3 h-3" />
+                                          <span>{isRtl ? 'استاپ' : 'Stop'}</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleServiceControl(pkg.type, 'restart')}
+                                          disabled={isServiceOpLoading === `${pkg.type}_restart`}
+                                          className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-300 font-bold text-[11px] transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                                        >
+                                          <RotateCcw className="w-3 h-3" />
+                                          <span>{isRtl ? 'ریستارت' : 'Restart'}</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
-                        </div>
-                      </div>
-                    ))}
+                        );
+                      })}
+                  </div>
                 </div>
               </div>
             )}
@@ -4977,35 +5259,43 @@ export default function ReportingPanel({
                   {vpnPackages
                     .filter((p) => p.installed)
                     .map((pkg) => (
-                      <div key={pkg.type} className="p-5 rounded-2xl bg-black/25 border border-white/5 space-y-4">
+                      <div key={pkg.type} className={`p-5 rounded-2xl border space-y-4 ${
+                        isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/25 border-white/5'
+                      }`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                            <div className={`p-2 rounded-xl border ${
+                              isLightMode ? 'bg-cyan-50 border-cyan-200 text-cyan-700' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                            }`}>
                               <Zap className="w-5 h-5" />
                             </div>
                             <div>
-                              <h3 className="text-sm font-bold text-white">{pkg.name}</h3>
-                              <p className="text-xs text-slate-400 font-mono">Service: {pkg.serviceName}</p>
+                              <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{pkg.name}</h3>
+                              <p className={`text-xs font-mono ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Service: {pkg.serviceName}</p>
                             </div>
                           </div>
 
                           <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 ${
                             pkg.status === 'running'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              ? isLightMode ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : isLightMode ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                           }`}>
-                            <span className={`w-2 h-2 rounded-full ${pkg.status === 'running' ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+                            <span className={`w-2 h-2 rounded-full ${pkg.status === 'running' ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
                             {pkg.status === 'running' ? (isRtl ? 'فعال (Running)' : 'RUNNING') : (isRtl ? 'غیرفعال (Stopped)' : 'STOPPED')}
                           </span>
                         </div>
 
                         {/* Controls */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/5">
+                        <div className={`flex flex-wrap items-center justify-between gap-2 pt-3 border-t ${
+                          isLightMode ? 'border-slate-200' : 'border-white/5'
+                        }`}>
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => handleServiceControl(pkg.type, 'start')}
                               disabled={pkg.status === 'running' || isServiceOpLoading === `${pkg.type}_start`}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1 ${
+                                isLightMode ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800' : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300'
+                              }`}
                             >
                               <Play className="w-3.5 h-3.5" />
                               <span>{isRtl ? 'استارت' : 'Start'}</span>
@@ -5014,7 +5304,9 @@ export default function ReportingPanel({
                             <button
                               onClick={() => handleServiceControl(pkg.type, 'stop')}
                               disabled={pkg.status !== 'running' || isServiceOpLoading === `${pkg.type}_stop`}
-                              className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1 ${
+                                isLightMode ? 'bg-rose-100 hover:bg-rose-200 text-rose-800' : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300'
+                              }`}
                             >
                               <Square className="w-3.5 h-3.5" />
                               <span>{isRtl ? 'استاپ' : 'Stop'}</span>
@@ -5023,7 +5315,9 @@ export default function ReportingPanel({
                             <button
                               onClick={() => handleServiceControl(pkg.type, 'restart')}
                               disabled={isServiceOpLoading === `${pkg.type}_restart`}
-                              className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1 ${
+                                isLightMode ? 'bg-cyan-100 hover:bg-cyan-200 text-cyan-800' : 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300'
+                              }`}
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
                               <span>{isRtl ? 'ریستارت' : 'Restart'}</span>
@@ -5032,7 +5326,9 @@ export default function ReportingPanel({
 
                           <button
                             onClick={() => handleViewServiceLogs(pkg.type, pkg.name)}
-                            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                            }`}
                           >
                             <Terminal className="w-3.5 h-3.5" />
                             <span>{isRtl ? 'مشاهده لاگ' : 'View Logs'}</span>
@@ -5048,16 +5344,20 @@ export default function ReportingPanel({
             {activeVpnSubTab === 'connections' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-bold text-white">
+                  <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                     {isRtl ? 'پروفایل‌های کانکشن VPN' : 'VPN Connection Profiles'}
                   </h3>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setShowImportConfigModal(true)}
-                      className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-bold transition-all border border-white/10 flex items-center gap-2 cursor-pointer"
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 cursor-pointer ${
+                        isLightMode
+                          ? 'bg-white hover:bg-slate-50 text-slate-800 border-slate-300 shadow-sm'
+                          : 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/10'
+                      }`}
                     >
-                      <UploadCloud className="w-4 h-4 text-cyan-400" />
+                      <UploadCloud className={`w-4 h-4 ${isLightMode ? 'text-cyan-600' : 'text-cyan-400'}`} />
                       <span>{isRtl ? 'وارد کردن فایل کانفیگ' : 'Import Config'}</span>
                     </button>
 
@@ -5085,9 +5385,13 @@ export default function ReportingPanel({
                 </div>
 
                 {/* Connections List Table */}
-                <div className="overflow-x-auto rounded-2xl border border-white/5 bg-black/25">
-                  <table className="w-full text-left text-xs text-slate-300" dir={isRtl ? 'rtl' : 'ltr'}>
-                    <thead className="bg-white/5 text-slate-400 uppercase text-[10px] font-mono tracking-wider">
+                <div className={`overflow-x-auto rounded-2xl border ${
+                  isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/25 border-white/5'
+                }`}>
+                  <table className={`w-full text-left text-xs ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`} dir={isRtl ? 'rtl' : 'ltr'}>
+                    <thead className={`uppercase text-[10px] font-mono tracking-wider ${
+                      isLightMode ? 'bg-slate-100 text-slate-600' : 'bg-white/5 text-slate-400'
+                    }`}>
                       <tr>
                         <th className="p-3.5">{isRtl ? 'نام کانکشن' : 'Connection Name'}</th>
                         <th className="p-3.5">{isRtl ? 'پروتکل' : 'Protocol'}</th>
@@ -5097,24 +5401,28 @@ export default function ReportingPanel({
                         <th className="p-3.5 text-center">{isRtl ? 'عملیات' : 'Actions'}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
+                    <tbody className={`divide-y ${isLightMode ? 'divide-slate-200' : 'divide-white/5'}`}>
                       {vpnClientConnections.map((conn) => (
-                        <tr key={conn.id} className="hover:bg-white/5 transition-colors">
-                          <td className="p-3.5 font-bold text-white">{conn.name}</td>
+                        <tr key={conn.id} className={`transition-colors ${isLightMode ? 'hover:bg-slate-50' : 'hover:bg-white/5'}`}>
+                          <td className={`p-3.5 font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{conn.name}</td>
                           <td className="p-3.5">
-                            <span className="px-2 py-0.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-mono uppercase">
+                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-mono uppercase ${
+                              isLightMode
+                                ? 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20'
+                            }`}>
                               {conn.protocol}
                             </span>
                           </td>
-                          <td className="p-3.5 font-mono text-slate-400">{conn.serverHost}:{conn.port}</td>
-                          <td className="p-3.5 font-mono text-slate-300">{conn.assignedIp || '—'}</td>
+                          <td className={`p-3.5 font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>{conn.serverHost}:{conn.port}</td>
+                          <td className={`p-3.5 font-mono ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{conn.assignedIp || '—'}</td>
                           <td className="p-3.5">
                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
                               conn.status === 'connected'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                ? isLightMode ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : isLightMode ? 'bg-slate-100 text-slate-600 border border-slate-300' : 'bg-slate-800 text-slate-400 border border-slate-700'
                             }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${conn.status === 'connected' ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+                              <span className={`w-1.5 h-1.5 rounded-full ${conn.status === 'connected' ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'}`} />
                               {conn.status === 'connected' ? (isRtl ? 'متصل' : 'CONNECTED') : (isRtl ? 'قطع' : 'DISCONNECTED')}
                             </span>
                           </td>
@@ -5124,7 +5432,9 @@ export default function ReportingPanel({
                                 <button
                                   onClick={() => handleDisconnectProfile(conn.id)}
                                   disabled={isConnectingId === conn.id}
-                                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold transition-all cursor-pointer flex items-center gap-1"
+                                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                    isLightMode ? 'bg-rose-100 hover:bg-rose-200 text-rose-800' : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300'
+                                  }`}
                                 >
                                   <Square className="w-3.5 h-3.5" />
                                   <span>{isRtl ? 'قطع' : 'Disconnect'}</span>
@@ -5133,7 +5443,9 @@ export default function ReportingPanel({
                                 <button
                                   onClick={() => handleConnectProfile(conn.id)}
                                   disabled={isConnectingId === conn.id}
-                                  className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold transition-all cursor-pointer flex items-center gap-1"
+                                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                    isLightMode ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800' : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300'
+                                  }`}
                                 >
                                   {isConnectingId === conn.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                                   <span>{isRtl ? 'اتصال' : 'Connect'}</span>
@@ -5142,7 +5454,9 @@ export default function ReportingPanel({
 
                               <button
                                 onClick={() => handleDeleteConnectionProfile(conn.id)}
-                                className="p-1.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-all cursor-pointer"
+                                className={`p-1.5 rounded-xl transition-all cursor-pointer ${
+                                  isLightMode ? 'hover:bg-rose-100 text-slate-500 hover:text-rose-700' : 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-300'
+                                }`}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -5160,21 +5474,29 @@ export default function ReportingPanel({
 
         {/* INSTALLATION STREAM & LOGS MODAL */}
         {showInstallModal && activeInstallJob && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-            <div className="max-w-2xl w-full rounded-3xl p-6 border border-cyan-500/30 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 backdrop-blur-md animate-fadeIn ${
+            isLightMode ? 'bg-slate-900/40' : 'bg-slate-950/80'
+          }`}>
+            <div className={`max-w-2xl w-full rounded-3xl p-6 border shadow-2xl space-y-4 ${
+              isLightMode ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-950 border-cyan-500/30 text-white'
+            }`} dir={isRtl ? "rtl" : "ltr"}>
+              <div className={`flex items-center justify-between pb-3 border-b ${
+                isLightMode ? 'border-slate-200' : 'border-white/10'
+              }`}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                  <div className={`p-2.5 rounded-2xl border ${
+                    isLightMode ? 'bg-cyan-100 text-cyan-700 border-cyan-200' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                  }`}>
                     <Terminal className="w-6 h-6" />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold flex items-center gap-2">
                       {isRtl ? `نصب پکیج ${activeInstallJob.packageType.toUpperCase()}` : `Installing ${activeInstallJob.packageType.toUpperCase()}`}
-                      {activeInstallJob.status === 'running' && <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />}
-                      {activeInstallJob.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                      {activeInstallJob.status === 'failed' && <XCircle className="w-4 h-4 text-rose-400" />}
+                      {activeInstallJob.status === 'running' && <RefreshCw className="w-4 h-4 text-cyan-500 animate-spin" />}
+                      {activeInstallJob.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                      {activeInstallJob.status === 'failed' && <XCircle className="w-4 h-4 text-rose-500" />}
                     </h3>
-                    <p className="text-xs text-slate-400 font-mono">
+                    <p className={`text-xs font-mono ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                       Target: {activeInstallJob.targetId} | Job ID: {activeInstallJob.id}
                     </p>
                   </div>
@@ -5182,14 +5504,16 @@ export default function ReportingPanel({
 
                 <button
                   onClick={() => setShowInstallModal(false)}
-                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                    isLightMode ? 'hover:bg-slate-100 text-slate-500' : 'hover:bg-white/10 text-slate-400 hover:text-white'
+                  }`}
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Terminal Logs Output */}
-              <div className="p-4 rounded-2xl bg-black/80 border border-cyan-500/20 font-mono text-xs text-cyan-300 h-64 overflow-y-auto space-y-1.5">
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-cyan-300 h-64 overflow-y-auto space-y-1.5">
                 {activeInstallJob.logs.map((log: string, idx: number) => (
                   <div key={idx} className="flex items-start gap-2">
                     <span className="text-slate-500 select-none">&gt;</span>
@@ -5202,7 +5526,7 @@ export default function ReportingPanel({
 
               {/* Status Indicator & Modal Dismiss */}
               <div className="flex items-center justify-between pt-2">
-                <span className="text-xs font-semibold text-slate-400">
+                <span className={`text-xs font-semibold ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
                   {activeInstallJob.status === 'running' && (isRtl ? 'در حال دریافت و نصب نیازمندی‌ها...' : 'Downloading and compiling dependencies...')}
                   {activeInstallJob.status === 'completed' && (isRtl ? 'نصب با موفقیت به پایان رسید!' : 'Installation completed successfully!')}
                   {activeInstallJob.status === 'failed' && (isRtl ? 'خطا در نصب پکیج.' : 'Installation failed.')}
@@ -5221,31 +5545,43 @@ export default function ReportingPanel({
 
         {/* SERVICE JOURNAL LOGS MODAL */}
         {showServiceLogModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-            <div className="max-w-2xl w-full rounded-3xl p-6 border border-white/10 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 backdrop-blur-md animate-fadeIn ${
+            isLightMode ? 'bg-slate-900/40' : 'bg-slate-950/80'
+          }`}>
+            <div className={`max-w-2xl w-full rounded-3xl p-6 border shadow-2xl space-y-4 ${
+              isLightMode ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-950 border-white/10 text-white'
+            }`} dir={isRtl ? "rtl" : "ltr"}>
+              <div className={`flex items-center justify-between pb-3 border-b ${
+                isLightMode ? 'border-slate-200' : 'border-white/10'
+              }`}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <div className={`p-2.5 rounded-2xl border ${
+                    isLightMode ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
+                  }`}>
                     <Terminal className="w-6 h-6" />
                   </div>
                   <h3 className="text-lg font-bold">{serviceLogTitle}</h3>
                 </div>
                 <button
                   onClick={() => setShowServiceLogModal(false)}
-                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                    isLightMode ? 'hover:bg-slate-100 text-slate-500' : 'hover:bg-white/10 text-slate-400 hover:text-white'
+                  }`}
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-4 rounded-2xl bg-black/90 border border-white/10 font-mono text-xs text-slate-300 h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-slate-300 h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                 {serviceLogContent}
               </div>
 
               <div className="flex justify-end">
                 <button
                   onClick={() => setShowServiceLogModal(false)}
-                  className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer"
+                  className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-800' : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
                 >
                   {isRtl ? 'بستن' : 'Close'}
                 </button>
@@ -5256,11 +5592,19 @@ export default function ReportingPanel({
 
         {/* NEW/EDIT VPN CONNECTION PROFILE MODAL */}
         {showConnModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-            <div className="max-w-lg w-full rounded-3xl p-6 border border-cyan-500/30 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 backdrop-blur-md animate-fadeIn ${
+            isLightMode ? 'bg-slate-900/40' : 'bg-slate-950/80'
+          }`}>
+            <div className={`max-w-lg w-full rounded-3xl p-6 border shadow-2xl space-y-4 ${
+              isLightMode ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-950 border-cyan-500/30 text-white'
+            }`} dir={isRtl ? "rtl" : "ltr"}>
+              <div className={`flex items-center justify-between pb-3 border-b ${
+                isLightMode ? 'border-slate-200' : 'border-white/10'
+              }`}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                  <div className={`p-2.5 rounded-2xl border ${
+                    isLightMode ? 'bg-cyan-100 text-cyan-700 border-cyan-200' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                  }`}>
                     <Globe className="w-6 h-6" />
                   </div>
                   <h3 className="text-lg font-bold">
@@ -5269,7 +5613,9 @@ export default function ReportingPanel({
                 </div>
                 <button
                   onClick={() => setShowConnModal(false)}
-                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                    isLightMode ? 'hover:bg-slate-100 text-slate-500' : 'hover:bg-white/10 text-slate-400 hover:text-white'
+                  }`}
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
@@ -5277,24 +5623,32 @@ export default function ReportingPanel({
 
               <form onSubmit={handleSaveConnectionProfile} className="space-y-4 text-xs">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'نام پروفایل:' : 'Profile Name:'}</label>
+                  <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'نام پروفایل:' : 'Profile Name:'}</label>
                   <input
                     type="text"
                     value={connForm.name}
                     onChange={(e) => setConnForm({ ...connForm, name: e.target.value })}
                     placeholder={isRtl ? 'مثلاً: Frankfurt WireGuard Server' : 'e.g. Frankfurt WireGuard Server'}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                    className={`w-full rounded-xl px-3.5 py-2.5 border focus:outline-none ${
+                      isLightMode
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                        : 'bg-black/40 border-white/10 text-white focus:border-cyan-500'
+                    }`}
                     required
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'پروتکل VPN:' : 'VPN Protocol:'}</label>
+                    <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'پروتکل VPN:' : 'VPN Protocol:'}</label>
                     <select
                       value={connForm.protocol}
                       onChange={(e) => setConnForm({ ...connForm, protocol: e.target.value })}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                      className={`w-full rounded-xl px-3.5 py-2.5 border focus:outline-none ${
+                        isLightMode
+                          ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                          : 'bg-black/40 border-white/10 text-white focus:border-cyan-500'
+                      }`}
                     >
                       <option value="wireguard">WireGuard</option>
                       <option value="v2ray">V2Ray / Xray (VLESS)</option>
@@ -5307,47 +5661,63 @@ export default function ReportingPanel({
                   </div>
 
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'پورت سرور:' : 'Server Port:'}</label>
+                    <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'پورت سرور:' : 'Server Port:'}</label>
                     <input
                       type="number"
                       value={connForm.port}
                       onChange={(e) => setConnForm({ ...connForm, port: parseInt(e.target.value) || 51820 })}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                      className={`w-full rounded-xl px-3.5 py-2.5 border focus:outline-none ${
+                        isLightMode
+                          ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                          : 'bg-black/40 border-white/10 text-white focus:border-cyan-500'
+                      }`}
                       required
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'آدرس سرور (IP یا Hostname):' : 'Server Host (IP or Domain):'}</label>
+                  <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'آدرس سرور (IP یا Hostname):' : 'Server Host (IP or Domain):'}</label>
                   <input
                     type="text"
                     value={connForm.serverHost}
                     onChange={(e) => setConnForm({ ...connForm, serverHost: e.target.value })}
                     placeholder="185.220.101.5 / vpn.example.com"
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono"
+                    className={`w-full rounded-xl px-3.5 py-2.5 border font-mono focus:outline-none ${
+                      isLightMode
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                        : 'bg-black/40 border-white/10 text-white focus:border-cyan-500'
+                    }`}
                     required
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'نام کاربری / UUID:' : 'Username / UUID:'}</label>
+                    <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'نام کاربری / UUID:' : 'Username / UUID:'}</label>
                     <input
                       type="text"
                       value={connForm.username}
                       onChange={(e) => setConnForm({ ...connForm, username: e.target.value })}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono"
+                      className={`w-full rounded-xl px-3.5 py-2.5 border font-mono focus:outline-none ${
+                        isLightMode
+                          ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                          : 'bg-black/40 border-white/10 text-white focus:border-cyan-500'
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'رمز عبور / Preshared Key:' : 'Password / PSK:'}</label>
+                    <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'رمز عبور / Preshared Key:' : 'Password / PSK:'}</label>
                     <input
                       type={showConnPassword ? 'text' : 'password'}
                       value={connForm.password || connForm.presharedKey}
                       onChange={(e) => setConnForm({ ...connForm, password: e.target.value, presharedKey: e.target.value })}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono"
+                      className={`w-full rounded-xl px-3.5 py-2.5 border font-mono focus:outline-none ${
+                        isLightMode
+                          ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                          : 'bg-black/40 border-white/10 text-white focus:border-cyan-500'
+                      }`}
                     />
                   </div>
                 </div>
@@ -5358,18 +5728,22 @@ export default function ReportingPanel({
                     id="autoConnectCheck"
                     checked={connForm.autoConnect}
                     onChange={(e) => setConnForm({ ...connForm, autoConnect: e.target.checked })}
-                    className="w-4 h-4 rounded bg-black/40 border-white/20 text-cyan-500 focus:ring-0"
+                    className="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-0"
                   />
-                  <label htmlFor="autoConnectCheck" className="text-slate-300 cursor-pointer">
+                  <label htmlFor="autoConnectCheck" className={`cursor-pointer ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
                     {isRtl ? 'اتصال خودکار هنگام بوت سیستم‌عامل' : 'Auto-connect on system boot'}
                   </label>
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+                <div className={`flex items-center justify-end gap-3 pt-4 border-t ${
+                  isLightMode ? 'border-slate-200' : 'border-white/10'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setShowConnModal(false)}
-                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold transition-all cursor-pointer"
+                    className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer ${
+                      isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/10 hover:bg-white/20 text-slate-300'
+                    }`}
                   >
                     {isRtl ? 'انصراف' : 'Cancel'}
                   </button>
@@ -5387,11 +5761,19 @@ export default function ReportingPanel({
 
         {/* IMPORT CONFIGURATION MODAL */}
         {showImportConfigModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-            <div className="max-w-md w-full rounded-3xl p-6 border border-cyan-500/30 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 backdrop-blur-md animate-fadeIn ${
+            isLightMode ? 'bg-slate-900/40' : 'bg-slate-950/80'
+          }`}>
+            <div className={`max-w-md w-full rounded-3xl p-6 border shadow-2xl space-y-4 ${
+              isLightMode ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-950 border-cyan-500/30 text-white'
+            }`} dir={isRtl ? "rtl" : "ltr"}>
+              <div className={`flex items-center justify-between pb-3 border-b ${
+                isLightMode ? 'border-slate-200' : 'border-white/10'
+              }`}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                  <div className={`p-2.5 rounded-2xl border ${
+                    isLightMode ? 'bg-cyan-100 text-cyan-700 border-cyan-200' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                  }`}>
                     <UploadCloud className="w-6 h-6" />
                   </div>
                   <h3 className="text-lg font-bold">
@@ -5400,7 +5782,9 @@ export default function ReportingPanel({
                 </div>
                 <button
                   onClick={() => setShowImportConfigModal(false)}
-                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                    isLightMode ? 'hover:bg-slate-100 text-slate-500' : 'hover:bg-white/10 text-slate-400 hover:text-white'
+                  }`}
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
@@ -5408,34 +5792,46 @@ export default function ReportingPanel({
 
               <form onSubmit={handleImportConfigSubmit} className="space-y-4 text-xs">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'نام کانکشن:' : 'Connection Profile Name:'}</label>
+                  <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'نام کانکشن:' : 'Connection Profile Name:'}</label>
                   <input
                     type="text"
                     value={importConfigName}
                     onChange={(e) => setImportConfigName(e.target.value)}
                     placeholder={isRtl ? 'مثلاً: Imported WireGuard Tunnel' : 'e.g. Imported WireGuard Tunnel'}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                    className={`w-full rounded-xl px-3.5 py-2.5 border focus:outline-none ${
+                      isLightMode
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                        : 'bg-black/40 border-white/10 text-white focus:border-cyan-500'
+                    }`}
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'محتوای فایل کانفیگ (.conf / .ovpn / vless://):' : 'Raw Config Text (.conf / .ovpn / vless://):'}</label>
+                  <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'محتوای فایل کانفیگ (.conf / .ovpn / vless://):' : 'Raw Config Text (.conf / .ovpn / vless://):'}</label>
                   <textarea
                     rows={6}
                     value={importConfigText}
                     onChange={(e) => setImportConfigText(e.target.value)}
                     placeholder="[Interface]\nPrivateKey = ...\nAddress = 10.8.0.2/24\n\n[Peer]\nPublicKey = ...\nEndpoint = 185.220.101.5:51820"
-                    className="w-full bg-black/60 border border-white/10 rounded-xl p-3 font-mono text-xs text-cyan-300 focus:outline-none focus:border-cyan-500"
+                    className={`w-full rounded-xl p-3 font-mono text-xs border focus:outline-none ${
+                      isLightMode
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
+                        : 'bg-black/60 border-white/10 text-cyan-300 focus:border-cyan-500'
+                    }`}
                     required
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                <div className={`flex items-center justify-end gap-3 pt-3 border-t ${
+                  isLightMode ? 'border-slate-200' : 'border-white/10'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setShowImportConfigModal(false)}
-                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold transition-all cursor-pointer"
+                    className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer ${
+                      isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/10 hover:bg-white/20 text-slate-300'
+                    }`}
                   >
                     {isRtl ? 'انصراف' : 'Cancel'}
                   </button>

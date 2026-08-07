@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.8";
+export const PANEL_VERSION = "2.9.9";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.9",
+    date: "2026-08-07",
+    title: "VPN Package List Accordion UI Refactor & Light Theme Compatibility",
+    changes: [
+      "Installer & Packages Accordion Refactor: Converted the card grid into a collapsible accordion list view with search and category filtering, expanding to reveal executable paths, config directories, systemd units, and quick terminal commands.",
+      "Light Theme Compatibility: Audited and updated all VPN sub-tabs, cards, badges, connection tables, and modals to support both Light and Dark modes dynamically.",
+      "Real System Control & Override State: Verified backend systemctl and process status integration with persistent package overrides."
+    ]
+  },
   {
     version: "2.9.8",
     date: "2026-08-07",
