@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.6";
+export const PANEL_VERSION = "2.9.7";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.7",
+    date: "2026-08-07",
+    title: "Complete Removal of VPN & Proxy Service Suite",
+    changes: [
+      "Removed Frontend UI: Completely removed the VPN & Proxy Services management subtab, connection modal, user credentials manager, and routing protection controls from ReportingPanel.",
+      "Removed Backend Endpoints: Eliminated all /api/vpn-proxy/* and /api/vpn-clients/* REST API endpoints, drivers, and package installers from server.ts.",
+      "Codebase Cleanup: Cleaned state variables, handler functions, and subtab navigation references."
+    ]
+  },
   {
     version: "2.9.6",
     date: "2026-08-07",
