@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.0";
+export const PANEL_VERSION = "2.10.1";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.1",
+    date: "2026-08-07",
+    title: "Remote SSH/Tunnel Execution for VPN Management & Target Server Routing",
+    changes: [
+      "Remote Server Command Execution: All VPN package status queries, installations, uninstalls, systemd service controls, and journalctl log retrievals now execute on the selected target remote server via active SSH/Tunnel connection.",
+      "Remote VPN Client Profiles: Client profile connections, disconnects, and configuration deployments now execute directly on the target remote server filesystem (/etc/wireguard, /etc/openvpn, /etc/xray).",
+      "Dynamic Target Resolution: Backend automatically resolves targetId from Connection Manager profiles, falling back to local host execution if target is local host."
+    ]
+  },
   {
     version: "2.10.0",
     date: "2026-08-07",

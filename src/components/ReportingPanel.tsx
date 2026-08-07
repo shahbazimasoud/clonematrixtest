@@ -1157,7 +1157,11 @@ export default function ReportingPanel({
     try {
       const res = await fetch(`/api/vpn-proxy/client-connections/${id}/connect`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();
@@ -1178,7 +1182,11 @@ export default function ReportingPanel({
     try {
       const res = await fetch(`/api/vpn-proxy/client-connections/${id}/disconnect`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` }
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();
@@ -1205,7 +1213,7 @@ export default function ReportingPanel({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify(connForm)
+        body: JSON.stringify({ ...connForm, targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();
@@ -1245,7 +1253,7 @@ export default function ReportingPanel({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ name: importConfigName.trim(), rawConfig: importConfigText.trim() })
+        body: JSON.stringify({ name: importConfigName.trim(), rawConfig: importConfigText.trim(), targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();

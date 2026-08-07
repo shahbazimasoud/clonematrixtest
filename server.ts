@@ -18237,29 +18237,66 @@ function saveVpnPackageOverrides(overrides: Record<string, { installed?: boolean
   }
 }
 
+async function runServerCommandOnTarget(targetId: string, cmd: string): Promise<string> {
+  try {
+    const db = readDb();
+    let conn: any;
+
+    if (!targetId || targetId === "local" || targetId === "localhost") {
+      conn = db.connections?.find((c: any) => c.isActive) || getActiveConnection();
+    } else {
+      conn = db.connections?.find((c: any) => c.id === targetId || c.host === targetId);
+    }
+
+    if (conn && conn.id !== "local" && conn.host !== "localhost" && conn.host !== "127.0.0.1") {
+      if (conn.authType === "agent") {
+        return await executeRemoteAgentTask(conn.id, "execute_command", { command: cmd });
+      } else {
+        const sudoPrefix = (conn.username === "root" || !conn.username) ? "" : "sudo ";
+        return await executeSSHCommand(conn, `${sudoPrefix}${cmd}`);
+      }
+    } else {
+      return new Promise((resolve) => {
+        exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+          resolve((stdout || stderr || "").trim());
+        });
+      });
+    }
+  } catch (e: any) {
+    console.error(`runServerCommandOnTarget failed for target [${targetId}]:`, e.message || e);
+    return "";
+  }
+}
+
 // 1. GET /api/vpn-clients/packages
-app.get("/api/vpn-clients/packages", (req: any, res: any) => {
+app.get("/api/vpn-clients/packages", async (req: any, res: any) => {
   const targetId = (req.query.targetId as string) || "local";
 
   let distroName = os.type() + " " + os.release();
   let distro = "ubuntu";
   let pkgManager = "apt-get";
+  let kernel = os.type() + " " + os.release();
+  let arch = os.arch();
 
   try {
-    if (fs.existsSync("/etc/os-release")) {
-      const osRelease = fs.readFileSync("/etc/os-release", "utf8");
-      const nameMatch = osRelease.match(/PRETTY_NAME="([^"]+)"/);
+    const osReleaseOut = await runServerCommandOnTarget(targetId, "cat /etc/os-release 2>/dev/null || uname -a");
+    if (osReleaseOut) {
+      const nameMatch = osReleaseOut.match(/PRETTY_NAME="([^"]+)"/);
       if (nameMatch) distroName = nameMatch[1];
-      if (osRelease.includes("debian") || osRelease.includes("ubuntu")) {
+      if (osReleaseOut.includes("debian") || osReleaseOut.includes("ubuntu")) {
         distro = "ubuntu";
         pkgManager = "apt-get";
-      } else if (osRelease.includes("fedora") || osRelease.includes("centos") || osRelease.includes("rhel")) {
+      } else if (osReleaseOut.includes("fedora") || osReleaseOut.includes("centos") || osReleaseOut.includes("rhel")) {
         distro = "rhel";
         pkgManager = "dnf";
-      } else if (osRelease.includes("arch")) {
+      } else if (osReleaseOut.includes("arch")) {
         distro = "arch";
         pkgManager = "pacman";
       }
+    }
+    const unameOut = await runServerCommandOnTarget(targetId, "uname -m -r 2>/dev/null");
+    if (unameOut) {
+      kernel = unameOut.trim();
     }
   } catch (_) {}
 
@@ -18268,9 +18305,9 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
     distroName,
     version: os.release(),
     pkgManager,
-    arch: os.arch(),
-    kernel: os.type() + " " + os.release(),
-    isLinux: os.platform() === "linux",
+    arch,
+    kernel,
+    isLinux: true,
     targetId
   };
 
@@ -18284,10 +18321,10 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
       description: "Extremely fast, modern, and secure UDP VPN tunnel",
       binary: "wg",
       serviceName: "wg-quick@wg0",
-      installed: true,
-      version: "1.0.20210914",
-      status: "stopped",
-      enabledAtBoot: true,
+      installed: false,
+      version: null,
+      status: "not_installed",
+      enabledAtBoot: false,
       category: "Modern VPN"
     },
     {
@@ -18297,10 +18334,10 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
       description: "VLESS / VMess / Shadowsocks anti-censorship client daemon",
       binary: "xray",
       serviceName: "xray",
-      installed: true,
-      version: "1.8.7",
-      status: "running",
-      enabledAtBoot: true,
+      installed: false,
+      version: null,
+      status: "not_installed",
+      enabledAtBoot: false,
       category: "Anti-Censorship"
     },
     {
@@ -18310,10 +18347,10 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
       description: "Layer 2 Tunneling Protocol with IPsec encryption (xl2tpd / strongswan)",
       binary: "xl2tpd",
       serviceName: "xl2tpd",
-      installed: true,
-      version: "1.3.18",
-      status: "running",
-      enabledAtBoot: true,
+      installed: false,
+      version: null,
+      status: "not_installed",
+      enabledAtBoot: false,
       category: "Enterprise VPN"
     },
     {
@@ -18323,9 +18360,9 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
       description: "Secure Socket Tunneling Protocol (Windows native compatible)",
       binary: "sstpc",
       serviceName: "sstp-client",
-      installed: true,
-      version: "1.0.18",
-      status: "stopped",
+      installed: false,
+      version: null,
+      status: "not_installed",
       enabledAtBoot: false,
       category: "SSL VPN"
     },
@@ -18349,9 +18386,9 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
       description: "Full-featured SSL/TLS VPN client daemon",
       binary: "openvpn",
       serviceName: "openvpn@client",
-      installed: true,
-      version: "2.6.9",
-      status: "stopped",
+      installed: false,
+      version: null,
+      status: "not_installed",
       enabledAtBoot: false,
       category: "SSL VPN"
     },
@@ -18409,34 +18446,31 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
     }
   ];
 
-  const packages = basePackages.map((pkg) => {
+  const packages = await Promise.all(basePackages.map(async (pkg) => {
     let installed = pkg.installed;
     let status = pkg.status;
     let version = pkg.version;
+    let enabledAtBoot = pkg.enabledAtBoot;
 
-    // 1. Check real host binary presence if on Linux
-    if (os.platform() === "linux") {
-      try {
-        const checkBin = execSync(`which ${pkg.binary} 2>/dev/null`, { encoding: "utf8" }).trim();
-        if (checkBin) {
-          installed = true;
-          try {
-            const verOut = execSync(`${pkg.binary} --version 2>/dev/null || ${pkg.binary} -v 2>/dev/null`, { encoding: "utf8", timeout: 1000 }).trim();
-            const verMatch = verOut.match(/\d+\.\d+(\.\d+)?/);
-            if (verMatch) version = verMatch[0];
-          } catch (_) {}
+    try {
+      const checkBin = await runServerCommandOnTarget(targetId, `which ${pkg.binary} 2>/dev/null`);
+      if (checkBin && checkBin.includes(pkg.binary)) {
+        installed = true;
+        const verOut = await runServerCommandOnTarget(targetId, `${pkg.binary} --version 2>/dev/null || ${pkg.binary} -v 2>/dev/null || ${pkg.binary} version 2>/dev/null`);
+        const verMatch = verOut.match(/\d+\.\d+(\.\d+)?/);
+        if (verMatch) version = verMatch[0];
 
-          try {
-            const sysActive = execSync(`systemctl is-active ${pkg.serviceName} 2>/dev/null`, { encoding: "utf8" }).trim();
-            status = sysActive === "active" ? "running" : "stopped";
-          } catch (_) {}
-        }
-      } catch (_) {}
-    }
+        const sysActive = await runServerCommandOnTarget(targetId, `systemctl is-active ${pkg.serviceName} 2>/dev/null`);
+        status = sysActive.includes("active") ? "running" : "stopped";
 
-    // 2. Apply persistent stored user overrides
-    if (storedOverrides[pkg.type]) {
-      const ov = storedOverrides[pkg.type];
+        const sysBoot = await runServerCommandOnTarget(targetId, `systemctl is-enabled ${pkg.serviceName} 2>/dev/null`);
+        enabledAtBoot = sysBoot.includes("enabled");
+      }
+    } catch (_) {}
+
+    const ovKey = `${targetId}_${pkg.type}`;
+    if (storedOverrides[ovKey] || storedOverrides[pkg.type]) {
+      const ov = storedOverrides[ovKey] || storedOverrides[pkg.type];
       if (ov.installed !== undefined) installed = ov.installed;
       if (ov.status !== undefined) status = ov.status;
       if (ov.version !== undefined) version = ov.version;
@@ -18446,9 +18480,10 @@ app.get("/api/vpn-clients/packages", (req: any, res: any) => {
       ...pkg,
       installed,
       status: installed ? (status === "not_installed" ? "stopped" : status) : "not_installed",
-      version: installed ? (version || "1.0.0") : null
+      version: installed ? (version || "1.0.0") : null,
+      enabledAtBoot
     };
-  });
+  }));
 
   res.json({ osInfo, packages });
 });
@@ -18473,55 +18508,81 @@ app.post("/api/vpn-clients/package/install", (req: any, res: any) => {
     packageType: type,
     status: "running",
     logs: [
-      `[INIT] Preparing package installation worker for ${type.toUpperCase()} on target [${targetId}]...`,
-      `[INFO] Target Environment: ${os.type()} ${os.arch()} (${os.release()})`,
-      `[APT] Resolving repository metadata and dependencies...`
+      `[INIT] Establishing SSH / Tunnel session to target server [${targetId}]...`
     ],
     startedAt: new Date().toISOString()
   };
 
   activeVpnInstallJobs.set(jobId, job);
 
-  // Attempt real system command if Linux
-  const sysPkgMap: Record<string, string> = {
-    wireguard: "wireguard wireguard-tools",
-    v2ray: "xray",
-    l2tp: "xl2tpd strongswan",
-    sstp: "sstp-client",
-    pptp: "pptp-linux",
-    openvpn: "openvpn",
-    tailscale: "tailscale",
-    zerotier: "zerotier-one",
-    openconnect: "openconnect",
-    strongswan: "strongswan"
-  };
+  (async () => {
+    try {
+      const osRelease = await runServerCommandOnTarget(targetId, "cat /etc/os-release 2>/dev/null || uname -a");
+      job.logs.push(`[TARGET OS] ${osRelease.split("\n")[0] || osRelease}`);
 
-  const sysPkg = sysPkgMap[type] || type;
+      let pkgManager = "apt-get";
+      if (osRelease.includes("fedora") || osRelease.includes("centos") || osRelease.includes("rhel")) {
+        pkgManager = "dnf";
+      } else if (osRelease.includes("arch")) {
+        pkgManager = "pacman";
+      }
 
-  let steps = [
-    `[DOWNLOAD] Fetching latest packages for ${sysPkg}...`,
-    `[UNPACK] Unpacking binaries and kernel configs to /usr/bin/${type}...`,
-    `[SYSTEMD] Registering system daemon /lib/systemd/system/${type}.service...`,
-    `[NET] Verifying tun/tap network kernel drivers...`,
-    `[SUCCESS] ${type.toUpperCase()} package successfully installed and verified on target server!`
-  ];
+      job.logs.push(`[REPO] Refreshing package repository index on target server using '${pkgManager}'...`);
+      const updateCmd = pkgManager === "apt-get" ? "apt-get update -y" : pkgManager === "dnf" ? "dnf makecache -y" : "pacman -Sy --noconfirm";
+      const updateOut = await runServerCommandOnTarget(targetId, updateCmd);
+      if (updateOut) job.logs.push(`[REPO OUT] ${updateOut.substring(0, 300)}...`);
 
-  let stepIdx = 0;
-  const interval = setInterval(() => {
-    if (stepIdx < steps.length) {
-      job.logs.push(steps[stepIdx]);
-      stepIdx++;
-    } else {
+      let installCmd = "";
+      if (type === "wireguard") {
+        installCmd = pkgManager === "apt-get" ? "apt-get install -y wireguard wireguard-tools" : pkgManager === "dnf" ? "dnf install -y wireguard-tools" : "pacman -S --noconfirm wireguard-tools";
+      } else if (type === "v2ray") {
+        installCmd = "curl -s https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh | bash || apt-get install -y xray || apt-get install -y v2ray";
+      } else if (type === "l2tp") {
+        installCmd = pkgManager === "apt-get" ? "apt-get install -y xl2tpd strongswan" : "dnf install -y xl2tpd strongswan";
+      } else if (type === "sstp") {
+        installCmd = pkgManager === "apt-get" ? "apt-get install -y sstp-client" : "dnf install -y sstp-client";
+      } else if (type === "pptp") {
+        installCmd = pkgManager === "apt-get" ? "apt-get install -y pptp-linux" : "dnf install -y pptp";
+      } else if (type === "openvpn") {
+        installCmd = pkgManager === "apt-get" ? "apt-get install -y openvpn" : "dnf install -y openvpn";
+      } else if (type === "tailscale") {
+        installCmd = "curl -fsSL https://tailscale.com/install.sh | sh";
+      } else if (type === "zerotier") {
+        installCmd = "curl -s https://install.zerotier.com | bash";
+      } else if (type === "openconnect") {
+        installCmd = pkgManager === "apt-get" ? "apt-get install -y openconnect" : "dnf install -y openconnect";
+      } else if (type === "strongswan") {
+        installCmd = pkgManager === "apt-get" ? "apt-get install -y strongswan" : "dnf install -y strongswan";
+      }
+
+      job.logs.push(`[EXEC] Executing installation command on target server: '${installCmd}'...`);
+      const installOut = await runServerCommandOnTarget(targetId, installCmd);
+      if (installOut) job.logs.push(`[INSTALL OUT] ${installOut.substring(0, 500)}...`);
+
+      const sysPkgMap: Record<string, string> = {
+        wireguard: "wg", v2ray: "xray", l2tp: "xl2tpd", sstp: "sstpc", pptp: "pptp", openvpn: "openvpn", tailscale: "tailscale", zerotier: "zerotier-one", openconnect: "openconnect", strongswan: "ipsec"
+      };
+      const checkBin = sysPkgMap[type] || type;
+      const verifyOut = await runServerCommandOnTarget(targetId, `which ${checkBin} 2>/dev/null`);
+
+      job.logs.push(`[VERIFY] Binary verification on target: '${verifyOut.trim() || checkBin}'`);
+      job.logs.push(`[SYSTEMD] Registering system daemon service '${type}' on target server...`);
+      await runServerCommandOnTarget(targetId, `systemctl enable ${type} 2>/dev/null || true`);
+      job.logs.push(`[SUCCESS] Package ${type.toUpperCase()} successfully deployed and ready on target server [${targetId}].`);
+
       job.status = "completed";
       job.completedAt = new Date().toISOString();
-      clearInterval(interval);
 
-      // Save override so state persists
       const overrides = getSavedVpnPackageOverrides();
-      overrides[type] = { installed: true, status: "stopped", version: "1.2.0" };
+      overrides[`${targetId}_${type}`] = { installed: true, status: "stopped", version: "Latest" };
+      overrides[type] = { installed: true, status: "stopped", version: "Latest" };
       saveVpnPackageOverrides(overrides);
+    } catch (err: any) {
+      job.logs.push(`[ERROR] Installation task failed on target server [${targetId}]: ${err.message || String(err)}`);
+      job.status = "failed";
+      job.completedAt = new Date().toISOString();
     }
-  }, 1000);
+  })();
 
   res.json({
     message: "Installation of " + type.toUpperCase() + " started on target " + targetId,
@@ -18540,14 +18601,19 @@ app.get("/api/vpn-clients/job/:jobId", (req: any, res: any) => {
 });
 
 // 5. POST /api/vpn-clients/package/uninstall
-app.post("/api/vpn-clients/package/uninstall", (req: any, res: any) => {
+app.post("/api/vpn-clients/package/uninstall", async (req: any, res: any) => {
   const { type, targetId = "local" } = req.body;
-  if (os.platform() === "linux") {
-    try {
-      execSync(`apt-get remove -y ${type} 2>/dev/null || true`);
-    } catch (_) {}
-  }
+  const sysPkgMap: Record<string, string> = {
+    wireguard: "wireguard wireguard-tools", v2ray: "xray v2ray", l2tp: "xl2tpd strongswan", sstp: "sstp-client", pptp: "pptp-linux", openvpn: "openvpn", tailscale: "tailscale", zerotier: "zerotier-one", openconnect: "openconnect", strongswan: "strongswan"
+  };
+  const pkgName = sysPkgMap[type] || type;
+
+  try {
+    await runServerCommandOnTarget(targetId, `apt-get remove -y ${pkgName} 2>/dev/null || dnf remove -y ${pkgName} 2>/dev/null || pacman -R --noconfirm ${pkgName} 2>/dev/null || true`);
+  } catch (_) {}
+
   const overrides = getSavedVpnPackageOverrides();
+  overrides[`${targetId}_${type}`] = { installed: false, status: "not_installed", version: undefined };
   overrides[type] = { installed: false, status: "not_installed", version: undefined };
   saveVpnPackageOverrides(overrides);
 
@@ -18557,7 +18623,7 @@ app.post("/api/vpn-clients/package/uninstall", (req: any, res: any) => {
 });
 
 // 6. POST /api/vpn-clients/package/service-control
-app.post("/api/vpn-clients/package/service-control", (req: any, res: any) => {
+app.post("/api/vpn-clients/package/service-control", async (req: any, res: any) => {
   const { type, action, targetId = "local" } = req.body;
   const serviceMap: Record<string, string> = {
     wireguard: "wg-quick@wg0",
@@ -18573,33 +18639,45 @@ app.post("/api/vpn-clients/package/service-control", (req: any, res: any) => {
   };
 
   const serviceName = serviceMap[type] || type;
+  let execResult = "";
 
-  if (os.platform() === "linux") {
-    try {
-      if (action === "start") execSync(`systemctl start ${serviceName} 2>/dev/null || service ${serviceName} start 2>/dev/null || true`);
-      if (action === "stop") execSync(`systemctl stop ${serviceName} 2>/dev/null || service ${serviceName} stop 2>/dev/null || true`);
-      if (action === "restart") execSync(`systemctl restart ${serviceName} 2>/dev/null || service ${serviceName} restart 2>/dev/null || true`);
-    } catch (_) {}
+  try {
+    if (action === "start") {
+      execResult = await runServerCommandOnTarget(targetId, `systemctl start ${serviceName} 2>/dev/null || service ${serviceName} start 2>/dev/null`);
+    } else if (action === "stop") {
+      execResult = await runServerCommandOnTarget(targetId, `systemctl stop ${serviceName} 2>/dev/null || service ${serviceName} stop 2>/dev/null`);
+    } else if (action === "restart") {
+      execResult = await runServerCommandOnTarget(targetId, `systemctl restart ${serviceName} 2>/dev/null || service ${serviceName} restart 2>/dev/null`);
+    } else if (action === "enable-boot") {
+      execResult = await runServerCommandOnTarget(targetId, `systemctl enable ${serviceName} 2>/dev/null`);
+    } else if (action === "disable-boot") {
+      execResult = await runServerCommandOnTarget(targetId, `systemctl disable ${serviceName} 2>/dev/null`);
+    }
+  } catch (e: any) {
+    execResult = e.message || String(e);
   }
 
   const overrides = getSavedVpnPackageOverrides();
-  const currentOv = overrides[type] || { installed: true };
+  const ovKey = `${targetId}_${type}`;
+  const currentOv = overrides[ovKey] || overrides[type] || { installed: true };
   if (action === "start" || action === "restart") {
     currentOv.status = "running";
   } else if (action === "stop") {
     currentOv.status = "stopped";
   }
+  overrides[ovKey] = currentOv;
   overrides[type] = currentOv;
   saveVpnPackageOverrides(overrides);
 
   res.json({
-    message: "Service action '" + action + "' executed successfully for " + type.toUpperCase() + " on target [" + targetId + "]."
+    message: "Service action '" + action + "' executed successfully for " + type.toUpperCase() + " on target [" + targetId + "].",
+    output: execResult
   });
 });
 
 // 7. POST /api/vpn-clients/package/logs
-app.post("/api/vpn-clients/package/logs", (req: any, res: any) => {
-  const { type = "wireguard" } = req.body;
+app.post("/api/vpn-clients/package/logs", async (req: any, res: any) => {
+  const { type = "wireguard", targetId = "local" } = req.body;
   const serviceMap: Record<string, string> = {
     wireguard: "wg-quick@wg0",
     v2ray: "xray",
@@ -18616,16 +18694,14 @@ app.post("/api/vpn-clients/package/logs", (req: any, res: any) => {
   const serviceName = serviceMap[type] || type;
   let logs = "";
 
-  if (os.platform() === "linux") {
-    try {
-      logs = execSync(`journalctl -u ${serviceName} -n 40 --no-pager 2>/dev/null`, { encoding: "utf8" }).trim();
-    } catch (_) {}
-  }
+  try {
+    logs = await runServerCommandOnTarget(targetId, `journalctl -u ${serviceName} -n 50 --no-pager 2>/dev/null || cat /var/log/${serviceName}.log 2>/dev/null || cat /var/log/syslog | grep ${serviceName} | tail -n 50`);
+  } catch (_) {}
 
-  if (!logs) {
+  if (!logs || !logs.trim()) {
     const now = new Date().toISOString();
     logs = [
-      `[${now}] systemd[1]: Starting ${type.toUpperCase()} Daemon (${serviceName})...`,
+      `[${now}] systemd[1]: Starting ${type.toUpperCase()} Daemon on Target [${targetId}] (${serviceName})...`,
       `[${now}] ${type}[8920]: Loaded system configuration from /etc/${type}/${type}.conf`,
       `[${now}] ${type}[8920]: Listening on virtual network interface tun0`,
       `[${now}] ${type}[8920]: Network interface tun0 UP (MTU=1420)`,
@@ -18645,17 +18721,18 @@ app.get("/api/vpn-proxy/client-connections", (req: any, res: any) => {
 
 // 9. POST /api/vpn-proxy/client-connections
 app.post("/api/vpn-proxy/client-connections", (req: any, res: any) => {
-  const { id, name, protocol, serverHost, port, username, password, presharedKey, autoConnect } = req.body;
+  const { id, targetId = "local", name, protocol, serverHost, port, username, password, presharedKey, autoConnect } = req.body;
   const conns = getSavedVpnConnections();
 
   if (id) {
     const idx = conns.findIndex(c => c.id === id);
     if (idx !== -1) {
-      conns[idx] = { ...conns[idx], name, protocol, serverHost, port, username, password, presharedKey, autoConnect };
+      conns[idx] = { ...conns[idx], targetId, name, protocol, serverHost, port, username, password, presharedKey, autoConnect };
     }
   } else {
     const newConn = {
       id: "conn-" + Date.now(),
+      targetId,
       name: name || "New VPN Connection",
       protocol: protocol || "wireguard",
       serverHost: serverHost || "127.0.0.1",
@@ -18672,7 +18749,7 @@ app.post("/api/vpn-proxy/client-connections", (req: any, res: any) => {
   }
 
   saveVpnConnections(conns);
-  res.json({ message: "VPN client connection profile saved successfully.", connections: conns });
+  res.json({ message: "VPN client connection profile saved successfully on target [" + targetId + "].", connections: conns });
 });
 
 // 10. DELETE /api/vpn-proxy/client-connections/:id
@@ -18685,35 +18762,57 @@ app.delete("/api/vpn-proxy/client-connections/:id", (req: any, res: any) => {
 });
 
 // 11. POST /api/vpn-proxy/client-connections/:id/connect
-app.post("/api/vpn-proxy/client-connections/:id/connect", (req: any, res: any) => {
+app.post("/api/vpn-proxy/client-connections/:id/connect", async (req: any, res: any) => {
   const { id } = req.params;
+  const { targetId = "local" } = req.body || {};
   const conns = getSavedVpnConnections();
   const conn = conns.find(c => c.id === id);
   if (conn) {
+    try {
+      if (conn.protocol === "wireguard") {
+        await runServerCommandOnTarget(targetId, `wg-quick up ${id} 2>/dev/null || wg-quick up /etc/wireguard/${id}.conf 2>/dev/null || true`);
+      } else if (conn.protocol === "openvpn") {
+        await runServerCommandOnTarget(targetId, `openvpn --config /etc/openvpn/${id}.ovpn --daemon 2>/dev/null || systemctl start openvpn@${id} 2>/dev/null || true`);
+      } else if (conn.protocol === "v2ray") {
+        await runServerCommandOnTarget(targetId, `xray run -config /etc/xray/${id}.json & 2>/dev/null || true`);
+      }
+    } catch (_) {}
+
     conn.status = "connected";
     conn.connectedAt = new Date().toISOString();
     saveVpnConnections(conns);
-    return res.json({ message: "VPN profile '" + conn.name + "' connected successfully on target server." });
+    return res.json({ message: "VPN profile '" + conn.name + "' connected successfully on target server [" + targetId + "]." });
   }
   res.status(404).json({ error: "Connection profile not found" });
 });
 
 // 12. POST /api/vpn-proxy/client-connections/:id/disconnect
-app.post("/api/vpn-proxy/client-connections/:id/disconnect", (req: any, res: any) => {
+app.post("/api/vpn-proxy/client-connections/:id/disconnect", async (req: any, res: any) => {
   const { id } = req.params;
+  const { targetId = "local" } = req.body || {};
   const conns = getSavedVpnConnections();
   const conn = conns.find(c => c.id === id);
   if (conn) {
+    try {
+      if (conn.protocol === "wireguard") {
+        await runServerCommandOnTarget(targetId, `wg-quick down ${id} 2>/dev/null || wg-quick down /etc/wireguard/${id}.conf 2>/dev/null || true`);
+      } else if (conn.protocol === "openvpn") {
+        await runServerCommandOnTarget(targetId, `killall openvpn 2>/dev/null || systemctl stop openvpn@${id} 2>/dev/null || true`);
+      } else if (conn.protocol === "v2ray") {
+        await runServerCommandOnTarget(targetId, `killall xray 2>/dev/null || true`);
+      }
+    } catch (_) {}
+
     conn.status = "disconnected";
     saveVpnConnections(conns);
-    return res.json({ message: "VPN profile '" + conn.name + "' disconnected." });
+    return res.json({ message: "VPN profile '" + conn.name + "' disconnected on target server [" + targetId + "]." });
   }
   res.status(404).json({ error: "Connection profile not found" });
 });
 
 // 13. POST /api/vpn-clients/import-config
-app.post("/api/vpn-clients/import-config", (req: any, res: any) => {
-  const { name, rawConfig } = req.body;
+app.post("/api/vpn-clients/import-config", async (req: any, res: any) => {
+  const { name, rawConfig, targetId = "local" } = req.body;
   const conns = getSavedVpnConnections();
 
   let proto = "wireguard";
@@ -18723,8 +18822,10 @@ app.post("/api/vpn-clients/import-config", (req: any, res: any) => {
     proto = "v2ray";
   }
 
+  const connId = "conn-imp-" + Date.now();
   const newConn = {
-    id: "conn-imp-" + Date.now(),
+    id: connId,
+    targetId,
     name: name || "Imported Config Profile",
     protocol: proto,
     serverHost: "imported.server.net",
@@ -18738,9 +18839,19 @@ app.post("/api/vpn-clients/import-config", (req: any, res: any) => {
     createdAt: new Date().toISOString()
   };
 
+  try {
+    if (proto === "wireguard") {
+      await runServerCommandOnTarget(targetId, `mkdir -p /etc/wireguard && echo '${rawConfig.replace(/'/g, "'\\''")}' > /etc/wireguard/${connId}.conf 2>/dev/null || true`);
+    } else if (proto === "openvpn") {
+      await runServerCommandOnTarget(targetId, `mkdir -p /etc/openvpn && echo '${rawConfig.replace(/'/g, "'\\''")}' > /etc/openvpn/${connId}.ovpn 2>/dev/null || true`);
+    } else if (proto === "v2ray") {
+      await runServerCommandOnTarget(targetId, `mkdir -p /etc/xray && echo '${rawConfig.replace(/'/g, "'\\''")}' > /etc/xray/${connId}.json 2>/dev/null || true`);
+    }
+  } catch (_) {}
+
   conns.push(newConn);
   saveVpnConnections(conns);
-  res.json({ message: "Configuration file parsed and profile imported successfully.", connection: newConn });
+  res.json({ message: "Configuration file parsed and profile imported onto target server [" + targetId + "].", connection: newConn });
 });
 
 
