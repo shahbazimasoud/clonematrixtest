@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.10.3** (Released: 2026-08-07)
+## Current Panel Version: **v2.10.4** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.10.4** - 2026-08-07
+- **Target Server Execution Plane Enforcement**: Guaranteed all VPN and SSTP connection profiles run commands exclusively on the selected target remote server via WebSocket tunnel.
+- **Removed Local Hardcoded Mocks**: Eliminated mock assigned IP address generators and fake disconnected/connected state overrides.
+- **VPN Connection Editing Support**: Added full profile editing functionality (ویرایش) for SSTP and client connection profiles, pre-filling server parameters and certificate configurations.
+- **Remote Server Diagnostic Header**: Added a real-time target server diagnostic box displaying remote hostname, OS distribution, user permissions, sstpc binary paths, and systemd units.
 
 #### **v2.10.3** - 2026-08-07
 - **Remote WebSocket Execution**: All SSTP operations (installation, configuration, start/stop/restart, status checks, and journalctl log retrieval) execute on target remote servers using the existing WebSocket agent connection without SSH.

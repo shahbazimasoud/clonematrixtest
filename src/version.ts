@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.3";
+export const PANEL_VERSION = "2.10.4";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.4",
+    date: "2026-08-07",
+    title: "Remote Target Server Execution Plane Enforcement & Profile Editing Support",
+    changes: [
+      "Target Server Execution Plane Enforcement: Guaranteed all VPN and SSTP connection profiles run commands exclusively on the selected target remote server via WebSocket tunnel.",
+      "Removed Local Hardcoded Mocks: Eliminated mock assigned IP address generators and fake disconnected/connected state overrides.",
+      "VPN Connection Editing Support: Added full profile editing functionality (ویرایش) for SSTP and client connection profiles, pre-filling server parameters and certificate configurations.",
+      "Remote Server Diagnostic Header: Added a real-time target server diagnostic box displaying remote hostname, OS distribution, user permissions, sstpc binary paths, and systemd units."
+    ]
+  },
   {
     version: "2.10.3",
     date: "2026-08-07",

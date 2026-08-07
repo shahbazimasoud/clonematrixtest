@@ -57,7 +57,8 @@ import {
   Radio,
   Zap,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Edit3
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -967,14 +968,38 @@ export default function ReportingPanel({
     username: '',
     password: '',
     presharedKey: '',
+    verifyServerCertificate: true,
+    caCert: '',
+    pppSettings: 'usepeerdns defaultroute refuse-eap require-mschap-v2',
     autoConnect: true
   });
+
+  // Target Server Remote Info State
+  const [remoteTargetInfo, setRemoteTargetInfo] = useState<any>(null);
+  const [isFetchingTargetInfo, setIsFetchingTargetInfo] = useState<boolean>(false);
 
   // Import Config Modal State
   const [showImportConfigModal, setShowImportConfigModal] = useState<boolean>(false);
   const [importConfigName, setImportConfigName] = useState<string>('');
   const [importConfigText, setImportConfigText] = useState<string>('');
   const [isImportingConfig, setIsImportingConfig] = useState<boolean>(false);
+
+  const fetchRemoteTargetInfo = async (targetId: string = selectedTargetId) => {
+    setIsFetchingTargetInfo(true);
+    try {
+      const res = await fetch(`/api/vpn-clients/target-info?targetId=${encodeURIComponent(targetId)}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRemoteTargetInfo(data);
+      }
+    } catch (e) {
+      console.error('Error fetching remote target info:', e);
+    } finally {
+      setIsFetchingTargetInfo(false);
+    }
+  };
 
   const fetchTargetConnections = async () => {
     try {
@@ -1027,6 +1052,7 @@ export default function ReportingPanel({
       fetchTargetConnections();
       fetchVpnPackagesAndOs(selectedTargetId);
       fetchVpnConnections();
+      fetchRemoteTargetInfo(selectedTargetId);
     }
   }, [activeSubTab, selectedTargetId]);
 
@@ -1207,8 +1233,21 @@ export default function ReportingPanel({
       return;
     }
     try {
-      const res = await fetch('/api/vpn-proxy/client-connections', {
-        method: 'POST',
+      let url = '/api/vpn-proxy/client-connections';
+      let method = 'POST';
+
+      if (connForm.protocol === 'sstp') {
+        if (connForm.id) {
+          url = `/api/vpn-clients/sstp/profiles/${connForm.id}`;
+          method = 'PUT';
+        } else {
+          url = '/api/vpn-clients/sstp/profiles';
+          method = 'POST';
+        }
+      }
+
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
@@ -1217,25 +1256,55 @@ export default function ReportingPanel({
       });
       if (res.ok) {
         const data = await res.json();
-        showToast('success', data.message);
+        showToast('success', data.message || (isRtl ? 'پروفایل با موفقیت ذخیره شد' : 'Profile saved successfully'));
         setShowConnModal(false);
         fetchVpnConnections();
+        fetchRemoteTargetInfo(selectedTargetId);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        showToast('error', errData.error || (isRtl ? 'خطا در ذخیره پروفایل' : 'Failed to save profile'));
       }
     } catch (err) {
       showToast('error', isRtl ? 'خطا در ذخیره پروفایل' : 'Failed to save profile');
     }
   };
 
-  const handleDeleteConnectionProfile = async (id: string) => {
-    if (!window.confirm(isRtl ? 'آیا از حذف این کانکشن اطمینان دارید؟' : 'Delete this VPN profile?')) return;
+  const handleEditConnectionProfile = (conn: any) => {
+    setConnForm({
+      id: conn.id || '',
+      name: conn.name || '',
+      protocol: conn.protocol || 'sstp',
+      serverHost: conn.serverHost || '',
+      port: conn.port || 443,
+      username: conn.username || '',
+      password: conn.password || '',
+      presharedKey: conn.presharedKey || '',
+      verifyServerCertificate: conn.verifyServerCertificate !== false,
+      caCert: conn.caCert || '',
+      pppSettings: conn.pppSettings || 'usepeerdns defaultroute refuse-eap require-mschap-v2',
+      autoConnect: conn.autoConnect !== false,
+      targetId: conn.targetId || selectedTargetId
+    });
+    setShowConnModal(true);
+  };
+
+  const handleDeleteConnectionProfile = async (conn: any) => {
+    const id = conn.id || conn;
+    const name = conn.name || id;
+    if (!window.confirm(isRtl ? `آیا از حذف کانکشن ${name} اطمینان دارید؟` : `Delete VPN profile ${name}?`)) return;
     try {
-      const res = await fetch(`/api/vpn-proxy/client-connections/${id}`, {
+      let url = `/api/vpn-proxy/client-connections/${id}`;
+      if (conn.protocol === 'sstp') {
+        url = `/api/vpn-clients/sstp/profiles/${id}?targetId=${encodeURIComponent(selectedTargetId)}`;
+      }
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (res.ok) {
         showToast('success', isRtl ? 'پروفایل حذف گردید' : 'Profile deleted');
         fetchVpnConnections();
+        fetchRemoteTargetInfo(selectedTargetId);
       }
     } catch (err) {
       showToast('error', isRtl ? 'خطا در حذف پروفایل' : 'Delete failed');
@@ -4811,6 +4880,73 @@ export default function ReportingPanel({
               </div>
             </div>
 
+            {/* Target Remote Server Diagnostic Box */}
+            <div className={`p-4 rounded-2xl border space-y-3 ${
+              isLightMode ? 'bg-white border-slate-200 shadow-sm' : 'bg-black/30 border-white/10'
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Server className={`w-4 h-4 ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`} />
+                  <span className={`text-xs font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                    {isRtl ? 'مشخصات سرور هدف متصل:' : 'Connected Target Server:'}
+                  </span>
+                  <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-lg ${
+                    isLightMode ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                  }`}>
+                    {selectedTargetId === 'local' ? 'Local Host Server' : (targetConnections.find(c => c.id === selectedTargetId)?.name || selectedTargetId)}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchRemoteTargetInfo(selectedTargetId);
+                    fetchVpnPackagesAndOs(selectedTargetId);
+                    fetchVpnConnections();
+                  }}
+                  disabled={isFetchingTargetInfo}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    isLightMode
+                      ? 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm'
+                      : 'bg-white/5 hover:bg-white/10 text-cyan-300 border-white/10'
+                  }`}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isFetchingTargetInfo ? 'animate-spin' : ''}`} />
+                  <span>{isRtl ? 'بروزرسانی شناسایی ریموت' : 'Refresh Remote Detection'}</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono pt-1">
+                <div className={`p-2.5 rounded-xl border ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/5'}`}>
+                  <span className={`block text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Remote Hostname / OS:</span>
+                  <span className={`font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                    {remoteTargetInfo?.hostname || '—'} / {remoteTargetInfo?.distro || osInfo?.distroName || 'Linux'}
+                  </span>
+                </div>
+
+                <div className={`p-2.5 rounded-xl border ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/5'}`}>
+                  <span className={`block text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Remote Execution User:</span>
+                  <span className={`font-bold ${isLightMode ? 'text-slate-900' : 'text-emerald-400'}`}>
+                    {remoteTargetInfo?.user || 'root'}
+                  </span>
+                </div>
+
+                <div className={`p-2.5 rounded-xl border ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/5'}`}>
+                  <span className={`block text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>SSTP Binary Exec:</span>
+                  <span className={`font-bold ${isLightMode ? 'text-slate-900' : 'text-cyan-300'}`}>
+                    {remoteTargetInfo?.sstpBinary || '/usr/sbin/sstpc'}
+                  </span>
+                </div>
+
+                <div className={`p-2.5 rounded-xl border ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/5'}`}>
+                  <span className={`block text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Systemd Template Unit:</span>
+                  <span className={`font-bold ${isLightMode ? 'text-slate-900' : 'text-cyan-300'}`}>
+                    {remoteTargetInfo?.systemdUnit || 'sstp-client@.service'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {/* Active Installation Re-attachable Floating Banner */}
             {activeInstallJob && activeInstallJob.status === 'running' && !showInstallModal && (
               <div className={`p-4 rounded-2xl border flex items-center justify-between animate-pulse ${
@@ -5461,7 +5597,20 @@ export default function ReportingPanel({
                               )}
 
                               <button
-                                onClick={() => handleDeleteConnectionProfile(conn.id)}
+                                type="button"
+                                onClick={() => handleEditConnectionProfile(conn)}
+                                title={isRtl ? 'ویرایش کانکشن' : 'Edit Connection'}
+                                className={`p-1.5 rounded-xl transition-all cursor-pointer ${
+                                  isLightMode ? 'hover:bg-cyan-100 text-slate-500 hover:text-cyan-700' : 'hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300'
+                                }`}
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteConnectionProfile(conn)}
+                                title={isRtl ? 'حذف کانکشن' : 'Delete Connection'}
                                 className={`p-1.5 rounded-xl transition-all cursor-pointer ${
                                   isLightMode ? 'hover:bg-rose-100 text-slate-500 hover:text-rose-700' : 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-300'
                                 }`}

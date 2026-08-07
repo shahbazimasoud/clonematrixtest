@@ -18238,7 +18238,7 @@ function getSavedVpnConnections(): any[] {
           autoConnect: true,
           username: "client_node_01",
           presharedKey: "wg_key_sample_9843a",
-          assignedIp: "10.8.0.2",
+          assignedIp: null,
           createdAt: new Date().toISOString()
         },
         {
@@ -18250,7 +18250,7 @@ function getSavedVpnConnections(): any[] {
           status: "disconnected",
           autoConnect: false,
           username: "uuid-ae31-8942-bc",
-          assignedIp: "10.12.0.5",
+          assignedIp: null,
           createdAt: new Date().toISOString()
         }
       ];
@@ -18259,6 +18259,33 @@ function getSavedVpnConnections(): any[] {
     return db.vpnConnections;
   } catch (e) {
     return [];
+  }
+}
+
+interface RemoteVpnAuditEntry {
+  timestamp: string;
+  targetId: string;
+  operation: string;
+  profileId?: string;
+  result: "SUCCESS" | "FAILURE";
+  exitCode?: number;
+  durationMs: number;
+}
+
+const remoteVpnAuditLogs: RemoteVpnAuditEntry[] = [];
+
+function logRemoteVpnCommand(targetId: string, operation: string, profileId?: string, result: "SUCCESS" | "FAILURE" = "SUCCESS", exitCode: number = 0, durationMs: number = 0) {
+  remoteVpnAuditLogs.unshift({
+    timestamp: new Date().toISOString(),
+    targetId,
+    operation,
+    profileId,
+    result,
+    exitCode,
+    durationMs
+  });
+  if (remoteVpnAuditLogs.length > 200) {
+    remoteVpnAuditLogs.pop();
   }
 }
 
@@ -19019,7 +19046,7 @@ app.post("/api/vpn-proxy/client-connections", (req: any, res: any) => {
       presharedKey: presharedKey || "",
       status: "disconnected",
       autoConnect: !!autoConnect,
-      assignedIp: "10.8.0." + (Math.floor(Math.random() * 200) + 10),
+      assignedIp: null,
       createdAt: new Date().toISOString()
     };
     conns.push(newConn);
@@ -19136,7 +19163,7 @@ app.post("/api/vpn-clients/import-config", async (req: any, res: any) => {
     status: "disconnected",
     autoConnect: true,
     rawConfig,
-    assignedIp: "10.20.0.12",
+    assignedIp: null,
     createdAt: new Date().toISOString()
   };
 
@@ -19160,6 +19187,55 @@ app.post("/api/vpn-clients/import-config", async (req: any, res: any) => {
 // ============================================================================
 // SSTP VPN CLIENT PROVIDER DEDICATED REST ENDPOINTS
 // ============================================================================
+
+// GET /api/vpn-clients/target-info
+app.get("/api/vpn-clients/target-info", async (req: any, res: any) => {
+  const targetId = (req.query.targetId as string) || "local";
+  const startTime = Date.now();
+  try {
+    const hostOut = await runServerCommandOnTarget(targetId, "hostname 2>/dev/null || uname -n");
+    const osOut = await runServerCommandOnTarget(targetId, "cat /etc/os-release 2>/dev/null || uname -a");
+    const userOut = await runServerCommandOnTarget(targetId, "id -un 2>/dev/null || whoami 2>/dev/null");
+    const sstpMeta = await detectSstpProviderOnTarget(targetId);
+
+    let distroName = "Linux Server";
+    const nameMatch = osOut.match(/PRETTY_NAME="([^"]+)"/) || osOut.match(/NAME="([^"]+)"/);
+    if (nameMatch) {
+      distroName = nameMatch[1];
+    } else if (osOut.includes("Ubuntu")) {
+      distroName = "Ubuntu Linux";
+    } else if (osOut.includes("Debian")) {
+      distroName = "Debian Linux";
+    }
+
+    logRemoteVpnCommand(targetId, "Remote Server Detection", undefined, "SUCCESS", 0, Date.now() - startTime);
+
+    res.json({
+      targetId,
+      hostname: hostOut.trim() || targetId,
+      distro: distroName,
+      user: userOut.trim() || "root",
+      sstpInstalled: sstpMeta.installed,
+      sstpBinary: sstpMeta.binaryExec || "/usr/sbin/sstpc",
+      sstpVersion: sstpMeta.version || "N/A",
+      configDir: sstpMeta.configDir,
+      systemdUnit: sstpMeta.systemdUnit
+    });
+  } catch (err: any) {
+    logRemoteVpnCommand(targetId, "Remote Server Detection", undefined, "FAILURE", 1, Date.now() - startTime);
+    res.status(500).json({ error: "Failed to query target server information", details: err.message || String(err) });
+  }
+});
+
+// GET /api/vpn-clients/audit-logs
+app.get("/api/vpn-clients/audit-logs", (req: any, res: any) => {
+  const targetId = req.query.targetId as string;
+  let logs = remoteVpnAuditLogs;
+  if (targetId) {
+    logs = logs.filter(l => l.targetId === targetId);
+  }
+  res.json(logs);
+});
 
 // GET /api/vpn-clients/sstp/metadata
 app.get("/api/vpn-clients/sstp/metadata", async (req: any, res: any) => {
