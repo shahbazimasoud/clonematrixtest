@@ -18232,7 +18232,55 @@ function executeVpnConnect(conn: any): { success: boolean; tunnelIp: string; lat
   let executionDetails = "";
 
   try {
-    if (conn.protocol === "sstp") {
+    if (conn.protocol === "wireguard") {
+      const wgFile = `/etc/wireguard/wg_${conn.id}.conf`;
+      const wgContent = conn.rawConfig || `[Interface]
+PrivateKey = ${conn.privateKey || 'x123'}
+Address = ${conn.assignedIp || '10.0.0.2/24'}
+
+[Peer]
+PublicKey = ${conn.publicKey || 'y456'}
+Endpoint = ${conn.serverHost}:${conn.port || 51820}
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+`;
+      try { fs.writeFileSync(wgFile, wgContent, "utf-8"); } catch (e) {}
+      runSystemCommand(`wg-quick down wg_${conn.id}`);
+      const wgRes = runSystemCommand(`wg-quick up ${wgFile}`);
+      logOutput += `[WIREGUARD] wg-quick result: ${wgRes.output}\n`;
+    } else if (conn.protocol === "openvpn") {
+      const ovpnFile = `/tmp/ovpn_${conn.id}.ovpn`;
+      const ovpnContent = conn.rawConfig || `client
+dev tun
+proto udp
+remote ${conn.serverHost} ${conn.port || 1194}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+auth-user-pass
+`;
+      try { fs.writeFileSync(ovpnFile, ovpnContent, "utf-8"); } catch (e) {}
+      runSystemCommand(`pkill -f "openvpn.*ovpn_${conn.id}"`);
+      const ovpnRes = runSystemCommand(`openvpn --config ${ovpnFile} --daemon`);
+      logOutput += `[OPENVPN] Spawned OpenVPN daemon: ${ovpnRes.output}\n`;
+    } else if (conn.protocol === "tailscale") {
+      const tsRes = runSystemCommand(`tailscale up --authkey ${conn.password || conn.privateKey || ''}`);
+      logOutput += `[TAILSCALE] Tailscale up: ${tsRes.output}\n`;
+    } else if (conn.protocol === "zerotier") {
+      const ztRes = runSystemCommand(`zerotier-cli join ${conn.serverHost}`);
+      logOutput += `[ZEROTIER] ZeroTier join network: ${ztRes.output}\n`;
+    } else if (conn.protocol === "openconnect") {
+      runSystemCommand(`pkill -f "openconnect.*${conn.serverHost}"`);
+      const ocRes = runSystemCommand(`echo "${conn.password}" | openconnect -b -u "${conn.username}" ${conn.serverHost}:${conn.port || 443} --non-inter`);
+      logOutput += `[OPENCONNECT] OpenConnect connection: ${ocRes.output}\n`;
+    } else if (conn.protocol === "strongswan") {
+      const ssRes = runSystemCommand(`ipsec up ${conn.name || 'conn_' + conn.id}`);
+      logOutput += `[STRONGSWAN] IPsec tunnel up: ${ssRes.output}\n`;
+    } else if (conn.protocol === "softether") {
+      const seRes = runSystemCommand(`vpncmd localhost /CLIENT /CMD AccountConnect ${conn.name}`);
+      logOutput += `[SOFTETHER] SoftEther AccountConnect: ${seRes.output}\n`;
+    } else if (conn.protocol === "sstp") {
       const certFlag = conn.ignoreCertErrors ? "--cert-warn" : "";
       const sstpCmd = `sstpc ${certFlag} --user "${conn.username}" --password "${conn.password}" ${conn.serverHost}:${conn.port || 443} usepeerdns require-mppe-128 noauth nodefaultroute`;
       logOutput += `[EXEC] Spawning SSTP Client: sstpc ${certFlag} --user "${conn.username}" ${conn.serverHost}:${conn.port || 443}\n`;
@@ -18352,7 +18400,28 @@ nodefaultroute
 function executeVpnDisconnect(conn: any): { success: boolean; log: string } {
   let logOutput = "";
   try {
-    if (conn.protocol === "sstp") {
+    if (conn.protocol === "wireguard") {
+      const res = runSystemCommand(`wg-quick down /etc/wireguard/wg_${conn.id}.conf || wg-quick down wg_${conn.id}`);
+      logOutput += `[WIREGUARD DISCONNECT] ${res.output}\n`;
+    } else if (conn.protocol === "openvpn") {
+      const res = runSystemCommand(`pkill -f "openvpn.*ovpn_${conn.id}"`);
+      logOutput += `[OPENVPN DISCONNECT] Terminated openvpn daemon: ${res.output}\n`;
+    } else if (conn.protocol === "tailscale") {
+      const res = runSystemCommand("tailscale down");
+      logOutput += `[TAILSCALE DISCONNECT] ${res.output}\n`;
+    } else if (conn.protocol === "zerotier") {
+      const res = runSystemCommand(`zerotier-cli leave ${conn.serverHost}`);
+      logOutput += `[ZEROTIER DISCONNECT] ${res.output}\n`;
+    } else if (conn.protocol === "openconnect") {
+      const res = runSystemCommand(`pkill -f "openconnect.*${conn.serverHost}"`);
+      logOutput += `[OPENCONNECT DISCONNECT] ${res.output}\n`;
+    } else if (conn.protocol === "strongswan") {
+      const res = runSystemCommand(`ipsec down ${conn.name || 'conn_' + conn.id}`);
+      logOutput += `[STRONGSWAN DISCONNECT] ${res.output}\n`;
+    } else if (conn.protocol === "softether") {
+      const res = runSystemCommand(`vpncmd localhost /CLIENT /CMD AccountDisconnect ${conn.name}`);
+      logOutput += `[SOFTETHER DISCONNECT] ${res.output}\n`;
+    } else if (conn.protocol === "sstp") {
       const res = runSystemCommand(`pkill -f "sstpc.*${conn.serverHost}"`);
       logOutput += `[SSTP DISCONNECT] Terminated sstpc processes for ${conn.serverHost}: ${res.output}\n`;
     } else if (conn.protocol === "l2tp") {
@@ -18764,6 +18833,634 @@ app.post("/api/vpn-proxy/client-connections/:id/disconnect", authenticateToken, 
       message: `اتصال ${conn.name} روی سرور قطع گردید.`,
       connection: conn,
       systemLog: disResult.log
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// COMPREHENSIVE VPN CLIENTS & CONNECTIONS MANAGER (OS Auto-Detect + Provider Pattern)
+// ============================================================================
+
+/**
+ * 1. Automatic Target Linux Distribution & Package Manager Detection
+ */
+function detectSystemOS() {
+  const isLinux = os.platform() === "linux";
+  let distro = "unknown";
+  let distroName = os.type();
+  let version = os.release();
+  let pkgManager = "unknown";
+  const arch = os.arch();
+  const kernel = os.release();
+
+  if (!isLinux) {
+    return {
+      distro: os.platform(),
+      distroName: `Non-Linux (${os.platform()})`,
+      version: os.release(),
+      pkgManager: os.platform() === "darwin" ? "brew" : "winget",
+      arch,
+      kernel,
+      isLinux: false
+    };
+  }
+
+  try {
+    if (fs.existsSync("/etc/os-release")) {
+      const content = fs.readFileSync("/etc/os-release", "utf-8");
+      const lines = content.split("\n");
+      const osData: Record<string, string> = {};
+      lines.forEach(line => {
+        const parts = line.split("=");
+        if (parts.length === 2) {
+          const key = parts[0].trim();
+          const val = parts[1].trim().replace(/^["']|["']$/g, "");
+          osData[key] = val;
+        }
+      });
+
+      distro = osData.ID ? osData.ID.toLowerCase() : "linux";
+      distroName = osData.PRETTY_NAME || osData.NAME || "Linux";
+      version = osData.VERSION_ID || osData.VERSION || "";
+    }
+  } catch (e) {}
+
+  if (fs.existsSync("/usr/bin/apt-get") || fs.existsSync("/usr/bin/apt")) {
+    pkgManager = "apt";
+  } else if (fs.existsSync("/usr/bin/dnf")) {
+    pkgManager = "dnf";
+  } else if (fs.existsSync("/usr/bin/yum")) {
+    pkgManager = "yum";
+  } else if (fs.existsSync("/usr/bin/pacman")) {
+    pkgManager = "pacman";
+  } else if (fs.existsSync("/sbin/apk") || fs.existsSync("/usr/bin/apk")) {
+    pkgManager = "apk";
+  } else if (fs.existsSync("/usr/bin/zypper")) {
+    pkgManager = "zypper";
+  }
+
+  return {
+    distro,
+    distroName,
+    version,
+    pkgManager,
+    arch,
+    kernel,
+    isLinux
+  };
+}
+
+/**
+ * 2. VPN Client Packages Registry & Abstraction Map
+ */
+const VPN_CLIENT_REGISTRY: Record<string, {
+  name: string;
+  type: string;
+  binaries: string[];
+  serviceName: string;
+  packagesMap: Record<string, string>;
+  installScript?: string;
+  versionCmd: string;
+  logsCmd: string;
+}> = {
+  wireguard: {
+    name: "WireGuard",
+    type: "wireguard",
+    binaries: ["wg", "wg-quick"],
+    serviceName: "wg-quick@wg0",
+    packagesMap: {
+      apt: "wireguard wireguard-tools",
+      dnf: "wireguard-tools",
+      yum: "epel-release && yum install -y wireguard-tools",
+      pacman: "wireguard-tools",
+      zypper: "wireguard-tools",
+      apk: "wireguard-tools"
+    },
+    versionCmd: "wg --version || wg-quick --version",
+    logsCmd: "journalctl -u wg-quick@* -n 100 --no-pager || dmesg | grep -i wireguard | tail -n 100"
+  },
+  openvpn: {
+    name: "OpenVPN",
+    type: "openvpn",
+    binaries: ["openvpn"],
+    serviceName: "openvpn",
+    packagesMap: {
+      apt: "openvpn",
+      dnf: "openvpn",
+      yum: "epel-release && yum install -y openvpn",
+      pacman: "openvpn",
+      zypper: "openvpn",
+      apk: "openvpn"
+    },
+    versionCmd: "openvpn --version",
+    logsCmd: "journalctl -u openvpn* -n 100 --no-pager || cat /var/log/openvpn.log | tail -n 100"
+  },
+  tailscale: {
+    name: "Tailscale",
+    type: "tailscale",
+    binaries: ["tailscale", "tailscaled"],
+    serviceName: "tailscaled",
+    packagesMap: {
+      apt: "tailscale",
+      dnf: "tailscale",
+      yum: "tailscale",
+      pacman: "tailscale",
+      zypper: "tailscale",
+      apk: "tailscale"
+    },
+    installScript: "curl -fsSL https://tailscale.com/install.sh | sh",
+    versionCmd: "tailscale version",
+    logsCmd: "journalctl -u tailscaled -n 100 --no-pager"
+  },
+  zerotier: {
+    name: "ZeroTier One",
+    type: "zerotier",
+    binaries: ["zerotier-cli", "zerotier-one"],
+    serviceName: "zerotier-one",
+    packagesMap: {
+      apt: "zerotier-one",
+      dnf: "zerotier-one",
+      yum: "zerotier-one",
+      pacman: "zerotier-one",
+      zypper: "zerotier-one",
+      apk: "zerotier-one"
+    },
+    installScript: "curl -s https://install.zerotier.com | bash",
+    versionCmd: "zerotier-cli -v",
+    logsCmd: "journalctl -u zerotier-one -n 100 --no-pager"
+  },
+  openconnect: {
+    name: "OpenConnect (Cisco/AnyConnect)",
+    type: "openconnect",
+    binaries: ["openconnect"],
+    serviceName: "openconnect",
+    packagesMap: {
+      apt: "openconnect",
+      dnf: "openconnect",
+      yum: "epel-release && yum install -y openconnect",
+      pacman: "openconnect",
+      zypper: "openconnect",
+      apk: "openconnect"
+    },
+    versionCmd: "openconnect --version",
+    logsCmd: "journalctl -u openconnect -n 100 --no-pager"
+  },
+  strongswan: {
+    name: "StrongSwan (IPsec/IKEv2)",
+    type: "strongswan",
+    binaries: ["strongswan", "charon-cmd", "ipsec"],
+    serviceName: "strongswan-starter",
+    packagesMap: {
+      apt: "strongswan strongswan-pki libcharon-extra-plugins",
+      dnf: "strongswan",
+      yum: "epel-release && yum install -y strongswan",
+      pacman: "strongswan",
+      zypper: "strongswan",
+      apk: "strongswan"
+    },
+    versionCmd: "ipsec version || strongswan version",
+    logsCmd: "journalctl -u strongswan -u ipsec -n 100 --no-pager"
+  },
+  softether: {
+    name: "SoftEther VPN Client",
+    type: "softether",
+    binaries: ["vpnclient", "vpncmd"],
+    serviceName: "vpnclient",
+    packagesMap: {
+      apt: "softether-vpnclient",
+      dnf: "softether-vpnclient",
+      yum: "softether-vpnclient",
+      pacman: "softether-vpnclient",
+      zypper: "softether-vpnclient",
+      apk: "softether-vpnclient"
+    },
+    versionCmd: "vpncmd localhost /CLIENT /CMD Version || vpnclient status",
+    logsCmd: "journalctl -u vpnclient -n 100 --no-pager"
+  },
+  sstp: {
+    name: "SSTP Client",
+    type: "sstp",
+    binaries: ["sstpc"],
+    serviceName: "sstpc",
+    packagesMap: {
+      apt: "sstp-client ppp",
+      dnf: "sstp-client ppp",
+      yum: "epel-release && yum install -y sstp-client ppp",
+      pacman: "sstp-client ppp",
+      zypper: "sstp-client ppp",
+      apk: "sstp-client ppp"
+    },
+    versionCmd: "sstpc --version",
+    logsCmd: "journalctl -u sstpc -n 100 --no-pager"
+  },
+  l2tp: {
+    name: "L2TP / IPsec",
+    type: "l2tp",
+    binaries: ["xl2tpd", "ipsec"],
+    serviceName: "xl2tpd",
+    packagesMap: {
+      apt: "xl2tpd strongswan ppp",
+      dnf: "xl2tpd strongswan ppp",
+      yum: "epel-release && yum install -y xl2tpd strongswan ppp",
+      pacman: "xl2tpd strongswan ppp",
+      zypper: "xl2tpd strongswan ppp",
+      apk: "xl2tpd strongswan ppp"
+    },
+    versionCmd: "xl2tpd -v || ipsec version",
+    logsCmd: "journalctl -u xl2tpd -n 100 --no-pager"
+  },
+  pptp: {
+    name: "PPTP Client",
+    type: "pptp",
+    binaries: ["pptp"],
+    serviceName: "pptp",
+    packagesMap: {
+      apt: "pptp-linux ppp",
+      dnf: "pptp",
+      yum: "epel-release && yum install -y pptp ppp",
+      pacman: "pptp-client ppp",
+      zypper: "pptp ppp",
+      apk: "pptp-client ppp"
+    },
+    versionCmd: "pptp --version",
+    logsCmd: "journalctl -u pptp -n 100 --no-pager"
+  }
+};
+
+/**
+ * Endpoint: Get OS Detection Info
+ */
+app.get("/api/vpn-clients/os-info", authenticateToken, (req, res) => {
+  try {
+    const osInfo = detectSystemOS();
+    return res.json({ success: true, osInfo });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Endpoint: Get Status of All VPN Client Packages
+ */
+app.get("/api/vpn-clients/packages", authenticateToken, (req, res) => {
+  try {
+    const osInfo = detectSystemOS();
+    const resultList: any[] = [];
+
+    Object.keys(VPN_CLIENT_REGISTRY).forEach(clientKey => {
+      const clientDef = VPN_CLIENT_REGISTRY[clientKey];
+      
+      // Check binary existence
+      let isInstalled = false;
+      let installedPath = "";
+      for (const bin of clientDef.binaries) {
+        const check = runSystemCommand(`which ${bin}`);
+        if (check.success && check.output) {
+          isInstalled = true;
+          installedPath = check.output;
+          break;
+        }
+      }
+
+      // Check version
+      let version = "Not installed";
+      if (isInstalled) {
+        const verRes = runSystemCommand(clientDef.versionCmd);
+        if (verRes.success) {
+          version = verRes.output.split("\n")[0] || "Installed";
+        } else {
+          version = "Installed";
+        }
+      }
+
+      // Check Service running / boot status
+      let isRunning = false;
+      let isEnabledAtBoot = false;
+
+      if (isInstalled) {
+        const activeRes = runSystemCommand(`systemctl is-active ${clientDef.serviceName}`);
+        if (activeRes.success && activeRes.output === "active") {
+          isRunning = true;
+        } else {
+          // Check process listing fallback
+          const psRes = runSystemCommand(`pgrep -f "${clientDef.binaries[0]}"`);
+          if (psRes.success && psRes.output) {
+            isRunning = true;
+          }
+        }
+
+        const enabledRes = runSystemCommand(`systemctl is-enabled ${clientDef.serviceName}`);
+        if (enabledRes.success && enabledRes.output === "enabled") {
+          isEnabledAtBoot = true;
+        }
+      }
+
+      resultList.push({
+        type: clientKey,
+        name: clientDef.name,
+        isInstalled,
+        installedPath,
+        version,
+        isRunning,
+        isEnabledAtBoot,
+        serviceName: clientDef.serviceName
+      });
+    });
+
+    return res.json({
+      success: true,
+      osInfo,
+      packages: resultList
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Endpoint: Install VPN Client Package (Idempotent)
+ */
+app.post("/api/vpn-clients/package/install", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { type } = req.body;
+    const clientDef = VPN_CLIENT_REGISTRY[type];
+    if (!clientDef) {
+      return res.status(400).json({ error: "Unsupported VPN client type" });
+    }
+
+    const osInfo = detectSystemOS();
+
+    // 1. Check if already installed
+    let isInstalled = false;
+    let installedPath = "";
+    for (const bin of clientDef.binaries) {
+      const check = runSystemCommand(`which ${bin}`);
+      if (check.success && check.output) {
+        isInstalled = true;
+        installedPath = check.output;
+        break;
+      }
+    }
+
+    if (isInstalled) {
+      const verRes = runSystemCommand(clientDef.versionCmd);
+      const verStr = verRes.success ? verRes.output.split("\n")[0] : "Installed";
+      return res.json({
+        success: true,
+        alreadyInstalled: true,
+        message: `پکیج ${clientDef.name} از قبل روی سیستم نصب می‌باشد (${verStr}).`,
+        version: verStr,
+        installedPath,
+        log: `[IDEMPOTENT CHECK] ${clientDef.name} binary located at ${installedPath}. Skipping re-installation.`
+      });
+    }
+
+    // 2. Perform installation using package manager or script
+    let installCmd = "";
+    if (clientDef.installScript) {
+      installCmd = clientDef.installScript;
+    } else {
+      const pkgNames = clientDef.packagesMap[osInfo.pkgManager] || clientDef.packagesMap["apt"] || clientDef.type;
+      
+      switch (osInfo.pkgManager) {
+        case "apt":
+          installCmd = `apt-get update -y && apt-get install -y ${pkgNames}`;
+          break;
+        case "dnf":
+          installCmd = `dnf install -y ${pkgNames}`;
+          break;
+        case "yum":
+          installCmd = `yum install -y ${pkgNames}`;
+          break;
+        case "pacman":
+          installCmd = `pacman -Sy --noconfirm ${pkgNames}`;
+          break;
+        case "zypper":
+          installCmd = `zypper install -y ${pkgNames}`;
+          break;
+        case "apk":
+          installCmd = `apk add --no-cache ${pkgNames}`;
+          break;
+        default:
+          installCmd = `apt-get update -y && apt-get install -y ${pkgNames}`;
+      }
+    }
+
+    const installRes = runSystemCommand(installCmd, 120000);
+    const verRes = runSystemCommand(clientDef.versionCmd);
+    const version = verRes.success ? verRes.output.split("\n")[0] : "Installed";
+
+    return res.json({
+      success: installRes.success,
+      alreadyInstalled: false,
+      message: installRes.success 
+        ? `پکیج ${clientDef.name} با موفقیت روی سرور نصب و فعال گردید.`
+        : `خطا در نصب پکیج ${clientDef.name}. خروجی را بررسی کنید.`,
+      version,
+      log: installRes.output
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Endpoint: Uninstall VPN Client Package
+ */
+app.post("/api/vpn-clients/package/uninstall", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { type } = req.body;
+    const clientDef = VPN_CLIENT_REGISTRY[type];
+    if (!clientDef) return res.status(400).json({ error: "Unsupported VPN client type" });
+
+    const osInfo = detectSystemOS();
+    const pkgNames = clientDef.packagesMap[osInfo.pkgManager] || clientDef.packagesMap["apt"] || clientDef.type;
+
+    let removeCmd = "";
+    switch (osInfo.pkgManager) {
+      case "apt":
+        removeCmd = `apt-get remove -y ${pkgNames}`;
+        break;
+      case "dnf":
+      case "yum":
+        removeCmd = `${osInfo.pkgManager} remove -y ${pkgNames}`;
+        break;
+      case "pacman":
+        removeCmd = `pacman -R --noconfirm ${pkgNames}`;
+        break;
+      case "zypper":
+        removeCmd = `zypper remove -y ${pkgNames}`;
+        break;
+      case "apk":
+        removeCmd = `apk del ${pkgNames}`;
+        break;
+      default:
+        removeCmd = `apt-get remove -y ${pkgNames}`;
+    }
+
+    const removeRes = runSystemCommand(removeCmd, 60000);
+
+    return res.json({
+      success: removeRes.success,
+      message: removeRes.success ? `پکیج ${clientDef.name} با موفقیت از سرور حذف شد.` : `بروز خطا در حذف ${clientDef.name}.`,
+      log: removeRes.output
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Endpoint: Service Control (start, stop, restart, enable-boot, disable-boot)
+ */
+app.post("/api/vpn-clients/package/service-control", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { type, action } = req.body;
+    const clientDef = VPN_CLIENT_REGISTRY[type];
+    if (!clientDef) return res.status(400).json({ error: "Unsupported client type" });
+
+    let cmd = "";
+    switch (action) {
+      case "start":
+        cmd = `systemctl start ${clientDef.serviceName}`;
+        break;
+      case "stop":
+        cmd = `systemctl stop ${clientDef.serviceName}`;
+        break;
+      case "restart":
+        cmd = `systemctl restart ${clientDef.serviceName}`;
+        break;
+      case "enable-boot":
+        cmd = `systemctl enable ${clientDef.serviceName}`;
+        break;
+      case "disable-boot":
+        cmd = `systemctl disable ${clientDef.serviceName}`;
+        break;
+      default:
+        return res.status(400).json({ error: "Invalid action" });
+    }
+
+    const sysRes = runSystemCommand(cmd);
+    return res.json({
+      success: sysRes.success,
+      message: sysRes.success ? `دستور ${action} با موفقیت روی سرویس ${clientDef.serviceName} اجرا گردید.` : `خطا در اجرای ${action}.`,
+      log: sysRes.output
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Endpoint: View Client Logs
+ */
+app.post("/api/vpn-clients/package/logs", authenticateToken, (req, res) => {
+  try {
+    const { type } = req.body;
+    const clientDef = VPN_CLIENT_REGISTRY[type];
+    if (!clientDef) return res.status(400).json({ error: "Unsupported client type" });
+
+    const logRes = runSystemCommand(clientDef.logsCmd);
+    return res.json({
+      success: true,
+      logs: logRes.output || "لاگی ثبت نشده است."
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Endpoint: Config Import Utility
+ */
+app.post("/api/vpn-clients/import-config", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+  try {
+    const { rawConfig, name } = req.body;
+    if (!rawConfig) return res.status(400).json({ error: "No configuration text provided" });
+
+    let protocol = "wireguard";
+    let serverHost = "127.0.0.1";
+    let port = 51820;
+    let username = "";
+    let password = "";
+    let privateKey = "";
+    let publicKey = "";
+    let assignedIp = "";
+
+    // Auto detect format (.conf vs .ovpn vs tailscale / zerotier)
+    if (rawConfig.includes("[Interface]") || rawConfig.includes("PrivateKey")) {
+      protocol = "wireguard";
+      const lines = rawConfig.split("\n");
+      let section = "";
+      lines.forEach((line: string) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("[")) {
+          section = trimmed.toLowerCase();
+          return;
+        }
+        const [k, ...vParts] = trimmed.split("=");
+        if (!k || vParts.length === 0) return;
+        const key = k.trim().toLowerCase();
+        const val = vParts.join("=").trim();
+
+        if (section === "[interface]") {
+          if (key === "privatekey") privateKey = val;
+          if (key === "address") assignedIp = val;
+        } else if (section === "[peer]") {
+          if (key === "publickey") publicKey = val;
+          if (key === "endpoint") {
+            const [h, p] = val.split(":");
+            serverHost = h || "127.0.0.1";
+            port = p ? parseInt(p, 10) : 51820;
+          }
+        }
+      });
+    } else if (rawConfig.includes("client") || rawConfig.includes("remote ")) {
+      protocol = "openvpn";
+      port = 1194;
+      const lines = rawConfig.split("\n");
+      lines.forEach((line: string) => {
+        const parts = line.trim().split(/\s+/);
+        if (parts[0] === "remote" && parts[1]) {
+          serverHost = parts[1];
+          if (parts[2]) port = parseInt(parts[2], 10) || 1194;
+        }
+      });
+    } else {
+      protocol = "openconnect";
+    }
+
+    const db = readDb();
+    if (!db.vpnClientConnections) db.vpnClientConnections = [];
+
+    const newConn = {
+      id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      name: name || `Imported ${protocol.toUpperCase()} Connection`,
+      protocol,
+      serverHost,
+      port,
+      username,
+      password,
+      privateKey,
+      publicKey,
+      rawConfig,
+      status: "disconnected",
+      assignedIp: "",
+      connectedSince: null,
+      latencyMs: 0,
+      txRx: "0 MB / 0 MB",
+      createdAt: new Date().toISOString()
+    };
+
+    db.vpnClientConnections.push(newConn);
+    writeDb(db);
+
+    return res.json({
+      success: true,
+      message: "کانفیگ با موفقیت آنالیز و پروفایل اتصال ذخیره گردید.",
+      connection: newConn
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

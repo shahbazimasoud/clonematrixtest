@@ -951,9 +951,54 @@ export default function ReportingPanel({
   const [newVpnAssignedIp, setNewVpnAssignedIp] = useState<string>('');
   const [isSavingVpnUser, setIsSavingVpnUser] = useState<boolean>(false);
 
+  // OS & VPN Client Packages state
+  const [osInfo, setOsInfo] = useState<{
+    distro: string;
+    distroName: string;
+    version: string;
+    pkgManager: string;
+    arch: string;
+    kernel: string;
+    isLinux: boolean;
+  } | null>(null);
+  const [vpnClientPackages, setVpnClientPackages] = useState<any[]>([]);
+  const [isLoadingOsInfo, setIsLoadingOsInfo] = useState<boolean>(false);
+  const [vpnConnFilter, setVpnConnFilter] = useState<string>('all');
+  
+  // Package Log Modal
+  const [showPkgLogModal, setShowPkgLogModal] = useState<boolean>(false);
+  const [pkgLogTitle, setPkgLogTitle] = useState<string>('');
+  const [pkgLogContent, setPkgLogContent] = useState<string>('');
+  const [isPkgOpLoading, setIsPkgOpLoading] = useState<string | null>(null);
+
+  // Import Config Modal
+  const [showImportConfigModal, setShowImportConfigModal] = useState<boolean>(false);
+  const [importConfigName, setImportConfigName] = useState<string>('');
+  const [importConfigText, setImportConfigText] = useState<string>('');
+  const [isImportingConfig, setIsImportingConfig] = useState<boolean>(false);
+
+  const fetchVpnClientsAndOsInfo = async () => {
+    setIsLoadingOsInfo(true);
+    try {
+      const res = await fetch('/api/vpn-clients/packages', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.osInfo) setOsInfo(data.osInfo);
+        if (Array.isArray(data.packages)) setVpnClientPackages(data.packages);
+      }
+    } catch (e) {
+      console.error('Error fetching VPN client packages & OS info:', e);
+    } finally {
+      setIsLoadingOsInfo(false);
+    }
+  };
+
   const fetchVpnProxyData = async () => {
     setIsLoadingVpnProxy(true);
     try {
+      fetchVpnClientsAndOsInfo();
       const [resSettings, resUsers, resConns] = await Promise.all([
         fetch('/api/vpn-proxy/status', { headers: { 'Authorization': `Bearer ${authToken}` } }),
         fetch('/api/vpn-proxy/users', { headers: { 'Authorization': `Bearer ${authToken}` } }),
@@ -976,6 +1021,160 @@ export default function ReportingPanel({
     } finally {
       setIsLoadingVpnProxy(false);
     }
+  };
+
+  const handleInstallVpnClientPackage = async (type: string) => {
+    setIsPkgOpLoading(type);
+    try {
+      const res = await fetch('/api/vpn-clients/package/install', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        if (data.log) {
+          setPkgLogTitle(`خروجی نصب پکیج ${type.toUpperCase()}`);
+          setPkgLogContent(data.log);
+          setShowPkgLogModal(true);
+        }
+        fetchVpnClientsAndOsInfo();
+      } else {
+        showToast('error', isRtl ? 'خطا در اجرای نصب پکیج' : 'Package install failed');
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در ارتباط با سرور' : 'Connection error');
+    } finally {
+      setIsPkgOpLoading(null);
+    }
+  };
+
+  const handleUninstallVpnClientPackage = async (type: string) => {
+    if (!window.confirm(isRtl ? `آیا از حذف پکیج ${type.toUpperCase()} اطمینان دارید؟` : `Uninstall ${type}?`)) return;
+    setIsPkgOpLoading(type);
+    try {
+      const res = await fetch('/api/vpn-clients/package/uninstall', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        fetchVpnClientsAndOsInfo();
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در حذف پکیج' : 'Uninstall failed');
+    } finally {
+      setIsPkgOpLoading(null);
+    }
+  };
+
+  const handleVpnClientServiceControl = async (type: string, action: 'start' | 'stop' | 'restart' | 'enable-boot' | 'disable-boot') => {
+    setIsPkgOpLoading(`${type}_${action}`);
+    try {
+      const res = await fetch('/api/vpn-clients/package/service-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type, action })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        fetchVpnClientsAndOsInfo();
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در کنترل سرویس' : 'Service action failed');
+    } finally {
+      setIsPkgOpLoading(null);
+    }
+  };
+
+  const handleViewVpnClientLogs = async (type: string, name: string) => {
+    setIsPkgOpLoading(`${type}_logs`);
+    try {
+      const res = await fetch('/api/vpn-clients/package/logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPkgLogTitle(`لاگ‌های سیستم: ${name}`);
+        setPkgLogContent(data.logs || 'لاگی ثبت نشده است.');
+        setShowPkgLogModal(true);
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در دریافت لاگ' : 'Failed to fetch logs');
+    } finally {
+      setIsPkgOpLoading(null);
+    }
+  };
+
+  const handleImportConfigSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importConfigText.trim()) return;
+    setIsImportingConfig(true);
+    try {
+      const res = await fetch('/api/vpn-clients/import-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          name: importConfigName.trim(),
+          rawConfig: importConfigText.trim()
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        setShowImportConfigModal(false);
+        setImportConfigName('');
+        setImportConfigText('');
+        fetchVpnProxyData();
+      } else {
+        showToast('error', isRtl ? 'خطا در تحلیل کانفیگ' : 'Import failed');
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در ارتباط با سرور' : 'Connection error');
+    } finally {
+      setIsImportingConfig(false);
+    }
+  };
+
+  const handleExportConfig = (conn: any) => {
+    const text = conn.rawConfig || `# VPN Connection Export: ${conn.name}
+protocol = ${conn.protocol}
+server = ${conn.serverHost}:${conn.port}
+username = ${conn.username}
+password = ${conn.password}
+assigned_ip = ${conn.assignedIp || '10.10.0.1'}
+created_at = ${conn.createdAt || new Date().toISOString()}
+`;
+    const ext = conn.protocol === 'wireguard' ? 'conf' : conn.protocol === 'openvpn' ? 'ovpn' : 'txt';
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${conn.name.replace(/\s+/g, '_')}_${conn.protocol}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('success', isRtl ? 'فایل کانفیگ با موفقیت دانلود شد' : 'Config exported successfully');
   };
 
   useEffect(() => {
@@ -4770,17 +4969,17 @@ export default function ReportingPanel({
                 </div>
                 <div>
                   <h2 className="text-xl font-bold flex items-center gap-2">
-                    <span>{isRtl ? 'مدیریت و اتصال VPN و پروکسی سرور' : 'Windows-Like VPN & Proxy Client Connections'}</span>
+                    <span>{isRtl ? 'مدیریت پکیج‌ها و کانکشن‌های VPN سرور مقصد' : 'VPN Clients & Connection Profile Manager'}</span>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
                       isLightMode ? 'bg-cyan-100 text-cyan-800 border-cyan-300' : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
                     }`}>
-                      SSTP / L2TP / PPTP / SOCKS5
+                      WireGuard / OpenVPN / Tailscale / SSTP
                     </span>
                   </h2>
                   <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
                     {isRtl 
-                      ? 'ایجاد و پیکربندی کانکشن‌های وی‌پی‌ان سرور مقصد با امکان اتصال/قطع سریع، عدم نیاز به گواهی SSL در حالت SSTP (مشابه ویندوز) و محافظت از روت پنل' 
-                      : 'Windows-style VPN client profile manager with instant Connect/Disconnect, SSTP SSL bypass, and panel anti-lockout protection.'}
+                      ? 'مدیریت و نصب خودکار کلاینت‌های VPN لینوکس، اتصال سریع کانکشن‌ها بدون نیاز به دستور متنی و محافظت از روت پنل مدیریت' 
+                      : 'Automated Linux VPN client package installer, connection profile runner, and anti-lockout protection.'}
                   </p>
                 </div>
               </div>
@@ -4797,14 +4996,13 @@ export default function ReportingPanel({
 
                 <button
                   type="button"
-                  onClick={() => handleInstallVpnPackages()}
-                  disabled={isDeployingPackages}
-                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
-                    isLightMode ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                  onClick={() => setShowImportConfigModal(true)}
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    isLightMode ? 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700' : 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300'
                   }`}
                 >
-                  <Server className="w-4 h-4 text-cyan-500" />
-                  <span>{isRtl ? 'نصب پکیج‌های پیش‌نیاز سرور مقصد' : 'Install Target Server Packages'}</span>
+                  <Download className="w-4 h-4 text-purple-500" />
+                  <span>{isRtl ? 'وارد کردن فایل کانفیگ' : 'Import Config File'}</span>
                 </button>
 
                 <button
@@ -4818,6 +5016,250 @@ export default function ReportingPanel({
                   {isTestingRoute ? <RefreshCw className="w-4 h-4 animate-spin text-cyan-500" /> : <Zap className="w-4 h-4 text-cyan-500" />}
                   <span>{isRtl ? 'تست پایداری مسیر پنل' : 'Test Direct Panel Route'}</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Linux OS & Package Manager Detection Bar */}
+            <div className={`p-5 rounded-3xl border shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${
+              isLightMode ? 'bg-gradient-to-r from-blue-50 via-slate-50 to-indigo-50 border-blue-200 text-slate-800' : 'bg-slate-900/90 border-blue-500/20 text-white'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-2xl border ${
+                  isLightMode ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                }`}>
+                  <Terminal className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <span>{isRtl ? 'سیستم‌عامل و مدیر پکیج سرور مقصد' : 'Target Linux Distribution & Package Manager'}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                      isLightMode ? 'bg-blue-200 text-blue-900' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                    }`}>
+                      {osInfo?.distroName || 'Linux Host'}
+                    </span>
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-2 text-xs mt-1 font-mono">
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      Pkg Manager: {osInfo?.pkgManager || 'apt/dnf/yum/pacman'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                      Arch: {osInfo?.arch || 'x86_64'}
+                    </span>
+                    {osInfo?.kernel && (
+                      <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                        Kernel: {osInfo.kernel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchVpnClientsAndOsInfo}
+                disabled={isLoadingOsInfo}
+                className={`px-3.5 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  isLightMode ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                }`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-blue-500 ${isLoadingOsInfo ? 'animate-spin' : ''}`} />
+                <span>{isRtl ? 'شناسایی مجدد سیستم' : 'Re-detect System'}</span>
+              </button>
+            </div>
+
+            {/* SECTION: VPN CLIENTS (PACKAGES & SERVICES MANAGEMENT) */}
+            <div className={`p-6 rounded-3xl border space-y-6 transition-colors ${
+              isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-slate-900/60 border-white/10 text-white'
+            }`}>
+              <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4 ${
+                isLightMode ? 'border-slate-200' : 'border-white/10'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-2xl border ${
+                    isLightMode ? 'bg-purple-50 border-purple-200 text-purple-600' : 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                  }`}>
+                    <Cpu className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold flex items-center gap-2">
+                      <span>{isRtl ? 'پکیج‌ها و کلاینت‌های VPN (VPN Clients)' : 'VPN Clients & Daemon Services'}</span>
+                      <span className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold ${
+                        isLightMode ? 'bg-purple-100 text-purple-800' : 'bg-purple-500/20 text-purple-300'
+                      }`}>
+                        {vpnClientPackages.filter(p => p.isInstalled).length} / {vpnClientPackages.length} {isRtl ? 'نصب شده' : 'Installed'}
+                      </span>
+                    </h3>
+                    <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {isRtl ? 'نصب، بروزرسانی، مدیریت سرویس‌ها و مشاهده لاگ تمام کلاینت‌های VPN لینوکس به صورت خودکار' : 'Install, remove, start/stop services, and audit logs for target VPN packages.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowImportConfigModal(true)}
+                    className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>{isRtl ? 'وارد کردن کانفیگ (.conf / .ovpn)' : 'Import Config File'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* VPN Clients Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {vpnClientPackages.map((pkg) => {
+                  const isLoadingThis = isPkgOpLoading === pkg.type || isPkgOpLoading?.startsWith(pkg.type);
+                  
+                  return (
+                    <div
+                      key={pkg.type}
+                      className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+                        pkg.isInstalled
+                          ? (isLightMode ? 'bg-slate-50/90 border-purple-200' : 'bg-black/40 border-purple-500/30')
+                          : (isLightMode ? 'bg-slate-100/50 border-slate-200 opacity-80 hover:opacity-100' : 'bg-slate-950/40 border-white/5 opacity-70 hover:opacity-100')
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="text-sm font-bold flex items-center gap-2">
+                              <span>{pkg.name}</span>
+                            </h4>
+                            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                              {pkg.serviceName ? `service: ${pkg.serviceName}` : `bin: ${pkg.type}`}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            {pkg.isInstalled ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" />
+                                <span>{isRtl ? 'نصب شده' : 'Installed'}</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>{isRtl ? 'نصب نشده' : 'Not Installed'}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Package Info Badges */}
+                        <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                          isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-white/5'
+                        }`}>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'نسخه:' : 'Version:'}</span>
+                            <span className="font-mono font-bold text-purple-600 dark:text-purple-300">{pkg.version || 'N/A'}</span>
+                          </div>
+
+                          {pkg.isInstalled && (
+                            <>
+                              <div className="flex justify-between items-center text-[11px] pt-1 border-t border-slate-200 dark:border-white/5">
+                                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'وضعیت سرویس:' : 'Service:'}</span>
+                                <span className={`font-mono font-bold ${pkg.isRunning ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                  {pkg.isRunning ? (isRtl ? 'درحال اجرا (Active)' : 'Running') : (isRtl ? 'متوقف (Inactive)' : 'Stopped')}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center text-[11px] pt-1 border-t border-slate-200 dark:border-white/5">
+                                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'اجرا در بوت:' : 'Boot Auto-start:'}</span>
+                                <span className={`font-mono font-bold ${pkg.isEnabledAtBoot ? 'text-cyan-500' : 'text-slate-400'}`}>
+                                  {pkg.isEnabledAtBoot ? (isRtl ? 'فعال (Enabled)' : 'Enabled') : (isRtl ? 'غیرفعال (Disabled)' : 'Disabled')}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Package Control Actions */}
+                      <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-white/5">
+                        {!pkg.isInstalled ? (
+                          <button
+                            type="button"
+                            onClick={() => handleInstallVpnClientPackage(pkg.type)}
+                            disabled={isLoadingThis}
+                            className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isLoadingThis ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                            <span>{isRtl ? `نصب کلاینت ${pkg.name}` : `Install ${pkg.name}`}</span>
+                          </button>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {pkg.isRunning ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleVpnClientServiceControl(pkg.type, 'stop')}
+                                  disabled={isLoadingThis}
+                                  className="py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                  {isRtl ? 'توقف سرویس' : 'Stop Service'}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleVpnClientServiceControl(pkg.type, 'start')}
+                                  disabled={isLoadingThis}
+                                  className="py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                  {isRtl ? 'شروع سرویس' : 'Start Service'}
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleVpnClientServiceControl(pkg.type, 'restart')}
+                                disabled={isLoadingThis}
+                                className="py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-600 dark:text-blue-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                {isRtl ? 'ریستارت' : 'Restart'}
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleVpnClientServiceControl(pkg.type, pkg.isEnabledAtBoot ? 'disable-boot' : 'enable-boot')}
+                                disabled={isLoadingThis}
+                                className={`py-1 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer disabled:opacity-50 ${
+                                  pkg.isEnabledAtBoot
+                                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                                    : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400'
+                                }`}
+                              >
+                                {pkg.isEnabledAtBoot ? (isRtl ? 'غیرفعال بوت' : 'Disable Boot') : (isRtl ? 'فعال در بوت' : 'Enable Boot')}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleViewVpnClientLogs(pkg.type, pkg.name)}
+                                disabled={isLoadingThis}
+                                className="py-1 rounded-lg bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/30 text-slate-600 dark:text-slate-300 text-[10px] font-semibold transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                {isRtl ? 'مشاهده لاگ' : 'View Logs'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUninstallVpnClientPackage(pkg.type)}
+                                disabled={isLoadingThis}
+                                className="py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-[10px] font-semibold transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                {isRtl ? 'حذف' : 'Uninstall'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -5469,13 +5911,20 @@ export default function ReportingPanel({
                           value={connForm.protocol}
                           onChange={(e) => {
                             const p = e.target.value;
-                            const defPort = p === 'sstp' ? 443 : p === 'l2tp' ? 1701 : p === 'pptp' ? 1723 : p === 'socks5' ? 1080 : 8080;
+                            const defPort = p === 'sstp' ? 443 : p === 'wireguard' ? 51820 : p === 'openvpn' ? 1194 : p === 'l2tp' ? 1701 : p === 'pptp' ? 1723 : p === 'socks5' ? 1080 : 443;
                             setConnForm({ ...connForm, protocol: p, port: defPort });
                           }}
                           className={`w-full rounded-xl px-3.5 py-2.5 text-xs outline-none transition-colors ${
                             isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-cyan-600' : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
                           }`}
                         >
+                          <option value="wireguard">WireGuard VPN</option>
+                          <option value="openvpn">OpenVPN Client</option>
+                          <option value="tailscale">Tailscale Mesh VPN</option>
+                          <option value="zerotier">ZeroTier One Client</option>
+                          <option value="openconnect">OpenConnect (Cisco AnyConnect)</option>
+                          <option value="strongswan">StrongSwan (IPsec / IKEv2)</option>
+                          <option value="softether">SoftEther VPN Client</option>
                           <option value="sstp">SSTP (SSL VPN - Windows Compatible)</option>
                           <option value="l2tp">L2TP / IPsec (With Pre-Shared Key)</option>
                           <option value="pptp">PPTP VPN</option>
@@ -5640,32 +6089,29 @@ export default function ReportingPanel({
               </div>
             )}
 
-            {/* DEPLOY LOGS MODAL */}
-            {showDeployLogsModal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            {/* PACKAGE LOGS MODAL */}
+            {showPkgLogModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
                 <div className={`max-w-2xl w-full border rounded-3xl p-6 shadow-2xl space-y-4 ${
-                  isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-950 border-cyan-500/30 text-white'
+                  isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-950 border-purple-500/30 text-white'
                 }`}>
                   <div className={`flex items-center justify-between pb-3 border-b ${
                     isLightMode ? 'border-slate-200' : 'border-white/10'
                   }`}>
                     <h3 className="text-base font-bold flex items-center gap-2">
-                      <Terminal className="w-5 h-5 text-cyan-500" />
-                      <span>{isRtl ? 'لاگ نصب پکیج‌ها و تنظیمات سرور مقصد' : 'Target Server Deployment Logs'}</span>
+                      <Terminal className="w-5 h-5 text-purple-500" />
+                      <span>{pkgLogTitle || (isRtl ? 'خروجی سیستم و لاگ سرویس' : 'System & Service Logs')}</span>
                     </h3>
-                    <button onClick={() => setShowDeployLogsModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
+                    <button onClick={() => setShowPkgLogModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
                   </div>
 
-                  <div className="bg-black p-4 rounded-2xl border border-white/10 font-mono text-xs text-emerald-400 max-h-80 overflow-y-auto space-y-1">
-                    {deployLogs.map((log, i) => (
-                      <div key={i}>{log}</div>
-                    ))}
-                    {isDeployingPackages && <div className="text-cyan-400 animate-pulse">Running apt-get install ppp pptpd xl2tpd sstp-server dante-server...</div>}
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-white/10 font-mono text-xs text-purple-300 max-h-96 overflow-y-auto space-y-1 whitespace-pre-wrap dir-ltr text-left">
+                    {pkgLogContent || 'No output recorded.'}
                   </div>
 
                   <div className="flex justify-end pt-2">
                     <button
-                      onClick={() => setShowDeployLogsModal(false)}
+                      onClick={() => setShowPkgLogModal(false)}
                       className={`px-5 py-2 rounded-xl text-xs font-bold cursor-pointer ${
                         isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-800' : 'bg-white/10 hover:bg-white/20 text-white'
                       }`}
@@ -5673,6 +6119,112 @@ export default function ReportingPanel({
                       {isRtl ? 'بستن' : 'Close'}
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* IMPORT CONFIG FILE MODAL */}
+            {showImportConfigModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
+                <div className={`max-w-lg w-full rounded-3xl p-6 border shadow-2xl space-y-5 ${
+                  isLightMode ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-950 border-purple-500/30 text-white'
+                }`}>
+                  <div className={`flex items-center justify-between pb-4 border-b ${
+                    isLightMode ? 'border-slate-200' : 'border-white/10'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                        <Download className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold">
+                          {isRtl ? 'وارد کردن کانفیگ VPN' : 'Import VPN Configuration File'}
+                        </h3>
+                        <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {isRtl ? 'بارگذاری یا چسباندن محتوای کانفیگ WireGuard (.conf) یا OpenVPN (.ovpn)' : 'Upload or paste WireGuard (.conf) or OpenVPN (.ovpn) text'}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={() => setShowImportConfigModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">✕</button>
+                  </div>
+
+                  <form onSubmit={handleImportConfigSubmit} className="space-y-4">
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {isRtl ? 'نام پروفایل:' : 'Profile Name:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={importConfigName}
+                        onChange={(e) => setImportConfigName(e.target.value)}
+                        placeholder="e.g. My Germany WireGuard Peer"
+                        required
+                        className={`w-full rounded-xl px-3.5 py-2.5 text-xs outline-none transition-colors ${
+                          isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-purple-600' : 'bg-slate-900 border border-white/10 text-white focus:border-purple-500/50'
+                        }`}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {isRtl ? 'آپلود فایل کانفیگ:' : 'Upload .conf / .ovpn file:'}
+                      </label>
+                      <input
+                        type="file"
+                        accept=".conf,.ovpn,.txt"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            if (!importConfigName) setImportConfigName(file.name.replace(/\.[^/.]+$/, ""));
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              if (evt.target?.result) {
+                                setImportConfigText(evt.target.result as string);
+                              }
+                            };
+                            reader.readAsText(file);
+                          }
+                        }}
+                        className="text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {isRtl ? 'یا چسباندن کد کانفیگ:' : 'Or paste Raw Config Content:'}
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={importConfigText}
+                        onChange={(e) => setImportConfigText(e.target.value)}
+                        placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ..."
+                        required
+                        className={`w-full rounded-xl p-3 text-xs font-mono outline-none transition-colors dir-ltr text-left ${
+                          isLightMode ? 'bg-slate-50 border border-slate-300 text-slate-900 focus:border-purple-600' : 'bg-slate-900 border border-white/10 text-white focus:border-purple-500/50'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowImportConfigModal(false)}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                          isLightMode ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-white/10 text-slate-300 hover:bg-white/20'
+                        }`}
+                      >
+                        {isRtl ? 'انصراف' : 'Cancel'}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isImportingConfig}
+                        className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isImportingConfig ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        <span>{isRtl ? 'ذخیره و وارد کردن' : 'Import Config'}</span>
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}

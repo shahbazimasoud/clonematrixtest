@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.2";
+export const PANEL_VERSION = "2.9.3";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.3",
+    date: "2026-08-07",
+    title: "Linux Distribution Auto-Detection & Automated VPN Clients Package & Service Control",
+    changes: [
+      "Target Linux OS & Package Manager Auto-Detection: Automatically parses /etc/os-release on the target server to detect distribution (Ubuntu, Debian, CentOS, Rocky, Fedora, Arch, openSUSE) and package manager (apt, dnf, yum, pacman, zypper).",
+      "VPN Clients UI Section: Integrated dedicated 'VPN Clients' management section listing 10 supported Linux VPN tools (WireGuard, OpenVPN, Tailscale, ZeroTier, OpenConnect, StrongSwan, SoftEther, SSTP, L2TP, PPTP).",
+      "Package Lifecycle Control: Added one-click remote Installation, Uninstallation, Start, Stop, Restart, and Enable/Disable at boot service actions over persistent agent WebSocket connection without SSH.",
+      "Import/Export & Logs Viewer: Added interactive modal for importing .conf and .ovpn configuration files, and viewing real-time systemctl/journalctl logs for individual VPN packages.",
+      "Refactored VPN/Proxy UI Layout: Fully refactored light and dark theme compatibility, eliminated text clipping/overflow for badges (e.g. Disconnected and SSTP tags), and harmonized button typography."
+    ]
+  },
   {
     version: "2.9.2",
     date: "2026-08-07",

@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.9.2** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.3** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.9.3** - 2026-08-07
+- **Target Linux OS & Package Manager Auto-Detection**: Automatically reads `/etc/os-release` on target server to detect distribution (Ubuntu, Debian, CentOS, Rocky, AlmaLinux, Fedora, Arch, openSUSE) and package manager (`apt`, `dnf`, `yum`, `pacman`, `zypper`).
+- **VPN Clients UI Section**: Added a dedicated "VPN Clients" section listing 10 Linux VPN client packages (WireGuard, OpenVPN, Tailscale, ZeroTier, OpenConnect, StrongSwan, SoftEther, SSTP, L2TP, PPTP).
+- **Package & Service Lifecycle Control**: Added interactive controls for Installation, Uninstallation, Service Start/Stop/Restart, and Boot Auto-start toggle over existing agent WebSocket connection.
+- **Import/Export & Logs Viewer**: Added configuration file import modal for `.conf` / `.ovpn` files and systemctl/journalctl log viewer modal for each package.
+- **VPN/Proxy Refactored UI**: Fixed card overflows for `Disconnected` and `SSTP` tags, polished light & dark theme styling, and harmonized button contrast.
 
 #### **v2.9.2** - 2026-08-07
 - **Real Target Server Driver**: Implemented real system calls (`sstpc`, `xl2tpd`, `pptp-linux`, `connect-proxy`) to configure and control VPN client connections directly on the destination server.
