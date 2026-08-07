@@ -903,7 +903,7 @@ export default function ReportingPanel({
     return 'analytics';
   };
 
-  const [activeSubTab, setActiveTab] = useState<'analytics' | 'rbac' | 'audit' | 'configLog' | 'sessionPanel' | 'securityRules'>(getInitialSubTab);
+  const [activeSubTab, setActiveTab] = useState<'analytics' | 'rbac' | 'audit' | 'configLog' | 'sessionPanel' | 'securityRules' | 'vpn'>(getInitialSubTab);
 
   useEffect(() => {
     if (isCustomRole) {
@@ -922,6 +922,338 @@ export default function ReportingPanel({
       }
     }
   }, [isCustomRole, perms, activeSubTab, canViewAnalytics, canViewRbac, canViewAudit, canViewConfigLog, canViewSessionPanel]);
+
+
+  // --- VPN MANAGEMENT SUITE STATES ---
+  const [activeVpnSubTab, setActiveVpnSubTab] = useState<'packages' | 'services' | 'connections'>('packages');
+  const [targetConnections, setTargetConnections] = useState<any[]>([]);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>('local');
+  const [vpnPackages, setVpnPackages] = useState<any[]>([]);
+  const [osInfo, setOsInfo] = useState<any>(null);
+  const [isLoadingVpnData, setIsLoadingVpnData] = useState<boolean>(false);
+  const [pkgFilterCategory, setPkgFilterCategory] = useState<string>('all');
+
+  // Installation Modal & Job Streaming State
+  const [activeInstallJob, setActiveInstallJob] = useState<any>(null);
+  const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
+  const [installingType, setInstallingType] = useState<string | null>(null);
+
+  // Service Logs Modal State
+  const [showServiceLogModal, setShowServiceLogModal] = useState<boolean>(false);
+  const [serviceLogTitle, setServiceLogTitle] = useState<string>('');
+  const [serviceLogContent, setServiceLogContent] = useState<string>('');
+  const [isServiceOpLoading, setIsServiceOpLoading] = useState<string | null>(null);
+
+  // Client Connection Profiles State
+  const [vpnClientConnections, setVpnClientConnections] = useState<any[]>([]);
+  const [showConnModal, setShowConnModal] = useState<boolean>(false);
+  const [showConnPassword, setShowConnPassword] = useState<boolean>(false);
+  const [isConnectingId, setIsConnectingId] = useState<string | null>(null);
+
+  const [connForm, setConnForm] = useState<any>({
+    id: '',
+    name: '',
+    protocol: 'wireguard',
+    serverHost: '',
+    port: 51820,
+    username: '',
+    password: '',
+    presharedKey: '',
+    autoConnect: true
+  });
+
+  // Import Config Modal State
+  const [showImportConfigModal, setShowImportConfigModal] = useState<boolean>(false);
+  const [importConfigName, setImportConfigName] = useState<string>('');
+  const [importConfigText, setImportConfigText] = useState<string>('');
+  const [isImportingConfig, setIsImportingConfig] = useState<boolean>(false);
+
+  const fetchTargetConnections = async () => {
+    try {
+      const res = await fetch('/api/connections', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const conns = await res.json();
+        if (Array.isArray(conns)) setTargetConnections(conns);
+      }
+    } catch (e) {
+      console.error('Error fetching target connections:', e);
+    }
+  };
+
+  const fetchVpnPackagesAndOs = async (targetId: string = selectedTargetId) => {
+    setIsLoadingVpnData(true);
+    try {
+      const res = await fetch(`/api/vpn-clients/packages?targetId=${encodeURIComponent(targetId)}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.osInfo) setOsInfo(data.osInfo);
+        if (Array.isArray(data.packages)) setVpnPackages(data.packages);
+      }
+    } catch (e) {
+      console.error('Error fetching VPN packages:', e);
+    } finally {
+      setIsLoadingVpnData(false);
+    }
+  };
+
+  const fetchVpnConnections = async () => {
+    try {
+      const res = await fetch('/api/vpn-proxy/client-connections', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const conns = await res.json();
+        if (Array.isArray(conns)) setVpnClientConnections(conns);
+      }
+    } catch (e) {
+      console.error('Error fetching VPN client connections:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'vpn') {
+      fetchTargetConnections();
+      fetchVpnPackagesAndOs(selectedTargetId);
+      fetchVpnConnections();
+    }
+  }, [activeSubTab, selectedTargetId]);
+
+  useEffect(() => {
+    if (!activeInstallJob || activeInstallJob.status !== 'running') return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/vpn-clients/job/${activeInstallJob.id}`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.job) {
+            setActiveInstallJob(data.job);
+            if (data.job.status === 'completed' || data.job.status === 'failed') {
+              fetchVpnPackagesAndOs(selectedTargetId);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error polling install job:', e);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeInstallJob?.id, activeInstallJob?.status, selectedTargetId]);
+
+  const handleInstallPackage = async (type: string) => {
+    setInstallingType(type);
+    try {
+      const res = await fetch('/api/vpn-clients/package/install', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type, targetId: selectedTargetId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.job) {
+          setActiveInstallJob(data.job);
+          setShowInstallModal(true);
+        }
+        showToast('success', isRtl ? `نصب پکیج ${type.toUpperCase()} آغاز گردید` : `Started installation of ${type.toUpperCase()}`);
+      } else {
+        showToast('error', isRtl ? 'خطا در آغاز نصب پکیج' : 'Failed to start installation');
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در ارتباط با سرور' : 'Server connection error');
+    } finally {
+      setInstallingType(null);
+    }
+  };
+
+  const handleUninstallPackage = async (type: string) => {
+    if (!window.confirm(isRtl ? `آیا از حذف پکیج ${type.toUpperCase()} اطمینان دارید؟` : `Are you sure you want to uninstall ${type.toUpperCase()}?`)) return;
+    setIsServiceOpLoading(`uninstall_${type}`);
+    try {
+      const res = await fetch('/api/vpn-clients/package/uninstall', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type, targetId: selectedTargetId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message || (isRtl ? 'پکیج با موفقیت حذف گردید' : 'Package uninstalled successfully'));
+        fetchVpnPackagesAndOs(selectedTargetId);
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در حذف پکیج' : 'Uninstall failed');
+    } finally {
+      setIsServiceOpLoading(null);
+    }
+  };
+
+  const handleServiceControl = async (type: string, action: 'start' | 'stop' | 'restart' | 'enable-boot' | 'disable-boot') => {
+    setIsServiceOpLoading(`${type}_${action}`);
+    try {
+      const res = await fetch('/api/vpn-clients/package/service-control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type, action, targetId: selectedTargetId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        fetchVpnPackagesAndOs(selectedTargetId);
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در کنترل سرویس' : 'Service action failed');
+    } finally {
+      setIsServiceOpLoading(null);
+    }
+  };
+
+  const handleViewServiceLogs = async (type: string, name: string) => {
+    setIsServiceOpLoading(`${type}_logs`);
+    try {
+      const res = await fetch('/api/vpn-clients/package/logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type, targetId: selectedTargetId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setServiceLogTitle(isRtl ? `لاگ‌های سیستم: ${name}` : `System Journal Logs: ${name}`);
+        setServiceLogContent(data.logs || 'No logs recorded.');
+        setShowServiceLogModal(true);
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در دریافت لاگ' : 'Failed to fetch logs');
+    } finally {
+      setIsServiceOpLoading(null);
+    }
+  };
+
+  const handleConnectProfile = async (id: string) => {
+    setIsConnectingId(id);
+    try {
+      const res = await fetch(`/api/vpn-proxy/client-connections/${id}/connect`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        fetchVpnConnections();
+      } else {
+        showToast('error', isRtl ? 'خطا در برقرار اتصال' : 'Connect failed');
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در برقراری ارتباط' : 'Connection error');
+    } finally {
+      setIsConnectingId(null);
+    }
+  };
+
+  const handleDisconnectProfile = async (id: string) => {
+    setIsConnectingId(id);
+    try {
+      const res = await fetch(`/api/vpn-proxy/client-connections/${id}/disconnect`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        fetchVpnConnections();
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در قطع اتصال' : 'Disconnect error');
+    } finally {
+      setIsConnectingId(null);
+    }
+  };
+
+  const handleSaveConnectionProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!connForm.name.trim() || !connForm.serverHost.trim()) {
+      showToast('error', isRtl ? 'لطفاً نام و آدرس سرور را وارد کنید' : 'Please enter profile name and server address');
+      return;
+    }
+    try {
+      const res = await fetch('/api/vpn-proxy/client-connections', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(connForm)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        setShowConnModal(false);
+        fetchVpnConnections();
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در ذخیره پروفایل' : 'Failed to save profile');
+    }
+  };
+
+  const handleDeleteConnectionProfile = async (id: string) => {
+    if (!window.confirm(isRtl ? 'آیا از حذف این کانکشن اطمینان دارید؟' : 'Delete this VPN profile?')) return;
+    try {
+      const res = await fetch(`/api/vpn-proxy/client-connections/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        showToast('success', isRtl ? 'پروفایل حذف گردید' : 'Profile deleted');
+        fetchVpnConnections();
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در حذف پروفایل' : 'Delete failed');
+    }
+  };
+
+  const handleImportConfigSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importConfigText.trim()) return;
+    setIsImportingConfig(true);
+    try {
+      const res = await fetch('/api/vpn-clients/import-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ name: importConfigName.trim(), rawConfig: importConfigText.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast('success', data.message);
+        setShowImportConfigModal(false);
+        setImportConfigName('');
+        setImportConfigText('');
+        fetchVpnConnections();
+      }
+    } catch (err) {
+      showToast('error', isRtl ? 'خطا در وارد کردن کانفیگ' : 'Import failed');
+    } finally {
+      setIsImportingConfig(false);
+    }
+  };
+
 
   // Security Rules State
   const [secLockoutEnabled, setSecLockoutEnabled] = useState<boolean>(true);
@@ -1985,6 +2317,19 @@ export default function ReportingPanel({
             <span>{isRtl ? 'سشن پنل (Session Panel)' : 'Session Panel'}</span>
           </button>
         )}
+
+        <button
+          onClick={() => setActiveTab('vpn')}
+          id="btn-tab-vpn-management"
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${isRtl ? 'flex-row-reverse text-right' : 'text-left'} ${
+            activeSubTab === 'vpn' 
+              ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(6,182,212,0.15)]' 
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <Network className="w-5 h-5 text-cyan-400" />
+          <span>{isRtl ? 'مدیریت VPN و کلاینت‌ها' : 'VPN Management'}</span>
+        </button>
 
         {canViewRbac && (
           <button
@@ -4399,6 +4744,715 @@ export default function ReportingPanel({
             </div>
           </div>
         )}
+
+                {/* VIEW 7: REMOTE VPN CLIENTS & DAEMONS SUITE */}
+        {activeSubTab === 'vpn' && (
+          <div className="space-y-6">
+            {/* Header & Target Server Selector */}
+            <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/5 ${isRtl ? 'md:flex-row-reverse text-right' : 'text-left'}`}>
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                  <Network className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-display font-bold text-white">
+                    {isRtl ? 'مدیریت کلاینت و سرویس‌های VPN' : 'VPN Clients & Daemon Management'}
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    {isRtl ? 'نصب، پیکربندی و مدیریت سرویس‌های VPN روی سرور ریموت انتخابی' : 'Install, configure, and control VPN protocols on target remote servers'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Target Server Selector */}
+              <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-2xl p-1.5">
+                <Server className="w-4 h-4 text-cyan-400 ml-2" />
+                <span className="text-xs text-slate-400 font-semibold">{isRtl ? 'سرور هدف:' : 'Target Server:'}</span>
+                <select
+                  value={selectedTargetId}
+                  onChange={(e) => setSelectedTargetId(e.target.value)}
+                  className="bg-black/50 text-xs font-bold text-cyan-300 rounded-xl px-3 py-1.5 border border-cyan-500/30 focus:outline-none"
+                >
+                  <option value="local">{isRtl ? 'سرور جاری (Local Host)' : 'Local Host Server'}</option>
+                  {targetConnections.map((conn) => (
+                    <option key={conn.id} value={conn.id}>
+                      {conn.name} ({conn.host || conn.ip || 'Remote'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Active Installation Re-attachable Floating Banner */}
+            {activeInstallJob && activeInstallJob.status === 'running' && !showInstallModal && (
+              <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-between animate-pulse">
+                <div className="flex items-center gap-3">
+                  <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin" />
+                  <div>
+                    <h4 className="text-sm font-bold text-cyan-200">
+                      {isRtl ? `فرآیند نصب پکیج ${activeInstallJob.packageType.toUpperCase()} در حال اجراست...` : `Installation of ${activeInstallJob.packageType.toUpperCase()} is running in background...`}
+                    </h4>
+                    <p className="text-xs text-cyan-400/80">
+                      {isRtl ? 'جهت مشاهده لاگ زنده و وضعیت لحظه‌ای کلیک کنید' : 'Click to re-open the installation stream modal'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowInstallModal(true)}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-lg shadow-cyan-500/20 cursor-pointer flex items-center gap-2"
+                >
+                  <Terminal className="w-4 h-4" />
+                  <span>{isRtl ? 'مشاهده لاگ و روند نصب' : 'View Installation Process'}</span>
+                </button>
+              </div>
+            )}
+
+            {/* VPN Sub-Tabs Navigation */}
+            <div className="flex items-center gap-2 border-b border-white/10 pb-3 overflow-x-auto">
+              <button
+                onClick={() => setActiveVpnSubTab('packages')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeVpnSubTab === 'packages'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Download className="w-4 h-4" />
+                <span>{isRtl ? 'پکیج‌ها و نصب کلاینت‌ها (Package Installer)' : 'Installer & Packages'}</span>
+              </button>
+
+              <button
+                onClick={() => setActiveVpnSubTab('services')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeVpnSubTab === 'services'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Zap className="w-4 h-4" />
+                <span>{isRtl ? 'وضعیت سرویس‌ها و دمون‌ها (Daemon Control)' : 'Service & Daemon Control'}</span>
+              </button>
+
+              <button
+                onClick={() => setActiveVpnSubTab('connections')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeVpnSubTab === 'connections'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                <span>{isRtl ? 'کانکشن‌ها و تونل‌های فعال (Client Connections)' : 'Client Connections & Configs'}</span>
+              </button>
+            </div>
+
+            {/* SUB-TAB 1: PACKAGE INSTALLER */}
+            {activeVpnSubTab === 'packages' && (
+              <div className="space-y-5">
+                {/* OS Environment Card */}
+                {osInfo && (
+                  <div className="p-4 rounded-2xl bg-black/30 border border-white/5 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <Server className="w-5 h-5 text-indigo-400" />
+                      <div>
+                        <span className="text-xs text-slate-400 block font-semibold">{isRtl ? 'سیستم‌عامل سرور هدف:' : 'Target Server OS:'}</span>
+                        <span className="text-sm font-bold text-white">{osInfo.distroName} ({osInfo.arch})</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs font-mono text-slate-300">
+                      <span className="bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">Pkg: {osInfo.pkgManager}</span>
+                      <span className="bg-white/5 px-2.5 py-1 rounded-lg border border-white/10">Kernel: {osInfo.kernel}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Filter Category Chips */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                  {['all', 'Modern VPN', 'Anti-Censorship', 'SSL VPN', 'Enterprise VPN', 'Mesh VPN'].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setPkgFilterCategory(cat)}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+                        pkgFilterCategory === cat
+                          ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20'
+                          : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {cat === 'all' ? (isRtl ? 'همه پروتکل‌ها' : 'All Protocols') : cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Packages Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {vpnPackages
+                    .filter((p) => pkgFilterCategory === 'all' || p.category === pkgFilterCategory)
+                    .map((pkg) => (
+                      <div
+                        key={pkg.type}
+                        className={`p-5 rounded-2xl border transition-all ${
+                          pkg.installed
+                            ? 'bg-cyan-950/20 border-cyan-500/30 hover:border-cyan-500/50'
+                            : 'bg-black/20 border-white/5 hover:border-white/15'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-xl border ${
+                              pkg.installed ? 'bg-cyan-500/20 border-cyan-500/30 text-cyan-300' : 'bg-white/5 border-white/10 text-slate-400'
+                            }`}>
+                              <Shield className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                {pkg.name}
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400 font-mono">
+                                  {pkg.category}
+                                </span>
+                              </h3>
+                              <p className="text-xs text-slate-400 mt-0.5">{pkg.description}</p>
+                            </div>
+                          </div>
+
+                          {/* Installed Badge */}
+                          {pkg.installed ? (
+                            <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              {isRtl ? 'نصب شده' : 'Installed'}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-400">
+                              {isRtl ? 'نصب نشده' : 'Not Installed'}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between pt-3 border-t border-white/5 text-xs">
+                          <span className="font-mono text-slate-400 text-[11px]">
+                            {pkg.installed ? `v${pkg.version || '1.0'}` : `Binary: ${pkg.binary}`}
+                          </span>
+
+                          <div className="flex items-center gap-2">
+                            {pkg.installed ? (
+                              <>
+                                <button
+                                  onClick={() => handleViewServiceLogs(pkg.type, pkg.name)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
+                                >
+                                  <Terminal className="w-3.5 h-3.5" />
+                                  <span>{isRtl ? 'لاگ' : 'Logs'}</span>
+                                </button>
+                                <button
+                                  onClick={() => handleUninstallPackage(pkg.type)}
+                                  disabled={isServiceOpLoading === `uninstall_${pkg.type}`}
+                                  className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>{isRtl ? 'حذف' : 'Uninstall'}</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => handleInstallPackage(pkg.type)}
+                                disabled={installingType === pkg.type}
+                                className="px-4 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md shadow-cyan-500/20 cursor-pointer flex items-center gap-1.5"
+                              >
+                                {installingType === pkg.type ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                                <span>{isRtl ? 'نصب پکیج' : 'Install Package'}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* SUB-TAB 2: SERVICE & DAEMON CONTROL */}
+            {activeVpnSubTab === 'services' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {vpnPackages
+                    .filter((p) => p.installed)
+                    .map((pkg) => (
+                      <div key={pkg.type} className="p-5 rounded-2xl bg-black/25 border border-white/5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                              <Zap className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-white">{pkg.name}</h3>
+                              <p className="text-xs text-slate-400 font-mono">Service: {pkg.serviceName}</p>
+                            </div>
+                          </div>
+
+                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 ${
+                            pkg.status === 'running'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          }`}>
+                            <span className={`w-2 h-2 rounded-full ${pkg.status === 'running' ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+                            {pkg.status === 'running' ? (isRtl ? 'فعال (Running)' : 'RUNNING') : (isRtl ? 'غیرفعال (Stopped)' : 'STOPPED')}
+                          </span>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/5">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleServiceControl(pkg.type, 'start')}
+                              disabled={pkg.status === 'running' || isServiceOpLoading === `${pkg.type}_start`}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                            >
+                              <Play className="w-3.5 h-3.5" />
+                              <span>{isRtl ? 'استارت' : 'Start'}</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleServiceControl(pkg.type, 'stop')}
+                              disabled={pkg.status !== 'running' || isServiceOpLoading === `${pkg.type}_stop`}
+                              className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                            >
+                              <Square className="w-3.5 h-3.5" />
+                              <span>{isRtl ? 'استاپ' : 'Stop'}</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleServiceControl(pkg.type, 'restart')}
+                              disabled={isServiceOpLoading === `${pkg.type}_restart`}
+                              className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer flex items-center gap-1"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>{isRtl ? 'ریستارت' : 'Restart'}</span>
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => handleViewServiceLogs(pkg.type, pkg.name)}
+                            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            <Terminal className="w-3.5 h-3.5" />
+                            <span>{isRtl ? 'مشاهده لاگ' : 'View Logs'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* SUB-TAB 3: CLIENT CONNECTIONS */}
+            {activeVpnSubTab === 'connections' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold text-white">
+                    {isRtl ? 'پروفایل‌های کانکشن VPN' : 'VPN Connection Profiles'}
+                  </h3>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowImportConfigModal(true)}
+                      className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-bold transition-all border border-white/10 flex items-center gap-2 cursor-pointer"
+                    >
+                      <UploadCloud className="w-4 h-4 text-cyan-400" />
+                      <span>{isRtl ? 'وارد کردن فایل کانفیگ' : 'Import Config'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setConnForm({
+                          id: '',
+                          name: '',
+                          protocol: 'wireguard',
+                          serverHost: '',
+                          port: 51820,
+                          username: '',
+                          password: '',
+                          presharedKey: '',
+                          autoConnect: true
+                        });
+                        setShowConnModal(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-500/20 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>{isRtl ? 'پروفایل جدید' : 'New Connection'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Connections List Table */}
+                <div className="overflow-x-auto rounded-2xl border border-white/5 bg-black/25">
+                  <table className="w-full text-left text-xs text-slate-300" dir={isRtl ? 'rtl' : 'ltr'}>
+                    <thead className="bg-white/5 text-slate-400 uppercase text-[10px] font-mono tracking-wider">
+                      <tr>
+                        <th className="p-3.5">{isRtl ? 'نام کانکشن' : 'Connection Name'}</th>
+                        <th className="p-3.5">{isRtl ? 'پروتکل' : 'Protocol'}</th>
+                        <th className="p-3.5">{isRtl ? 'آدرس سرور / پورت' : 'Server Host / Port'}</th>
+                        <th className="p-3.5">{isRtl ? 'IP اختصاصی' : 'Assigned IP'}</th>
+                        <th className="p-3.5">{isRtl ? 'وضعیت' : 'Status'}</th>
+                        <th className="p-3.5 text-center">{isRtl ? 'عملیات' : 'Actions'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {vpnClientConnections.map((conn) => (
+                        <tr key={conn.id} className="hover:bg-white/5 transition-colors">
+                          <td className="p-3.5 font-bold text-white">{conn.name}</td>
+                          <td className="p-3.5">
+                            <span className="px-2 py-0.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-mono uppercase">
+                              {conn.protocol}
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-mono text-slate-400">{conn.serverHost}:{conn.port}</td>
+                          <td className="p-3.5 font-mono text-slate-300">{conn.assignedIp || '—'}</td>
+                          <td className="p-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                              conn.status === 'connected'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${conn.status === 'connected' ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+                              {conn.status === 'connected' ? (isRtl ? 'متصل' : 'CONNECTED') : (isRtl ? 'قطع' : 'DISCONNECTED')}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              {conn.status === 'connected' ? (
+                                <button
+                                  onClick={() => handleDisconnectProfile(conn.id)}
+                                  disabled={isConnectingId === conn.id}
+                                  className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold transition-all cursor-pointer flex items-center gap-1"
+                                >
+                                  <Square className="w-3.5 h-3.5" />
+                                  <span>{isRtl ? 'قطع' : 'Disconnect'}</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleConnectProfile(conn.id)}
+                                  disabled={isConnectingId === conn.id}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold transition-all cursor-pointer flex items-center gap-1"
+                                >
+                                  {isConnectingId === conn.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                                  <span>{isRtl ? 'اتصال' : 'Connect'}</span>
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => handleDeleteConnectionProfile(conn.id)}
+                                className="p-1.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-all cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* INSTALLATION STREAM & LOGS MODAL */}
+        {showInstallModal && activeInstallJob && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+            <div className="max-w-2xl w-full rounded-3xl p-6 border border-cyan-500/30 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                    <Terminal className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      {isRtl ? `نصب پکیج ${activeInstallJob.packageType.toUpperCase()}` : `Installing ${activeInstallJob.packageType.toUpperCase()}`}
+                      {activeInstallJob.status === 'running' && <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />}
+                      {activeInstallJob.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      {activeInstallJob.status === 'failed' && <XCircle className="w-4 h-4 text-rose-400" />}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono">
+                      Target: {activeInstallJob.targetId} | Job ID: {activeInstallJob.id}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowInstallModal(false)}
+                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Terminal Logs Output */}
+              <div className="p-4 rounded-2xl bg-black/80 border border-cyan-500/20 font-mono text-xs text-cyan-300 h-64 overflow-y-auto space-y-1.5">
+                {activeInstallJob.logs.map((log: string, idx: number) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <span className="text-slate-500 select-none">&gt;</span>
+                    <span className={log.includes('SUCCESS') ? 'text-emerald-300 font-bold' : log.includes('ERROR') ? 'text-rose-400 font-bold' : 'text-slate-300'}>
+                      {log}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Status Indicator & Modal Dismiss */}
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-xs font-semibold text-slate-400">
+                  {activeInstallJob.status === 'running' && (isRtl ? 'در حال دریافت و نصب نیازمندی‌ها...' : 'Downloading and compiling dependencies...')}
+                  {activeInstallJob.status === 'completed' && (isRtl ? 'نصب با موفقیت به پایان رسید!' : 'Installation completed successfully!')}
+                  {activeInstallJob.status === 'failed' && (isRtl ? 'خطا در نصب پکیج.' : 'Installation failed.')}
+                </span>
+
+                <button
+                  onClick={() => setShowInstallModal(false)}
+                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-500/20 cursor-pointer"
+                >
+                  {activeInstallJob.status === 'running' ? (isRtl ? 'بستن (ادامه در پس‌زمینه)' : 'Minimize (Run in background)') : (isRtl ? 'بستن' : 'Close')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SERVICE JOURNAL LOGS MODAL */}
+        {showServiceLogModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+            <div className="max-w-2xl w-full rounded-3xl p-6 border border-white/10 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                    <Terminal className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold">{serviceLogTitle}</h3>
+                </div>
+                <button
+                  onClick={() => setShowServiceLogModal(false)}
+                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-black/90 border border-white/10 font-mono text-xs text-slate-300 h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                {serviceLogContent}
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowServiceLogModal(false)}
+                  className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer"
+                >
+                  {isRtl ? 'بستن' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* NEW/EDIT VPN CONNECTION PROFILE MODAL */}
+        {showConnModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+            <div className="max-w-lg w-full rounded-3xl p-6 border border-cyan-500/30 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                    <Globe className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold">
+                    {connForm.id ? (isRtl ? 'ویرایش پروفایل VPN' : 'Edit VPN Connection') : (isRtl ? 'ایجاد پروفایل VPN جدید' : 'New VPN Connection Profile')}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowConnModal(false)}
+                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveConnectionProfile} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'نام پروفایل:' : 'Profile Name:'}</label>
+                  <input
+                    type="text"
+                    value={connForm.name}
+                    onChange={(e) => setConnForm({ ...connForm, name: e.target.value })}
+                    placeholder={isRtl ? 'مثلاً: Frankfurt WireGuard Server' : 'e.g. Frankfurt WireGuard Server'}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'پروتکل VPN:' : 'VPN Protocol:'}</label>
+                    <select
+                      value={connForm.protocol}
+                      onChange={(e) => setConnForm({ ...connForm, protocol: e.target.value })}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="wireguard">WireGuard</option>
+                      <option value="v2ray">V2Ray / Xray (VLESS)</option>
+                      <option value="l2tp">L2TP / IPsec</option>
+                      <option value="sstp">SSTP (SSL VPN)</option>
+                      <option value="pptp">PPTP</option>
+                      <option value="openvpn">OpenVPN</option>
+                      <option value="tailscale">Tailscale</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'پورت سرور:' : 'Server Port:'}</label>
+                    <input
+                      type="number"
+                      value={connForm.port}
+                      onChange={(e) => setConnForm({ ...connForm, port: parseInt(e.target.value) || 51820 })}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'آدرس سرور (IP یا Hostname):' : 'Server Host (IP or Domain):'}</label>
+                  <input
+                    type="text"
+                    value={connForm.serverHost}
+                    onChange={(e) => setConnForm({ ...connForm, serverHost: e.target.value })}
+                    placeholder="185.220.101.5 / vpn.example.com"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'نام کاربری / UUID:' : 'Username / UUID:'}</label>
+                    <input
+                      type="text"
+                      value={connForm.username}
+                      onChange={(e) => setConnForm({ ...connForm, username: e.target.value })}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'رمز عبور / Preshared Key:' : 'Password / PSK:'}</label>
+                    <input
+                      type={showConnPassword ? 'text' : 'password'}
+                      value={connForm.password || connForm.presharedKey}
+                      onChange={(e) => setConnForm({ ...connForm, password: e.target.value, presharedKey: e.target.value })}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="autoConnectCheck"
+                    checked={connForm.autoConnect}
+                    onChange={(e) => setConnForm({ ...connForm, autoConnect: e.target.checked })}
+                    className="w-4 h-4 rounded bg-black/40 border-white/20 text-cyan-500 focus:ring-0"
+                  />
+                  <label htmlFor="autoConnectCheck" className="text-slate-300 cursor-pointer">
+                    {isRtl ? 'اتصال خودکار هنگام بوت سیستم‌عامل' : 'Auto-connect on system boot'}
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setShowConnModal(false)}
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold transition-all cursor-pointer"
+                  >
+                    {isRtl ? 'انصراف' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold transition-all shadow-md shadow-cyan-500/20 cursor-pointer"
+                  >
+                    {isRtl ? 'ذخیره پروفایل' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* IMPORT CONFIGURATION MODAL */}
+        {showImportConfigModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+            <div className="max-w-md w-full rounded-3xl p-6 border border-cyan-500/30 bg-slate-950 text-white shadow-2xl space-y-4" dir={isRtl ? "rtl" : "ltr"}>
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                    <UploadCloud className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold">
+                    {isRtl ? 'وارد کردن فایل کانفیگ VPN' : 'Import VPN Configuration'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowImportConfigModal(false)}
+                  className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleImportConfigSubmit} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'نام کانکشن:' : 'Connection Profile Name:'}</label>
+                  <input
+                    type="text"
+                    value={importConfigName}
+                    onChange={(e) => setImportConfigName(e.target.value)}
+                    placeholder={isRtl ? 'مثلاً: Imported WireGuard Tunnel' : 'e.g. Imported WireGuard Tunnel'}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">{isRtl ? 'محتوای فایل کانفیگ (.conf / .ovpn / vless://):' : 'Raw Config Text (.conf / .ovpn / vless://):'}</label>
+                  <textarea
+                    rows={6}
+                    value={importConfigText}
+                    onChange={(e) => setImportConfigText(e.target.value)}
+                    placeholder="[Interface]\nPrivateKey = ...\nAddress = 10.8.0.2/24\n\n[Peer]\nPublicKey = ...\nEndpoint = 185.220.101.5:51820"
+                    className="w-full bg-black/60 border border-white/10 rounded-xl p-3 font-mono text-xs text-cyan-300 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setShowImportConfigModal(false)}
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold transition-all cursor-pointer"
+                  >
+                    {isRtl ? 'انصراف' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isImportingConfig || !importConfigText.trim()}
+                    className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold transition-all shadow-md shadow-cyan-500/20 flex items-center gap-2 cursor-pointer"
+                  >
+                    {isImportingConfig ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                    <span>{isRtl ? 'پردازش و وارد کردن' : 'Parse & Import'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
 
         {/* PASSWORD CHANGE MODAL */}
         {changePasswordUser && (

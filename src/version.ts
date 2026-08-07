@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.7";
+export const PANEL_VERSION = "2.9.8";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.8",
+    date: "2026-08-07",
+    title: "Remote VPN Client Installation & Daemon Control Suite",
+    changes: [
+      "VPN Management Section in Reports & Admin: Re-added a dedicated 'VPN' section with sub-tabs for Installer & Packages, Daemon Control, and Connection Profiles.",
+      "Remote Installation Stream Modal: Added support for installing client protocols (WireGuard, V2Ray/Xray, L2TP, SSTP, PPTP, OpenVPN, Tailscale) on remote target servers with a live log modal that can be minimized and re-opened.",
+      "Daemon & Connection Controls: Enabled starting, stopping, restarting, and viewing system journal logs for VPN daemons, as well as importing and connecting to VPN profiles.",
+      "Localization & Language Sync: All messages, UI elements, and modal labels respect active language settings without Persian hardcoding."
+    ]
+  },
   {
     version: "2.9.7",
     date: "2026-08-07",

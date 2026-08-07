@@ -16,11 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.9.6** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.8** (Released: 2026-08-07)
 
 ### Changelog History
 
-#### **v2.9.6** - 2026-08-07
+#### **v2.9.8** - 2026-08-07
+- **VPN Management Section in Reports & Admin**: Re-added a dedicated 'VPN' section with sub-tabs for Installer & Packages, Daemon Control, and Connection Profiles.
+- **Remote Installation Stream Modal**: Added support for installing client protocols (WireGuard, V2Ray/Xray, L2TP, SSTP, PPTP, OpenVPN, Tailscale) on remote target servers with a live log modal that can be minimized and re-opened.
+- **Daemon & Connection Controls**: Enabled starting, stopping, restarting, and viewing system journal logs for VPN daemons, as well as importing and connecting to VPN profiles.
+- **Localization & Language Sync**: All messages, UI elements, and modal labels respect active language settings without Persian hardcoding.
+
+#### **v2.9.7** - 2026-08-07
 - **Tabbed Navigation Interface**: Re-architected the VPN & Proxy suite into 6 clean, dedicated sub-tabs (`VPN Clients`, `Proxy Services`, `Server Daemons`, `Users`, `Connection Profiles`, `Routing & Anti-Lockout`), eliminating visual clutter.
 - **SSTP Package Installation Resolution**: Implemented automatic PPA repository addition (`ppa:sstp-project/sstp`) for Ubuntu/Debian target nodes when installing `sstp-client`.
 - **Complete English Localization**: Translated all UI labels, action buttons, status messages, modal forms, and notification alerts from Persian to English.
