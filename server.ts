@@ -18841,66 +18841,89 @@ app.post("/api/vpn-proxy/client-connections/:id/disconnect", authenticateToken, 
 });
 
 // ============================================================================
-// COMPREHENSIVE VPN CLIENTS & CONNECTIONS MANAGER (OS Auto-Detect + Provider Pattern)
+// COMPREHENSIVE VPN CLIENTS & CONNECTIONS MANAGER (OS Auto-Detect + Remote Target Agent/SSH Execution)
 // ============================================================================
+
+/**
+ * Executes a command on the specified target connection profile (WebSocket agent, SSH, or local fallback)
+ */
+async function runServerCommandOnTarget(targetId: string | undefined, command: string, timeoutMs = 30000): Promise<{ success: boolean; output: string }> {
+  try {
+    const db = readDb();
+    let conn: any = null;
+    if (targetId && db.connections && Array.isArray(db.connections)) {
+      conn = db.connections.find((c: any) => c.id === targetId);
+    }
+    if (!conn) {
+      conn = getActiveConnection();
+    }
+
+    if (conn && conn.id !== "local") {
+      if (conn.authType === "agent") {
+        const agentOut = await executeRemoteAgentTask(conn.id, "execute_command", { command });
+        return { success: true, output: (agentOut || "").trim() };
+      } else {
+        const sudoPrefix = (conn.username && conn.username !== "root") ? "sudo " : "";
+        const sshOut = await executeSSHCommand(conn, `${sudoPrefix}${command}`);
+        return { success: true, output: (sshOut || "").trim() };
+      }
+    } else {
+      const stdout = execSync(command, { encoding: "utf-8", timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+      return { success: true, output: stdout ? stdout.trim() : "OK" };
+    }
+  } catch (err: any) {
+    const stderr = err.stderr ? err.stderr.toString() : err.message || "Command failed";
+    return { success: false, output: stderr };
+  }
+}
 
 /**
  * 1. Automatic Target Linux Distribution & Package Manager Detection
  */
-function detectSystemOS() {
-  const isLinux = os.platform() === "linux";
+async function detectSystemOSOnTarget(targetId?: string) {
   let distro = "unknown";
-  let distroName = os.type();
-  let version = os.release();
+  let distroName = "Linux Target Server";
+  let version = "";
   let pkgManager = "unknown";
-  const arch = os.arch();
-  const kernel = os.release();
+  let arch = "x86_64";
+  let kernel = "";
 
-  if (!isLinux) {
-    return {
-      distro: os.platform(),
-      distroName: `Non-Linux (${os.platform()})`,
-      version: os.release(),
-      pkgManager: os.platform() === "darwin" ? "brew" : "winget",
-      arch,
-      kernel,
-      isLinux: false
-    };
+  const osRelRes = await runServerCommandOnTarget(targetId, "cat /etc/os-release 2>/dev/null || true");
+  const osRelText = osRelRes.output || "";
+
+  if (osRelText.includes("Ubuntu")) {
+    distro = "ubuntu"; distroName = "Ubuntu Linux"; pkgManager = "apt";
+  } else if (osRelText.includes("Debian")) {
+    distro = "debian"; distroName = "Debian Linux"; pkgManager = "apt";
+  } else if (osRelText.includes("CentOS")) {
+    distro = "centos"; distroName = "CentOS Linux"; pkgManager = "yum";
+  } else if (osRelText.includes("Rocky")) {
+    distro = "rocky"; distroName = "Rocky Linux"; pkgManager = "dnf";
+  } else if (osRelText.includes("AlmaLinux")) {
+    distro = "almalinux"; distroName = "AlmaLinux"; pkgManager = "dnf";
+  } else if (osRelText.includes("Fedora")) {
+    distro = "fedora"; distroName = "Fedora Linux"; pkgManager = "dnf";
+  } else if (osRelText.includes("Arch")) {
+    distro = "arch"; distroName = "Arch Linux"; pkgManager = "pacman";
+  } else if (osRelText.includes("openSUSE") || osRelText.includes("SUSE")) {
+    distro = "suse"; distroName = "openSUSE"; pkgManager = "zypper";
+  } else if (osRelText.includes("Alpine")) {
+    distro = "alpine"; distroName = "Alpine Linux"; pkgManager = "apk";
+  } else {
+    const checkPkg = await runServerCommandOnTarget(targetId, "which apt dnf yum pacman zypper apk 2>/dev/null | head -n 1");
+    const pkgBin = checkPkg.output.trim();
+    if (pkgBin.includes("apt")) pkgManager = "apt";
+    else if (pkgBin.includes("dnf")) pkgManager = "dnf";
+    else if (pkgBin.includes("yum")) pkgManager = "yum";
+    else if (pkgBin.includes("pacman")) pkgManager = "pacman";
+    else if (pkgBin.includes("zypper")) pkgManager = "zypper";
+    else if (pkgBin.includes("apk")) pkgManager = "apk";
   }
 
-  try {
-    if (fs.existsSync("/etc/os-release")) {
-      const content = fs.readFileSync("/etc/os-release", "utf-8");
-      const lines = content.split("\n");
-      const osData: Record<string, string> = {};
-      lines.forEach(line => {
-        const parts = line.split("=");
-        if (parts.length === 2) {
-          const key = parts[0].trim();
-          const val = parts[1].trim().replace(/^["']|["']$/g, "");
-          osData[key] = val;
-        }
-      });
-
-      distro = osData.ID ? osData.ID.toLowerCase() : "linux";
-      distroName = osData.PRETTY_NAME || osData.NAME || "Linux";
-      version = osData.VERSION_ID || osData.VERSION || "";
-    }
-  } catch (e) {}
-
-  if (fs.existsSync("/usr/bin/apt-get") || fs.existsSync("/usr/bin/apt")) {
-    pkgManager = "apt";
-  } else if (fs.existsSync("/usr/bin/dnf")) {
-    pkgManager = "dnf";
-  } else if (fs.existsSync("/usr/bin/yum")) {
-    pkgManager = "yum";
-  } else if (fs.existsSync("/usr/bin/pacman")) {
-    pkgManager = "pacman";
-  } else if (fs.existsSync("/sbin/apk") || fs.existsSync("/usr/bin/apk")) {
-    pkgManager = "apk";
-  } else if (fs.existsSync("/usr/bin/zypper")) {
-    pkgManager = "zypper";
-  }
+  const unameRes = await runServerCommandOnTarget(targetId, "uname -m; uname -r");
+  const lines = unameRes.output.split("\n");
+  if (lines[0]) arch = lines[0].trim();
+  if (lines[1]) kernel = lines[1].trim();
 
   return {
     distro,
@@ -18909,7 +18932,7 @@ function detectSystemOS() {
     pkgManager,
     arch,
     kernel,
-    isLinux
+    isLinux: true
   };
 }
 
@@ -19091,11 +19114,12 @@ const VPN_CLIENT_REGISTRY: Record<string, {
 };
 
 /**
- * Endpoint: Get OS Detection Info
+ * Endpoint: Get OS Detection Info on Target Server
  */
-app.get("/api/vpn-clients/os-info", authenticateToken, (req, res) => {
+app.get("/api/vpn-clients/os-info", authenticateToken, async (req, res) => {
   try {
-    const osInfo = detectSystemOS();
+    const targetId = (req.query.targetId as string) || undefined;
+    const osInfo = await detectSystemOSOnTarget(targetId);
     return res.json({ success: true, osInfo });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -19103,21 +19127,22 @@ app.get("/api/vpn-clients/os-info", authenticateToken, (req, res) => {
 });
 
 /**
- * Endpoint: Get Status of All VPN Client Packages
+ * Endpoint: Get Status of All VPN Client Packages on Target Server
  */
-app.get("/api/vpn-clients/packages", authenticateToken, (req, res) => {
+app.get("/api/vpn-clients/packages", authenticateToken, async (req, res) => {
   try {
-    const osInfo = detectSystemOS();
+    const targetId = (req.query.targetId as string) || undefined;
+    const osInfo = await detectSystemOSOnTarget(targetId);
     const resultList: any[] = [];
 
-    Object.keys(VPN_CLIENT_REGISTRY).forEach(clientKey => {
+    for (const clientKey of Object.keys(VPN_CLIENT_REGISTRY)) {
       const clientDef = VPN_CLIENT_REGISTRY[clientKey];
       
-      // Check binary existence
+      // Check binary existence on target server
       let isInstalled = false;
       let installedPath = "";
       for (const bin of clientDef.binaries) {
-        const check = runSystemCommand(`which ${bin}`);
+        const check = await runServerCommandOnTarget(targetId, `which ${bin}`);
         if (check.success && check.output) {
           isInstalled = true;
           installedPath = check.output;
@@ -19125,35 +19150,34 @@ app.get("/api/vpn-clients/packages", authenticateToken, (req, res) => {
         }
       }
 
-      // Check version
+      // Check version on target server
       let version = "Not installed";
       if (isInstalled) {
-        const verRes = runSystemCommand(clientDef.versionCmd);
-        if (verRes.success) {
+        const verRes = await runServerCommandOnTarget(targetId, clientDef.versionCmd);
+        if (verRes.success && verRes.output) {
           version = verRes.output.split("\n")[0] || "Installed";
         } else {
           version = "Installed";
         }
       }
 
-      // Check Service running / boot status
+      // Check Service running / boot status on target server
       let isRunning = false;
       let isEnabledAtBoot = false;
 
       if (isInstalled) {
-        const activeRes = runSystemCommand(`systemctl is-active ${clientDef.serviceName}`);
-        if (activeRes.success && activeRes.output === "active") {
+        const activeRes = await runServerCommandOnTarget(targetId, `systemctl is-active ${clientDef.serviceName}`);
+        if (activeRes.success && activeRes.output.includes("active")) {
           isRunning = true;
         } else {
-          // Check process listing fallback
-          const psRes = runSystemCommand(`pgrep -f "${clientDef.binaries[0]}"`);
+          const psRes = await runServerCommandOnTarget(targetId, `pgrep -f "${clientDef.binaries[0]}"`);
           if (psRes.success && psRes.output) {
             isRunning = true;
           }
         }
 
-        const enabledRes = runSystemCommand(`systemctl is-enabled ${clientDef.serviceName}`);
-        if (enabledRes.success && enabledRes.output === "enabled") {
+        const enabledRes = await runServerCommandOnTarget(targetId, `systemctl is-enabled ${clientDef.serviceName}`);
+        if (enabledRes.success && enabledRes.output.includes("enabled")) {
           isEnabledAtBoot = true;
         }
       }
@@ -19168,7 +19192,7 @@ app.get("/api/vpn-clients/packages", authenticateToken, (req, res) => {
         isEnabledAtBoot,
         serviceName: clientDef.serviceName
       });
-    });
+    }
 
     return res.json({
       success: true,
@@ -19181,23 +19205,23 @@ app.get("/api/vpn-clients/packages", authenticateToken, (req, res) => {
 });
 
 /**
- * Endpoint: Install VPN Client Package (Idempotent)
+ * Endpoint: Install VPN Client Package on Target Server
  */
-app.post("/api/vpn-clients/package/install", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+app.post("/api/vpn-clients/package/install", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), async (req, res) => {
   try {
-    const { type } = req.body;
+    const { type, targetId } = req.body;
     const clientDef = VPN_CLIENT_REGISTRY[type];
     if (!clientDef) {
       return res.status(400).json({ error: "Unsupported VPN client type" });
     }
 
-    const osInfo = detectSystemOS();
+    const osInfo = await detectSystemOSOnTarget(targetId);
 
     // 1. Check if already installed
     let isInstalled = false;
     let installedPath = "";
     for (const bin of clientDef.binaries) {
-      const check = runSystemCommand(`which ${bin}`);
+      const check = await runServerCommandOnTarget(targetId, `which ${bin}`);
       if (check.success && check.output) {
         isInstalled = true;
         installedPath = check.output;
@@ -19206,40 +19230,37 @@ app.post("/api/vpn-clients/package/install", authenticateToken, checkPermission(
     }
 
     if (isInstalled) {
-      const verRes = runSystemCommand(clientDef.versionCmd);
+      const verRes = await runServerCommandOnTarget(targetId, clientDef.versionCmd);
       const verStr = verRes.success ? verRes.output.split("\n")[0] : "Installed";
       return res.json({
         success: true,
         alreadyInstalled: true,
-        message: `پکیج ${clientDef.name} از قبل روی سیستم نصب می‌باشد (${verStr}).`,
+        message: `پکیج ${clientDef.name} از قبل روی سیستم مقصد نصب می‌باشد (${verStr}).`,
         version: verStr,
         installedPath,
-        log: `[IDEMPOTENT CHECK] ${clientDef.name} binary located at ${installedPath}. Skipping re-installation.`
+        log: `[IDEMPOTENT CHECK] ${clientDef.name} binary located at ${installedPath} on target server. Skipping re-installation.`
       });
     }
 
-    // 2. Perform installation using package manager or script
+    // 2. Perform installation on target server
     let installCmd = "";
     if (clientDef.installScript) {
       installCmd = clientDef.installScript;
     } else {
       const pkgNames = clientDef.packagesMap[osInfo.pkgManager] || clientDef.packagesMap["apt"] || clientDef.type;
-      
       switch (osInfo.pkgManager) {
         case "apt":
-          installCmd = `apt-get update -y && apt-get install -y ${pkgNames}`;
+          installCmd = `DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgNames}`;
           break;
         case "dnf":
-          installCmd = `dnf install -y ${pkgNames}`;
-          break;
         case "yum":
-          installCmd = `yum install -y ${pkgNames}`;
+          installCmd = `${osInfo.pkgManager} install -y ${pkgNames}`;
           break;
         case "pacman":
           installCmd = `pacman -Sy --noconfirm ${pkgNames}`;
           break;
         case "zypper":
-          installCmd = `zypper install -y ${pkgNames}`;
+          installCmd = `zypper --non-interactive install ${pkgNames}`;
           break;
         case "apk":
           installCmd = `apk add --no-cache ${pkgNames}`;
@@ -19249,16 +19270,16 @@ app.post("/api/vpn-clients/package/install", authenticateToken, checkPermission(
       }
     }
 
-    const installRes = runSystemCommand(installCmd, 120000);
-    const verRes = runSystemCommand(clientDef.versionCmd);
+    const installRes = await runServerCommandOnTarget(targetId, installCmd, 120000);
+    const verRes = await runServerCommandOnTarget(targetId, clientDef.versionCmd);
     const version = verRes.success ? verRes.output.split("\n")[0] : "Installed";
 
     return res.json({
       success: installRes.success,
       alreadyInstalled: false,
       message: installRes.success 
-        ? `پکیج ${clientDef.name} با موفقیت روی سرور نصب و فعال گردید.`
-        : `خطا در نصب پکیج ${clientDef.name}. خروجی را بررسی کنید.`,
+        ? `پکیج ${clientDef.name} با موفقیت روی سرور مقصد نصب و فعال گردید.`
+        : `خطا در نصب پکیج ${clientDef.name} روی سرور مقصد. خروجی را بررسی کنید.`,
       version,
       log: installRes.output
     });
@@ -19268,15 +19289,15 @@ app.post("/api/vpn-clients/package/install", authenticateToken, checkPermission(
 });
 
 /**
- * Endpoint: Uninstall VPN Client Package
+ * Endpoint: Uninstall VPN Client Package on Target Server
  */
-app.post("/api/vpn-clients/package/uninstall", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+app.post("/api/vpn-clients/package/uninstall", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), async (req, res) => {
   try {
-    const { type } = req.body;
+    const { type, targetId } = req.body;
     const clientDef = VPN_CLIENT_REGISTRY[type];
     if (!clientDef) return res.status(400).json({ error: "Unsupported VPN client type" });
 
-    const osInfo = detectSystemOS();
+    const osInfo = await detectSystemOSOnTarget(targetId);
     const pkgNames = clientDef.packagesMap[osInfo.pkgManager] || clientDef.packagesMap["apt"] || clientDef.type;
 
     let removeCmd = "";
@@ -19292,7 +19313,7 @@ app.post("/api/vpn-clients/package/uninstall", authenticateToken, checkPermissio
         removeCmd = `pacman -R --noconfirm ${pkgNames}`;
         break;
       case "zypper":
-        removeCmd = `zypper remove -y ${pkgNames}`;
+        removeCmd = `zypper --non-interactive remove ${pkgNames}`;
         break;
       case "apk":
         removeCmd = `apk del ${pkgNames}`;
@@ -19301,11 +19322,11 @@ app.post("/api/vpn-clients/package/uninstall", authenticateToken, checkPermissio
         removeCmd = `apt-get remove -y ${pkgNames}`;
     }
 
-    const removeRes = runSystemCommand(removeCmd, 60000);
+    const removeRes = await runServerCommandOnTarget(targetId, removeCmd, 60000);
 
     return res.json({
       success: removeRes.success,
-      message: removeRes.success ? `پکیج ${clientDef.name} با موفقیت از سرور حذف شد.` : `بروز خطا در حذف ${clientDef.name}.`,
+      message: removeRes.success ? `پکیج ${clientDef.name} با موفقیت از سرور مقصد حذف شد.` : `بروز خطا در حذف ${clientDef.name}.`,
       log: removeRes.output
     });
   } catch (err: any) {
@@ -19314,11 +19335,11 @@ app.post("/api/vpn-clients/package/uninstall", authenticateToken, checkPermissio
 });
 
 /**
- * Endpoint: Service Control (start, stop, restart, enable-boot, disable-boot)
+ * Endpoint: Service Control on Target Server (start, stop, restart, enable-boot, disable-boot)
  */
-app.post("/api/vpn-clients/package/service-control", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), (req, res) => {
+app.post("/api/vpn-clients/package/service-control", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), async (req, res) => {
   try {
-    const { type, action } = req.body;
+    const { type, action, targetId } = req.body;
     const clientDef = VPN_CLIENT_REGISTRY[type];
     if (!clientDef) return res.status(400).json({ error: "Unsupported client type" });
 
@@ -19343,10 +19364,10 @@ app.post("/api/vpn-clients/package/service-control", authenticateToken, checkPer
         return res.status(400).json({ error: "Invalid action" });
     }
 
-    const sysRes = runSystemCommand(cmd);
+    const sysRes = await runServerCommandOnTarget(targetId, cmd);
     return res.json({
       success: sysRes.success,
-      message: sysRes.success ? `دستور ${action} با موفقیت روی سرویس ${clientDef.serviceName} اجرا گردید.` : `خطا در اجرای ${action}.`,
+      message: sysRes.success ? `دستور ${action} با موفقیت روی سرویس ${clientDef.serviceName} در سرور مقصد اجرا گردید.` : `خطا در اجرای ${action}.`,
       log: sysRes.output
     });
   } catch (err: any) {
@@ -19355,15 +19376,15 @@ app.post("/api/vpn-clients/package/service-control", authenticateToken, checkPer
 });
 
 /**
- * Endpoint: View Client Logs
+ * Endpoint: View Client Logs on Target Server
  */
-app.post("/api/vpn-clients/package/logs", authenticateToken, (req, res) => {
+app.post("/api/vpn-clients/package/logs", authenticateToken, async (req, res) => {
   try {
-    const { type } = req.body;
+    const { type, targetId } = req.body;
     const clientDef = VPN_CLIENT_REGISTRY[type];
     if (!clientDef) return res.status(400).json({ error: "Unsupported client type" });
 
-    const logRes = runSystemCommand(clientDef.logsCmd);
+    const logRes = await runServerCommandOnTarget(targetId, clientDef.logsCmd);
     return res.json({
       success: true,
       logs: logRes.output || "لاگی ثبت نشده است."

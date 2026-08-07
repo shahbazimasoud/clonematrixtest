@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.9.4** (Released: 2026-08-07)
+## Current Panel Version: **v2.9.5** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.9.5** - 2026-08-07
+- **Dropdown VPN Client Interface**: Replaced the 10-card grid with a clean dropdown menu and quick selection pills, eliminating visual clutter.
+- **Remote Target Connection Execution**: Integrated target connection selector (`Local Panel Server`, `WebSocket Agent`, `SSH`) so VPN client installation and management commands run on the chosen remote server connection.
+- **Enhanced Detailed Status Card**: Displays package installation state, service status, system boot status, logs, and action buttons in a focused detail card.
 
 #### **v2.9.4** - 2026-08-07
 - **Fix CheckCircle Icon Import**: Added missing `CheckCircle` import from `lucide-react` in `ReportingPanel.tsx`, fixing the black screen `Uncaught ReferenceError: CheckCircle is not defined` crash.

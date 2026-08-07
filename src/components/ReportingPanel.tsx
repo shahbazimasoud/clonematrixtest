@@ -921,6 +921,12 @@ export default function ReportingPanel({
   const [isConnectingId, setIsConnectingId] = useState<string | null>(null);
   const [showConnModal, setShowConnModal] = useState<boolean>(false);
   const [showModalPassword, setShowModalPassword] = useState<boolean>(false);
+
+  // Target Remote Server Connections State
+  const [targetConnections, setTargetConnections] = useState<any[]>([]);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>('local');
+  const [selectedVpnClientType, setSelectedVpnClientType] = useState<string>('wireguard');
+
   const [connForm, setConnForm] = useState<{
     id: string;
     name: string;
@@ -978,10 +984,27 @@ export default function ReportingPanel({
   const [importConfigText, setImportConfigText] = useState<string>('');
   const [isImportingConfig, setIsImportingConfig] = useState<boolean>(false);
 
-  const fetchVpnClientsAndOsInfo = async () => {
-    setIsLoadingOsInfo(true);
+  const fetchTargetConnections = async () => {
     try {
-      const res = await fetch('/api/vpn-clients/packages', {
+      const res = await fetch('/api/connections', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const conns = await res.json();
+        if (Array.isArray(conns)) {
+          setTargetConnections(conns);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching target connections:', err);
+    }
+  };
+
+  const fetchVpnClientsAndOsInfo = async (targetIdOverride?: string) => {
+    setIsLoadingOsInfo(true);
+    const targetId = targetIdOverride !== undefined ? targetIdOverride : selectedTargetId;
+    try {
+      const res = await fetch(`/api/vpn-clients/packages?targetId=${encodeURIComponent(targetId)}`, {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (res.ok) {
@@ -999,7 +1022,8 @@ export default function ReportingPanel({
   const fetchVpnProxyData = async () => {
     setIsLoadingVpnProxy(true);
     try {
-      fetchVpnClientsAndOsInfo();
+      fetchTargetConnections();
+      fetchVpnClientsAndOsInfo(selectedTargetId);
       const [resSettings, resUsers, resConns] = await Promise.all([
         fetch('/api/vpn-proxy/status', { headers: { 'Authorization': `Bearer ${authToken}` } }),
         fetch('/api/vpn-proxy/users', { headers: { 'Authorization': `Bearer ${authToken}` } }),
@@ -1033,7 +1057,7 @@ export default function ReportingPanel({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ type })
+        body: JSON.stringify({ type, targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();
@@ -1043,7 +1067,7 @@ export default function ReportingPanel({
           setPkgLogContent(data.log);
           setShowPkgLogModal(true);
         }
-        fetchVpnClientsAndOsInfo();
+        fetchVpnClientsAndOsInfo(selectedTargetId);
       } else {
         showToast('error', isRtl ? 'خطا در اجرای نصب پکیج' : 'Package install failed');
       }
@@ -1064,12 +1088,12 @@ export default function ReportingPanel({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ type })
+        body: JSON.stringify({ type, targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();
         showToast('success', data.message);
-        fetchVpnClientsAndOsInfo();
+        fetchVpnClientsAndOsInfo(selectedTargetId);
       }
     } catch (err) {
       showToast('error', isRtl ? 'خطا در حذف پکیج' : 'Uninstall failed');
@@ -1087,12 +1111,12 @@ export default function ReportingPanel({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ type, action })
+        body: JSON.stringify({ type, action, targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();
         showToast('success', data.message);
-        fetchVpnClientsAndOsInfo();
+        fetchVpnClientsAndOsInfo(selectedTargetId);
       }
     } catch (err) {
       showToast('error', isRtl ? 'خطا در کنترل سرویس' : 'Service action failed');
@@ -1110,7 +1134,7 @@ export default function ReportingPanel({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ type })
+        body: JSON.stringify({ type, targetId: selectedTargetId })
       });
       if (res.ok) {
         const data = await res.json();
@@ -5108,160 +5132,281 @@ created_at = ${conn.createdAt || new Date().toISOString()}
                 </div>
               </div>
 
-              {/* VPN Clients Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {vpnClientPackages.map((pkg) => {
-                  const isLoadingThis = isPkgOpLoading === pkg.type || isPkgOpLoading?.startsWith(pkg.type);
-                  
+              {/* TOP CONTROLS: TARGET SERVER & IMPORT CONFIG */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10">
+                {/* Target Connection Server Dropdown */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+                  <div className="flex items-center gap-2 shrink-0 text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <Server className="w-4 h-4 text-cyan-500" />
+                    <span>{isRtl ? 'سرور مقصد اجرا (Target Server):' : 'Execution Target:'}</span>
+                  </div>
+
+                  <select
+                    value={selectedTargetId}
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      setSelectedTargetId(newId);
+                      fetchVpnClientsAndOsInfo(newId);
+                    }}
+                    className={`flex-1 max-w-md rounded-xl px-3 py-2 text-xs font-semibold outline-none transition-all ${
+                      isLightMode
+                        ? 'bg-white border border-slate-300 text-slate-900 focus:border-cyan-600 shadow-sm'
+                        : 'bg-slate-900 border border-white/10 text-white focus:border-cyan-500/50'
+                    }`}
+                  >
+                    <option value="local">
+                      🖥️ {isRtl ? 'سرور لوکال پنل (Local Panel Server)' : 'Local Panel Server'}
+                    </option>
+                    {targetConnections.map((conn) => (
+                      <option key={conn.id} value={conn.id}>
+                        🌐 {conn.name || conn.host} ({conn.authType === 'agent' ? 'WebSocket Agent' : 'SSH'} - {conn.host})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => fetchVpnClientsAndOsInfo(selectedTargetId)}
+                    disabled={isLoadingOsInfo}
+                    className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      isLightMode ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                    }`}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-cyan-500 ${isLoadingOsInfo ? 'animate-spin' : ''}`} />
+                    <span>{isRtl ? 'بروزرسانی وضعیت' : 'Refresh Target'}</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowImportConfigModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{isRtl ? 'وارد کردن کانفیگ (.conf / .ovpn)' : 'Import Config File'}</span>
+                </button>
+              </div>
+
+              {/* DROPDOWN SELECTOR FOR VPN CLIENTS */}
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-purple-500" />
+                    <span>{isRtl ? 'انتخاب کلاینت VPN جهت مدیریت:' : 'Select VPN Client:'}</span>
+                  </label>
+
+                  {/* VPN Client Select Dropdown */}
+                  <select
+                    value={selectedVpnClientType}
+                    onChange={(e) => setSelectedVpnClientType(e.target.value)}
+                    className={`w-full sm:w-80 rounded-xl px-4 py-2.5 text-xs font-bold outline-none transition-all ${
+                      isLightMode
+                        ? 'bg-white border border-purple-300 text-slate-900 focus:border-purple-600 shadow-sm'
+                        : 'bg-slate-900 border border-purple-500/40 text-white focus:border-purple-500/80 shadow-lg'
+                    }`}
+                  >
+                    {vpnClientPackages.map((pkg) => (
+                      <option key={pkg.type} value={pkg.type}>
+                        {pkg.isInstalled ? '✅ ' : '❌ '} {pkg.name} ({pkg.isInstalled ? (isRtl ? 'نصب شده' : 'Installed') : (isRtl ? 'نصب نشده' : 'Not Installed')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Quick Selection Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  {vpnClientPackages.map((pkg) => {
+                    const isSelected = selectedVpnClientType === pkg.type;
+                    return (
+                      <button
+                        key={pkg.type}
+                        type="button"
+                        onClick={() => setSelectedVpnClientType(pkg.type)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20 scale-105'
+                            : pkg.isInstalled
+                            ? (isLightMode ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100' : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20')
+                            : (isLightMode ? 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200' : 'bg-black/30 text-slate-400 border border-white/5 hover:bg-white/10')
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${pkg.isInstalled ? 'bg-emerald-400' : 'bg-slate-400'}`} />
+                        <span>{pkg.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ACTIVE SELECTED VPN CLIENT DETAILS CARD */}
+              {(() => {
+                const pkg = vpnClientPackages.find(p => p.type === selectedVpnClientType) || vpnClientPackages[0];
+                if (!pkg) {
                   return (
-                    <div
-                      key={pkg.type}
-                      className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
-                        pkg.isInstalled
-                          ? (isLightMode ? 'bg-slate-50/90 border-purple-200' : 'bg-black/40 border-purple-500/30')
-                          : (isLightMode ? 'bg-slate-100/50 border-slate-200 opacity-80 hover:opacity-100' : 'bg-slate-950/40 border-white/5 opacity-70 hover:opacity-100')
-                      }`}
-                    >
-                      <div className="space-y-3">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h4 className="text-sm font-bold flex items-center gap-2">
-                              <span>{pkg.name}</span>
-                            </h4>
-                            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-                              {pkg.serviceName ? `service: ${pkg.serviceName}` : `bin: ${pkg.type}`}
-                            </p>
-                          </div>
+                    <div className="p-8 text-center text-xs text-slate-400">
+                      {isRtl ? 'درحال بارگذاری اطلاعات کلاینت‌های VPN...' : 'Loading VPN clients status...'}
+                    </div>
+                  );
+                }
 
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            {pkg.isInstalled ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                                <CheckCircle className="w-3 h-3" />
-                                <span>{isRtl ? 'نصب شده' : 'Installed'}</span>
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                <span>{isRtl ? 'نصب نشده' : 'Not Installed'}</span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                const isLoadingThis = isPkgOpLoading === pkg.type || isPkgOpLoading?.startsWith(pkg.type);
 
-                        {/* Package Info Badges */}
-                        <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
-                          isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-white/5'
-                        }`}>
-                          <div className="flex justify-between items-center text-[11px]">
-                            <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'نسخه:' : 'Version:'}</span>
-                            <span className="font-mono font-bold text-purple-600 dark:text-purple-300">{pkg.version || 'N/A'}</span>
-                          </div>
-
-                          {pkg.isInstalled && (
-                            <>
-                              <div className="flex justify-between items-center text-[11px] pt-1 border-t border-slate-200 dark:border-white/5">
-                                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'وضعیت سرویس:' : 'Service:'}</span>
-                                <span className={`font-mono font-bold ${pkg.isRunning ? 'text-emerald-500' : 'text-slate-400'}`}>
-                                  {pkg.isRunning ? (isRtl ? 'درحال اجرا (Active)' : 'Running') : (isRtl ? 'متوقف (Inactive)' : 'Stopped')}
-                                </span>
-                              </div>
-
-                              <div className="flex justify-between items-center text-[11px] pt-1 border-t border-slate-200 dark:border-white/5">
-                                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>{isRtl ? 'اجرا در بوت:' : 'Boot Auto-start:'}</span>
-                                <span className={`font-mono font-bold ${pkg.isEnabledAtBoot ? 'text-cyan-500' : 'text-slate-400'}`}>
-                                  {pkg.isEnabledAtBoot ? (isRtl ? 'فعال (Enabled)' : 'Enabled') : (isRtl ? 'غیرفعال (Disabled)' : 'Disabled')}
-                                </span>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                return (
+                  <div
+                    className={`p-6 rounded-2xl border transition-all space-y-6 ${
+                      pkg.isInstalled
+                        ? (isLightMode ? 'bg-slate-50/90 border-purple-200 shadow-md' : 'bg-black/40 border-purple-500/30 shadow-xl')
+                        : (isLightMode ? 'bg-slate-100/50 border-slate-200' : 'bg-slate-950/40 border-white/5')
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4 border-slate-200 dark:border-white/10">
+                      <div>
+                        <h4 className="text-lg font-extrabold flex items-center gap-2">
+                          <Wifi className="w-5 h-5 text-purple-500" />
+                          <span>{pkg.name}</span>
+                        </h4>
+                        <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-1">
+                          {pkg.serviceName ? `Systemd Service: ${pkg.serviceName}` : `Binary Executable: ${pkg.type}`}
+                        </p>
                       </div>
 
-                      {/* Package Control Actions */}
-                      <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-white/5">
-                        {!pkg.isInstalled ? (
+                      <div className="flex items-center gap-3">
+                        {pkg.isInstalled ? (
+                          <span className="px-3 py-1 rounded-xl text-xs font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
+                            <CheckCircle className="w-4 h-4" />
+                            <span>{isRtl ? 'نصب شده روی سرور' : 'Installed on Target'}</span>
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
+                            <AlertTriangle className="w-4 h-4" />
+                            <span>{isRtl ? 'نصب نشده' : 'Not Installed'}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Metadata Specs Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className={`p-4 rounded-xl border space-y-1 ${isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-white/5'}`}>
+                        <span className={`text-[11px] block font-semibold ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {isRtl ? 'نسخه پکیج:' : 'Version:'}
+                        </span>
+                        <span className="font-mono font-bold text-sm text-purple-600 dark:text-purple-300 block truncate">
+                          {pkg.version || 'N/A'}
+                        </span>
+                      </div>
+
+                      <div className={`p-4 rounded-xl border space-y-1 ${isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-white/5'}`}>
+                        <span className={`text-[11px] block font-semibold ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {isRtl ? 'وضعیت سرویس:' : 'Service Status:'}
+                        </span>
+                        <span className={`font-mono font-bold text-sm block ${pkg.isRunning ? 'text-emerald-500' : 'text-slate-400'}`}>
+                          {pkg.isRunning ? (isRtl ? 'درحال اجرا (Active)' : 'Running') : (isRtl ? 'متوقف (Inactive)' : 'Stopped')}
+                        </span>
+                      </div>
+
+                      <div className={`p-4 rounded-xl border space-y-1 ${isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-white/5'}`}>
+                        <span className={`text-[11px] block font-semibold ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {isRtl ? 'اجرا در بوت سرور:' : 'Boot Auto-Start:'}
+                        </span>
+                        <span className={`font-mono font-bold text-sm block ${pkg.isEnabledAtBoot ? 'text-cyan-500' : 'text-slate-400'}`}>
+                          {pkg.isEnabledAtBoot ? (isRtl ? 'فعال (Enabled)' : 'Enabled') : (isRtl ? 'غیرفعال (Disabled)' : 'Disabled')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions Panel */}
+                    <div className="pt-2">
+                      {!pkg.isInstalled ? (
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
                           <button
                             type="button"
                             onClick={() => handleInstallVpnClientPackage(pkg.type)}
                             disabled={isLoadingThis}
-                            className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-purple-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                           >
-                            {isLoadingThis ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                            <span>{isRtl ? `نصب کلاینت ${pkg.name}` : `Install ${pkg.name}`}</span>
+                            {isLoadingThis ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                            <span>{isRtl ? `نصب پکیج ${pkg.name} روی سرور انتخاب‌شده` : `Install ${pkg.name} on Target Server`}</span>
                           </button>
-                        ) : (
-                          <div className="space-y-1.5">
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {pkg.isRunning ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleVpnClientServiceControl(pkg.type, 'stop')}
-                                  disabled={isLoadingThis}
-                                  className="py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
-                                >
-                                  {isRtl ? 'توقف سرویس' : 'Stop Service'}
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleVpnClientServiceControl(pkg.type, 'start')}
-                                  disabled={isLoadingThis}
-                                  className="py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
-                                >
-                                  {isRtl ? 'شروع سرویس' : 'Start Service'}
-                                </button>
-                              )}
-
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {isRtl ? 'پکیج‌مدیریت سرور مقصد به طور خودکار شناسایی و نصب را انجام می‌دهد.' : 'Package manager on target server will automatically fetch and install missing binaries.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            {pkg.isRunning ? (
                               <button
                                 type="button"
-                                onClick={() => handleVpnClientServiceControl(pkg.type, 'restart')}
+                                onClick={() => handleVpnClientServiceControl(pkg.type, 'stop')}
                                 disabled={isLoadingThis}
-                                className="py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-600 dark:text-blue-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                                className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                               >
-                                {isRtl ? 'ریستارت' : 'Restart'}
+                                {isLoadingThis ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                                <span>{isRtl ? 'توقف سرویس' : 'Stop Service'}</span>
                               </button>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-1">
+                            ) : (
                               <button
                                 type="button"
-                                onClick={() => handleVpnClientServiceControl(pkg.type, pkg.isEnabledAtBoot ? 'disable-boot' : 'enable-boot')}
+                                onClick={() => handleVpnClientServiceControl(pkg.type, 'start')}
                                 disabled={isLoadingThis}
-                                className={`py-1 rounded-lg border text-[10px] font-semibold transition-all cursor-pointer disabled:opacity-50 ${
-                                  pkg.isEnabledAtBoot
-                                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400'
-                                    : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400'
-                                }`}
+                                className="px-4 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                               >
-                                {pkg.isEnabledAtBoot ? (isRtl ? 'غیرفعال بوت' : 'Disable Boot') : (isRtl ? 'فعال در بوت' : 'Enable Boot')}
+                                {isLoadingThis ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                                <span>{isRtl ? 'شروع سرویس' : 'Start Service'}</span>
                               </button>
+                            )}
 
-                              <button
-                                type="button"
-                                onClick={() => handleViewVpnClientLogs(pkg.type, pkg.name)}
-                                disabled={isLoadingThis}
-                                className="py-1 rounded-lg bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/30 text-slate-600 dark:text-slate-300 text-[10px] font-semibold transition-all cursor-pointer disabled:opacity-50"
-                              >
-                                {isRtl ? 'مشاهده لاگ' : 'View Logs'}
-                              </button>
+                            <button
+                              type="button"
+                              onClick={() => handleVpnClientServiceControl(pkg.type, 'restart')}
+                              disabled={isLoadingThis}
+                              className="px-4 py-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-600 dark:text-blue-400 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              {isLoadingThis ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                              <span>{isRtl ? 'ریستارت سرویس' : 'Restart Service'}</span>
+                            </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleUninstallVpnClientPackage(pkg.type)}
-                                disabled={isLoadingThis}
-                                className="py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-[10px] font-semibold transition-all cursor-pointer disabled:opacity-50"
-                              >
-                                {isRtl ? 'حذف' : 'Uninstall'}
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleVpnClientServiceControl(pkg.type, pkg.isEnabledAtBoot ? 'disable-boot' : 'enable-boot')}
+                              disabled={isLoadingThis}
+                              className={`px-4 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${
+                                pkg.isEnabledAtBoot
+                                  ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                                  : 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-600 dark:text-cyan-400'
+                              }`}
+                            >
+                              {pkg.isEnabledAtBoot ? (isRtl ? 'غیرفعال‌سازی در بوت' : 'Disable Boot') : (isRtl ? 'فعال‌سازی در بوت' : 'Enable Boot')}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleViewVpnClientLogs(pkg.type, pkg.name)}
+                              disabled={isLoadingThis}
+                              className="px-4 py-2.5 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/30 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              <FileCode className="w-3.5 h-3.5" />
+                              <span>{isRtl ? 'مشاهده لاگ‌ها' : 'View Logs'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleUninstallVpnClientPackage(pkg.type)}
+                              disabled={isLoadingThis}
+                              className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ml-auto"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>{isRtl ? 'حذف پکیج' : 'Uninstall Package'}</span>
+                            </button>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Anti-Lockout / Route Protection Banner */}

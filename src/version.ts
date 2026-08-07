@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.4";
+export const PANEL_VERSION = "2.9.5";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.9.5",
+    date: "2026-08-07",
+    title: "VPN Client Dropdown UI Refactor & Remote Target Connection Execution",
+    changes: [
+      "Dropdown VPN Client Interface: Transformed the VPN Clients grid into a clean, un-cluttered dropdown interface allowing selection and focused management of individual VPN client packages (WireGuard, OpenVPN, Tailscale, ZeroTier, OpenConnect, StrongSwan, SoftEther, SSTP, L2TP, PPTP).",
+      "Remote Server Target Execution: Added a target connection server dropdown to select and execute VPN client installations, service controls, and log checks directly on remote target servers over WebSocket Agent or SSH.",
+      "Quick Selection Pills: Added clean status pill chips for rapid switching between VPN client packages with real-time status indicators."
+    ]
+  },
   {
     version: "2.9.4",
     date: "2026-08-07",
