@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.9.9** (Released: 2026-08-07)
+## Current Panel Version: **v2.10.0** (Released: 2026-08-07)
 
 ### Changelog History
+
+#### **v2.10.0** - 2026-08-07
+- **Login 'Remember Me' Toggle**: Added a persistent 'Remember Me' control on the login screen with dynamic multi-language wording (Persian, English, Spanish, Arabic, German, Russian).
+- **Backend Long-Lived Token & Session**: Integrated 30-day extended JWT session tokens and backend session persistence when 'Remember Me' is enabled.
+- **In-House Offline Vector CAPTCHA**: Confirmed zero internet dependency for login security using an in-house Node.js SVG vector CAPTCHA generator that functions completely offline without external APIs.
 
 #### **v2.9.9** - 2026-08-07
 - **Installer & Packages Accordion Refactor**: Converted the card grid into a collapsible accordion list view with search and category filtering, expanding to reveal executable paths, config directories, systemd units, and quick terminal commands.

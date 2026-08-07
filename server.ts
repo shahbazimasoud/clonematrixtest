@@ -2306,7 +2306,7 @@ function makeLoginErrorResponse(res: any, status: number, code: string, params: 
 }
 
 app.post("/api/auth/login", (req, res) => {
-  const { username, password, captchaId, captchaCode, lang: reqLang } = req.body;
+  const { username, password, captchaId, captchaCode, rememberMe, lang: reqLang } = req.body;
   const userLang = reqLang || (req.headers['accept-language']?.includes('fa') ? 'fa' : 'en');
 
   if (!username || !password) {
@@ -2428,10 +2428,11 @@ app.post("/api/auth/login", (req, res) => {
     db.securitySettings = sec;
   }
 
+  const tokenExpiry = rememberMe ? "30d" : "8h";
   const token = jwt.sign(
-    { id: user.id, username: user.username, role: user.role, email: user.email },
+    { id: user.id, username: user.username, role: user.role, email: user.email, rememberMe: !!rememberMe },
     JWT_SECRET,
-    { expiresIn: "8h" }
+    { expiresIn: tokenExpiry }
   );
 
   if (!db.activeSessions || !Array.isArray(db.activeSessions)) {
@@ -2450,6 +2451,7 @@ app.post("/api/auth/login", (req, res) => {
     avatar: user.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.username}`,
     loginTime: new Date().toISOString(),
     lastSeen: new Date().toISOString(),
+    rememberMe: !!rememberMe,
     token: token,
     userAgent: req.headers['user-agent'] || 'Web Browser',
     ip: req.ip || req.headers['x-forwarded-for'] || '127.0.0.1'
@@ -2459,6 +2461,7 @@ app.post("/api/auth/login", (req, res) => {
   const { passwordHash, ...safeUser } = user;
   res.json({
     token,
+    rememberMe: !!rememberMe,
     user: safeUser
   });
 });

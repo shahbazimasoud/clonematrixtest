@@ -41,7 +41,8 @@ import {
   Flag,
   Github,
   WifiOff,
-  Loader2
+  Loader2,
+  Check
 } from 'lucide-react';
 import SpatialDock from './components/SpatialDock';
 import MetricCard from './components/MetricCard';
@@ -66,6 +67,7 @@ const translations = {
     loginSubtitle: "درگاه هوشمند امن Raven برای مدیریت سرور ماتریکس (Synapse)، کلاینت المنت و سرویس‌های پشتیبان",
     username: "نام کاربری",
     password: "رمز عبور",
+    rememberMe: "مرا به خاطر بسپار",
     loginBtn: "لاگین",
     logoutBtn: "خروج",
     liveStatus: "وضعیت سرور: متصل",
@@ -106,6 +108,7 @@ const translations = {
     loginSubtitle: "Secure access gateway for Raven Matrix Synapse core, Element Client, and auxiliary services",
     username: "Username",
     password: "Password",
+    rememberMe: "Remember me",
     loginBtn: "Login",
     logoutBtn: "Logout",
     liveStatus: "Server State: Connected",
@@ -146,6 +149,7 @@ const translations = {
     loginSubtitle: "Puerta de acceso segura para el núcleo Matrix Synapse, el cliente Element y el servidor TURN",
     username: "Nombre de usuario",
     password: "Contraseña",
+    rememberMe: "Recordarme",
     loginBtn: "Iniciar Sesión",
     logoutBtn: "Cerrar Sesión",
     liveStatus: "Estado del Servidor: Conectado",
@@ -186,6 +190,7 @@ const translations = {
     loginSubtitle: "بوابة وصول آمنة لنواة ماتريكس سينابس، وعميل المنت، وخادم TURN",
     username: "اسم المستخدم",
     password: "كلمة المرور",
+    rememberMe: "تذكرني",
     loginBtn: "تسجيل الدخول",
     logoutBtn: "تسجيل الخروج",
     liveStatus: "حالة الخادم: متصل",
@@ -226,6 +231,7 @@ const translations = {
     loginSubtitle: "Sicheres Zugangs-Gateway für den Matrix Synapse Core, den Element Client und den TURN-Server",
     username: "Benutzername",
     password: "Passwort",
+    rememberMe: "Angemeldet bleiben",
     loginBtn: "Anmelden",
     logoutBtn: "Abmelden",
     liveStatus: "Server-Status: Verbunden",
@@ -266,6 +272,7 @@ const translations = {
     loginSubtitle: "Безопасный вход в панель управления ядром Matrix Synapse, клиентом Element и TURN-сервером",
     username: "Имя пользователя",
     password: "Пароль",
+    rememberMe: "Запомнить меня",
     loginBtn: "Войти",
     logoutBtn: "Выйти",
     liveStatus: "Статус сервера: Подключен",
@@ -344,6 +351,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loginUser, setLoginUser] = useState(() => localStorage.getItem('last_login_user') || '');
   const [loginPass, setLoginPass] = useState('');
+  const [rememberMe, setRememberMe] = useState<boolean>(() => localStorage.getItem('remember_me') === 'true');
   const [loginErrorData, setLoginErrorData] = useState<{ errorsByLang?: Record<string, string>; defaultMsg?: string } | null>(() => {
     try {
       const saved = localStorage.getItem('last_login_error_data');
@@ -924,6 +932,7 @@ export default function App() {
         password: loginPass,
         captchaId: captchaRequired ? captchaId : undefined,
         captchaCode: captchaRequired ? captchaCode : undefined,
+        rememberMe,
         lang
       })
     })
@@ -958,6 +967,10 @@ export default function App() {
     })
     .then(data => {
       localStorage.setItem('admin_token', data.token);
+      localStorage.setItem('remember_me', rememberMe ? 'true' : 'false');
+      if (rememberMe && loginUser.trim()) {
+        localStorage.setItem('last_login_user', loginUser.trim());
+      }
       localStorage.removeItem('last_login_error');
       localStorage.removeItem('last_login_error_data');
       setCurrentUser(data.user);
@@ -1580,6 +1593,31 @@ export default function App() {
                     id="password-input"
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none group">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                    rememberMe
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.4)]'
+                      : 'bg-black/40 border-white/20 group-hover:border-indigo-400/50'
+                  }`}>
+                    {rememberMe && <Check className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => {
+                      setRememberMe(e.target.checked);
+                      localStorage.setItem('remember_me', e.target.checked ? 'true' : 'false');
+                    }}
+                    className="sr-only"
+                    id="remember-me-checkbox"
+                  />
+                  <span className="text-xs text-slate-300 font-medium group-hover:text-white transition-colors">
+                    {t.rememberMe || (lang === 'fa' ? 'مرا به خاطر بسپار' : 'Remember me')}
+                  </span>
+                </label>
               </div>
 
               {captchaRequired && (

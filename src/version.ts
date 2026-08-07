@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.9.9";
+export const PANEL_VERSION = "2.10.0";
 export const PANEL_BUILD_DATE = "2026-08-07";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.0",
+    date: "2026-08-07",
+    title: "Persistent Login 'Remember Me' & Offline In-House CAPTCHA Security",
+    changes: [
+      "Login 'Remember Me' Toggle: Added a persistent 'Remember Me' control on the login screen with dynamic multi-language wording (Persian, English, Spanish, Arabic, German, Russian).",
+      "Backend Long-Lived Token & Session: Integrated 30-day extended JWT session tokens and backend session persistence when 'Remember Me' is enabled.",
+      "In-House Offline Vector CAPTCHA: Confirmed zero internet dependency for login security using an in-house Node.js SVG vector CAPTCHA generator that functions completely offline without external APIs."
+    ]
+  },
   {
     version: "2.9.9",
     date: "2026-08-07",
