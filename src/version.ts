@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.0";
+export const PANEL_VERSION = "2.11.1";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.1",
+    date: "2026-08-08",
+    title: "Terminal Log Stream Localization & High-Contrast Light Mode Styling",
+    changes: [
+      "Localized Element & Synapse update terminal log stream according to active panel language (English & Persian/Arabic).",
+      "Enhanced terminal log box visibility with solid dark slate CLI styling and high-contrast bright green and white text for high legibility in light mode."
+    ]
+  },
   {
     version: "2.11.0",
     date: "2026-08-08",

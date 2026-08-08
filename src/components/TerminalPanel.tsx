@@ -446,10 +446,21 @@ export default function TerminalPanel({
   const [esBackups, setEsBackups] = useState<any[]>([]);
   const [isEsUpdating, setIsEsUpdating] = useState<boolean>(false);
   const [isEsRollingBack, setIsEsRollingBack] = useState<boolean>(false);
-  const [esLogs, setEsLogs] = useState<string[]>([
-    '# سیستم مدیریت بروزرسانی و بازگردانی (Rollback) المنت و سیناپس آماده است.',
-    '# گزینه‌های آپدیت را انتخاب کنید و کلید «شروع بروزرسانی» را بزنید. قبل از آپدیت نسخه پشتیبان تهیه خواهد شد.'
-  ]);
+  const [esLogs, setEsLogs] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (isRtl) {
+      setEsLogs([
+        '# سیستم مدیریت بروزرسانی و بازگردانی (Rollback) المنت و سیناپس آماده است.',
+        '# گزینه‌های آپدیت را انتخاب کنید و کلید «شروع بروزرسانی» را بزنید. قبل از آپدیت نسخه پشتیبان تهیه خواهد شد.'
+      ]);
+    } else {
+      setEsLogs([
+        '# Element Web & Synapse Homeserver Update & Rollback Suite ready.',
+        '# Select update options and click "Start Update Process". A pre-update backup snapshot will be captured automatically.'
+      ]);
+    }
+  }, [lang, isRtl]);
 
   const fetchEsVersions = async () => {
     try {
@@ -497,8 +508,12 @@ export default function TerminalPanel({
     setEsLogs((prev) => [
       ...prev,
       `--------------------------------------------------`,
-      `[TASK] شروع فرآیند بروزرسانی برای هدف: ${esTarget.toUpperCase()}`,
-      `[TASK] تهیه بک‌آپ خودکار قبل از اجرا: ${esAutoBackup ? 'فعال (امکان رول‌بک محفوظ است)' : 'غیرفعال'}`
+      isRtl 
+        ? `[TASK] شروع فرآیند بروزرسانی برای هدف: ${esTarget.toUpperCase()}`
+        : `[TASK] Initiating update process for target: ${esTarget.toUpperCase()}`,
+      isRtl
+        ? `[TASK] تهیه بک‌آپ خودکار قبل از اجرا: ${esAutoBackup ? 'فعال (امکان رول‌بک محفوظ است)' : 'غیرفعال'}`
+        : `[TASK] Pre-update auto-backup: ${esAutoBackup ? 'Enabled (Rollback snapshot secured)' : 'Disabled'}`
     ]);
 
     try {
@@ -557,7 +572,9 @@ export default function TerminalPanel({
     setEsLogs((prev) => [
       ...prev,
       `--------------------------------------------------`,
-      `[ROLLBACK] شروع فرآیند بازگردانی (Rollback) با اسنپ‌شات ID: ${backupId}`
+      isRtl
+        ? `[ROLLBACK] شروع فرآیند بازگردانی (Rollback) با اسنپ‌شات ID: ${backupId}`
+        : `[ROLLBACK] Initiating rollback process with snapshot ID: ${backupId}`
     ]);
 
     try {
@@ -1801,18 +1818,18 @@ export default function TerminalPanel({
               </div>
 
               {/* Execution Log Stream */}
-              <div className="flex flex-col h-[200px] rounded-xl border border-white/5 bg-black/50 overflow-hidden shadow-sm">
-                <div className="flex items-center justify-between border-b border-white/5 px-4 py-2 bg-black/30">
-                  <span className="font-mono text-[10px] text-gray-400 font-bold">element-synapse-updater@matrix:~</span>
+              <div className="flex flex-col h-[220px] rounded-xl border border-slate-800 bg-slate-950 overflow-hidden shadow-md">
+                <div className="flex items-center justify-between border-b border-slate-800/80 px-4 py-2 bg-slate-900">
+                  <span className="font-mono text-[10px] text-emerald-400 font-bold">element-synapse-updater@matrix:~</span>
                   <button 
                     type="button"
-                    onClick={() => setEsLogs(['# Console logs cleared.'])}
-                    className="text-[9px] text-gray-500 hover:text-gray-300 font-semibold uppercase px-1.5 py-0.5 rounded border border-white/5 hover:border-white/10 transition-all font-mono cursor-pointer"
+                    onClick={() => setEsLogs([isRtl ? '# تاریخچه لاگ‌ها پاکسازی شد.' : '# Console logs cleared.'])}
+                    className="text-[9px] text-emerald-400 hover:text-emerald-200 font-semibold uppercase px-2 py-0.5 rounded border border-emerald-500/30 hover:border-emerald-500/60 transition-all font-mono cursor-pointer"
                   >
-                    Clear
+                    {isRtl ? 'پاکسازی' : 'Clear'}
                   </button>
                 </div>
-                <div className="flex-1 p-3 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 select-text text-left ltr">
+                <div className="flex-1 p-3 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 select-text text-left ltr bg-slate-950 text-slate-100">
                   {esLogs.map((log, idx) => (
                     <div 
                       key={idx}
@@ -1824,10 +1841,12 @@ export default function TerminalPanel({
                             : log.startsWith('[BACKUP]')
                               ? 'text-amber-300 font-semibold'
                               : log.startsWith('[ELEMENT]') || log.startsWith('[SYNAPSE]')
-                                ? 'text-indigo-300'
-                                : log.startsWith('#')
-                                  ? 'text-slate-500'
-                                  : 'text-slate-300'
+                                ? 'text-cyan-300 font-medium'
+                                : log.startsWith('[TASK]') || log.startsWith('[INIT]') || log.startsWith('[ROLLBACK]')
+                                  ? 'text-indigo-300 font-semibold'
+                                  : log.startsWith('#')
+                                    ? 'text-emerald-500 font-medium'
+                                    : 'text-emerald-300 font-medium'
                       }
                     >
                       {log}

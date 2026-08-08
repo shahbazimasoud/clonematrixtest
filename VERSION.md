@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.11.0** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.1** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.1** - 2026-08-08
+- **Terminal Log Stream Localization & High-Contrast Light Mode Styling**:
+  - Synced terminal execution logs in the "Update Element & Synapse" tab with active panel language selection (English vs Persian/Arabic).
+  - Enhanced terminal console container with a solid dark slate CLI style (`bg-slate-950`) and vivid bright green and white log text (`text-emerald-400`, `text-emerald-300`, `text-white`), ensuring high contrast and legibility in Light Mode.
 
 #### **v2.11.0** - 2026-08-08
 - **Element Web & Synapse Server Update & Rollback Suite**:
