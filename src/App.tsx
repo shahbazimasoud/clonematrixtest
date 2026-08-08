@@ -577,21 +577,27 @@ export default function App() {
 
   const handleRefreshStats = async () => {
     setIsRefreshingStats(true);
-    await fetchStats();
-    fetchMatrixUsers();
-    fetchLogs();
-    fetchConfig();
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      setWsConnected(true);
-      wsRef.current.send(JSON.stringify({ type: 'request_metrics' }));
-    } else {
-      setWsConnected(false);
-      if (authToken) setupWebSocket(authToken);
+    setStats(null);
+    try {
+      await fetchStats();
+      fetchMatrixUsers();
+      fetchLogs();
+      fetchConfig();
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        setWsConnected(true);
+        wsRef.current.send(JSON.stringify({ type: 'request_metrics' }));
+      } else {
+        setWsConnected(false);
+        if (authToken) setupWebSocket(authToken);
+      }
+    } catch (err) {
+      console.error("Error refreshing stats:", err);
+    } finally {
+      setTimeout(() => {
+        setIsRefreshingStats(false);
+        showToast('success', isRtl ? 'آمار و تلمتری سرور با موفقیت بروزرسانی شد' : 'Dashboard stats and connection telemetry refreshed successfully!');
+      }, 1000);
     }
-    setTimeout(() => {
-      setIsRefreshingStats(false);
-      showToast('success', isRtl ? 'آمار و تلمتری سرور با موفقیت بروزرسانی شد' : 'Dashboard stats and connection telemetry refreshed successfully!');
-    }, 1000);
   };
 
   // Navigation and terminal/command execution states
@@ -2542,7 +2548,7 @@ export default function App() {
                         setActiveView('terminal');
                       }}
                       className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
-                        stats?.elementHasUpdate 
+                        (stats?.elementHasUpdate || (stats?.elementVersion && stats?.elementLatestVersion && stats.elementVersion !== stats.elementLatestVersion)) 
                           ? 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10' 
                           : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
                       }`}
@@ -2553,12 +2559,15 @@ export default function App() {
                             <Globe className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                              {lang === 'fa' ? 'نسخه المنت وب (Element Web)' : 'Element Web Version'}
-                              {stats?.elementHasUpdate && (
-                                <span className="relative flex h-2.5 w-2.5">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                            <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                              <span>{lang === 'fa' ? 'نسخه المنت وب (Element Web)' : 'Element Web Version'}</span>
+                              {(stats?.elementHasUpdate || (stats?.elementVersion && stats?.elementLatestVersion && stats.elementVersion !== stats.elementLatestVersion)) && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                  </span>
+                                  {lang === 'fa' ? 'آپدیت جدید موجود است' : 'New Update Available'}
                                 </span>
                               )}
                             </h4>
@@ -2580,7 +2589,7 @@ export default function App() {
                           </span>
                         </div>
 
-                        {stats?.elementHasUpdate ? (
+                        {(stats?.elementHasUpdate || (stats?.elementVersion && stats?.elementLatestVersion && stats.elementVersion !== stats.elementLatestVersion)) ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                             {lang === 'fa' 
@@ -2634,7 +2643,7 @@ export default function App() {
                         setActiveView('terminal');
                       }}
                       className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
-                        stats?.synapseHasUpdate 
+                        (stats?.synapseHasUpdate || (stats?.synapseVersion && stats?.synapseLatestVersion && stats.synapseVersion !== stats.synapseLatestVersion))
                           ? 'border-purple-500/40 bg-purple-500/5 hover:border-purple-500/60 hover:bg-purple-500/10' 
                           : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
                       }`}
@@ -2645,12 +2654,15 @@ export default function App() {
                             <Server className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                              {lang === 'fa' ? 'نسخه سرور سیناپس (Synapse)' : 'Synapse Server Version'}
-                              {stats?.synapseHasUpdate && (
-                                <span className="relative flex h-2.5 w-2.5">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                            <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                              <span>{lang === 'fa' ? 'نسخه سرور سیناپس (Synapse)' : 'Synapse Server Version'}</span>
+                              {(stats?.synapseHasUpdate || (stats?.synapseVersion && stats?.synapseLatestVersion && stats.synapseVersion !== stats.synapseLatestVersion)) && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 animate-pulse">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                                  </span>
+                                  {lang === 'fa' ? 'آپدیت جدید موجود است' : 'New Update Available'}
                                 </span>
                               )}
                             </h4>
@@ -2672,7 +2684,7 @@ export default function App() {
                           </span>
                         </div>
 
-                        {stats?.synapseHasUpdate ? (
+                        {(stats?.synapseHasUpdate || (stats?.synapseVersion && stats?.synapseLatestVersion && stats.synapseVersion !== stats.synapseLatestVersion)) ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
                             {lang === 'fa' 
@@ -2701,70 +2713,100 @@ export default function App() {
                         {t.servicesState}
                       </h3>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {services.map((svc) => (
-                          <div key={svc.id} className="p-4 rounded-2xl bg-black/25 border border-white/5 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className={`w-2.5 h-2.5 rounded-full ${
-                                svc.status === 'active' 
-                                  ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' 
-                                  : 'bg-red-500 shadow-[0_0_8px_#ef4444]'
-                              }`} />
-                              <div>
-                                <h4 className="text-xs font-semibold text-white">{svc.displayName}</h4>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {svc.name} {svc.port ? `:${svc.port}` : ''}
-                                </span>
+                      {isDashboardLoading ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {[1, 2, 3, 4].map((idx) => (
+                            <div key={idx} className="p-4 rounded-2xl bg-black/25 border border-white/5 flex items-center justify-between relative overflow-hidden">
+                              <div className="flex items-center gap-3 w-1/2">
+                                <div className="w-3 h-3 rounded-full bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden shrink-0">
+                                  <div className="shimmer-light-beam" />
+                                </div>
+                                <div className="space-y-1.5 flex-1">
+                                  <div className="h-3.5 w-24 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                                    <div className="shimmer-light-beam" />
+                                  </div>
+                                  <div className="h-2.5 w-16 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                                    <div className="shimmer-light-beam" />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <div className="h-6 w-12 rounded-lg bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                                  <div className="shimmer-light-beam" />
+                                </div>
+                                <div className="h-6 w-14 rounded-lg bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                                  <div className="shimmer-light-beam" />
+                                </div>
                               </div>
                             </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {services.map((svc) => (
+                            <div key={svc.id} className="p-4 rounded-2xl bg-black/25 border border-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <span className={`w-2.5 h-2.5 rounded-full ${
+                                  svc.status === 'active' 
+                                    ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' 
+                                    : 'bg-red-500 shadow-[0_0_8px_#ef4444]'
+                                }`} />
+                                <div>
+                                  <h4 className="text-xs font-semibold text-white">{svc.displayName}</h4>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {svc.name} {svc.port ? `:${svc.port}` : ''}
+                                  </span>
+                                </div>
+                              </div>
 
-                            <div className="flex gap-2">
-                              {svc.status === 'active' ? (
-                                <button
-                                  disabled={!!loadingServices[svc.id]}
-                                  onClick={() => handleServiceAction(svc.id, 'stop')}
-                                  className="text-[10px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/15 text-red-400 px-2 py-1 rounded-lg font-bold flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
-                                >
-                                  {loadingServices[svc.id] === 'stop' && (
-                                    <svg className="animate-spin h-3 w-3 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                  )}
-                                  {loadingServices[svc.id] === 'stop' ? 'Stopping...' : 'Stop'}
-                                </button>
-                              ) : (
-                                <button
-                                  disabled={!!loadingServices[svc.id]}
-                                  onClick={() => handleServiceAction(svc.id, 'start')}
-                                  className="text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 text-emerald-400 px-2 py-1 rounded-lg font-bold flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
-                                >
-                                  {loadingServices[svc.id] === 'start' && (
-                                    <svg className="animate-spin h-3 w-3 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                  )}
-                                  {loadingServices[svc.id] === 'start' ? 'Starting...' : 'Start'}
-                                </button>
-                              )}
-                              <button
-                                disabled={!!loadingServices[svc.id]}
-                                onClick={() => handleServiceAction(svc.id, 'restart')}
-                                className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 px-2 py-1 rounded-lg flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
-                              >
-                                {loadingServices[svc.id] === 'restart' && (
-                                  <svg className="animate-spin h-3 w-3 text-slate-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
+                              <div className="flex gap-2">
+                                {svc.status === 'active' ? (
+                                  <button
+                                    disabled={!!loadingServices[svc.id]}
+                                    onClick={() => handleServiceAction(svc.id, 'stop')}
+                                    className="text-[10px] bg-red-500/10 hover:bg-red-500/20 border border-red-500/15 text-red-400 px-2 py-1 rounded-lg font-bold flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
+                                  >
+                                    {loadingServices[svc.id] === 'stop' && (
+                                      <svg className="animate-spin h-3 w-3 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                    )}
+                                    {loadingServices[svc.id] === 'stop' ? 'Stopping...' : 'Stop'}
+                                  </button>
+                                ) : (
+                                  <button
+                                    disabled={!!loadingServices[svc.id]}
+                                    onClick={() => handleServiceAction(svc.id, 'start')}
+                                    className="text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/15 text-emerald-400 px-2 py-1 rounded-lg font-bold flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
+                                  >
+                                    {loadingServices[svc.id] === 'start' && (
+                                      <svg className="animate-spin h-3 w-3 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                    )}
+                                    {loadingServices[svc.id] === 'start' ? 'Starting...' : 'Start'}
+                                  </button>
                                 )}
-                                {loadingServices[svc.id] === 'restart' ? 'Restarting...' : 'Restart'}
-                              </button>
+                                <button
+                                  disabled={!!loadingServices[svc.id]}
+                                  onClick={() => handleServiceAction(svc.id, 'restart')}
+                                  className="text-[10px] bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 px-2 py-1 rounded-lg flex items-center gap-1 disabled:opacity-50 transition-all duration-200"
+                                >
+                                  {loadingServices[svc.id] === 'restart' && (
+                                    <svg className="animate-spin h-3 w-3 text-slate-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  )}
+                                  {loadingServices[svc.id] === 'restart' ? 'Restarting...' : 'Restart'}
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2776,54 +2818,70 @@ export default function App() {
                         Matrix Connection Details
                       </h3>
 
-                      <div className="space-y-4 text-xs font-mono">
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-400">Homeserver URL:</span>
-                          <span className="text-indigo-400 font-semibold">https://{config?.HS_DOMAIN || (activeConnection?.id !== 'local' ? `matrix.${activeConnection?.host}` : 'matrix.company.local')}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-400">Element App:</span>
-                          <span className="text-purple-400 font-semibold">https://{config?.ELEMENT_DOMAIN || (activeConnection?.id !== 'local' ? `chat.${activeConnection?.host}` : 'chat.company.local')}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-400">Base Domain:</span>
-                          <span className="text-slate-200">{config?.BASE_DOMAIN || (activeConnection?.id !== 'local' ? activeConnection?.host : 'company.local')}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-400">Server Public IP:</span>
-                          <span className="text-slate-200">{config?.PUBLIC_IP || (activeConnection?.id !== 'local' ? activeConnection?.host : '127.0.0.1')}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/5 pb-2">
-                          <span className="text-slate-400">SSL Profile:</span>
-                          <span className="text-amber-400 font-semibold">{(config?.SSL_MODE || 'selfsigned').toUpperCase()}</span>
-                        </div>
-                        {activeConnection?.id !== 'local' && (
-                          <>
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span className="text-slate-400">SSH Tunnel:</span>
-                              <span className="text-teal-400 font-semibold">{activeConnection?.username}@{activeConnection?.host}:{activeConnection?.port}</span>
+                      {isDashboardLoading ? (
+                        <div className="space-y-4">
+                          {[1, 2, 3, 4, 5, 6].map((idx) => (
+                            <div key={idx} className="flex justify-between border-b border-white/5 pb-2 items-center">
+                              <div className="h-3 w-28 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                                <div className="shimmer-light-beam" />
+                              </div>
+                              <div className="h-3.5 w-36 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                                <div className="shimmer-light-beam" />
+                              </div>
                             </div>
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span className="text-slate-400">Postgres Target:</span>
-                              <span className="text-emerald-400 font-semibold">{activeConnection?.dbUser}@{activeConnection?.dbHost}:{activeConnection?.dbPort}/{activeConnection?.dbName}</span>
-                            </div>
-                          </>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">LDAP Bridging:</span>
-                          <span className={ldap?.enabled ? "text-emerald-400 font-semibold" : "text-slate-500"}>
-                            {ldap?.enabled ? "ENABLED" : "DISABLED"}
-                          </span>
+                          ))}
                         </div>
-                      </div>
+                      ) : (
+                        <div className="space-y-4 text-xs font-mono">
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-400">Homeserver URL:</span>
+                            <span className="text-indigo-400 font-semibold">https://{config?.HS_DOMAIN || (activeConnection?.id !== 'local' ? `matrix.${activeConnection?.host}` : 'matrix.company.local')}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-400">Element App:</span>
+                            <span className="text-purple-400 font-semibold">https://{config?.ELEMENT_DOMAIN || (activeConnection?.id !== 'local' ? `chat.${activeConnection?.host}` : 'chat.company.local')}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-400">Base Domain:</span>
+                            <span className="text-slate-200">{config?.BASE_DOMAIN || (activeConnection?.id !== 'local' ? activeConnection?.host : 'company.local')}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-400">Server Public IP:</span>
+                            <span className="text-slate-200">{config?.PUBLIC_IP || (activeConnection?.id !== 'local' ? activeConnection?.host : '127.0.0.1')}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-white/5 pb-2">
+                            <span className="text-slate-400">SSL Profile:</span>
+                            <span className="text-amber-400 font-semibold">{(config?.SSL_MODE || 'selfsigned').toUpperCase()}</span>
+                          </div>
+                          {activeConnection?.id !== 'local' && (
+                            <>
+                              <div className="flex justify-between border-b border-white/5 pb-2">
+                                <span className="text-slate-400">SSH Tunnel:</span>
+                                <span className="text-teal-400 font-semibold">{activeConnection?.username}@{activeConnection?.host}:{activeConnection?.port}</span>
+                              </div>
+                              <div className="flex justify-between border-b border-white/5 pb-2">
+                                <span className="text-slate-400">Postgres Target:</span>
+                                <span className="text-emerald-400 font-semibold">{activeConnection?.dbUser}@{activeConnection?.dbHost}:{activeConnection?.dbPort}/{activeConnection?.dbName}</span>
+                              </div>
+                            </>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">LDAP Bridging:</span>
+                            <span className={ldap?.enabled ? "text-emerald-400 font-semibold" : "text-slate-500"}>
+                              {ldap?.enabled ? "ENABLED" : "DISABLED"}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-6 mt-6 border-t border-white/5">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Health Diagnostic Test</h4>
                         <button
+                          disabled={isDashboardLoading}
                           onClick={() => handleExecuteCommand('health_check')}
-                          className="px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 text-xs font-bold transition-all"
+                          className="px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 text-xs font-bold transition-all disabled:opacity-50"
                         >
                           Launch HealthCheck
                         </button>

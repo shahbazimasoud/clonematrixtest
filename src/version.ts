@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.3";
+export const PANEL_VERSION = "2.11.4";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.4",
+    date: "2026-08-08",
+    title: "Dashboard Shimmer Persistence on Server Fetch & Service/Connection Cards Shimmer & Version Badges",
+    changes: [
+      "Persisted shimmer loading state across all dashboard cards during stats refresh and boot until live connected server telemetry is set, preventing momentary display of stale/cached values.",
+      "Added shimmer loading placeholder states for Matrix Connection Details and Linux Service Statuses cards.",
+      "Added prominent New Update Available badges directly in Element Web and Synapse Server card title headers whenever installed version is behind latest release."
+    ]
+  },
   {
     version: "2.11.3",
     date: "2026-08-08",

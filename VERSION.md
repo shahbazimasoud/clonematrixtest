@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.11.3** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.4** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.4** - 2026-08-08
+- **Dashboard Shimmer Persistence on Server Fetch & Service/Connection Cards Shimmer & Version Badges**:
+  - Persisted shimmer loading state across all dashboard cards during stats refresh and boot until live connected server telemetry is set, preventing momentary display of stale/cached values.
+  - Added shimmer loading placeholder states for Matrix Connection Details and Linux Service Statuses cards.
+  - Added prominent New Update Available badges directly in Element Web and Synapse Server card title headers whenever installed version is behind latest release.
 
 #### **v2.11.3** - 2026-08-08
 - **Dashboard Cards Shimmer Loading State on Data Fetch & Manual Refresh**:
