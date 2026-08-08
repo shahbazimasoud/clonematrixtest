@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.11.2** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.3** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.3** - 2026-08-08
+- **Dashboard Cards Shimmer Loading State on Data Fetch & Manual Refresh**:
+  - Added continuous shimmer loading effect across all Dashboard metric cards (CPU, RAM, Disk, Active Users, Rooms, Media Size, Reports) during initial data load and manual stats refresh.
+  - Added matching shimmer loading placeholder cards for Element Web and Synapse Server version cards during data refresh.
 
 #### **v2.11.2** - 2026-08-08
 - **Fix Terminal Console Uncaught ReferenceError TDZ Initialization Crash**:

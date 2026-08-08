@@ -448,10 +448,10 @@ export default function TerminalPanel({
     synapseHasUpdate: boolean;
   }>({
     elementVersion: 'v1.11.55',
-    elementLatestVersion: 'v1.11.85',
+    elementLatestVersion: 'v1.12.25',
     elementHasUpdate: true,
     synapseVersion: 'v1.102.0',
-    synapseLatestVersion: 'v1.108.0',
+    synapseLatestVersion: 'v1.158.0',
     synapseHasUpdate: true
   });
   const [esBackups, setEsBackups] = useState<any[]>([]);

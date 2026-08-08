@@ -59,7 +59,7 @@ export default function MetricCard({
           <div className="space-y-3 w-full">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">{title}</span>
             {/* Value Shimmer Box */}
-            <div className="h-8 w-28 rounded-lg bg-slate-800/15 relative overflow-hidden backdrop-blur-xs border border-white/[0.03]">
+            <div className="h-8 w-28 rounded-lg bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden backdrop-blur-xs border border-black/5 dark:border-white/[0.05]">
               <div className="shimmer-light-beam" />
             </div>
           </div>
@@ -70,7 +70,7 @@ export default function MetricCard({
 
         <div className="mt-4 pt-4 border-t border-white/5">
           {/* Subtext Shimmer Box */}
-          <div className="h-3.5 w-36 rounded bg-slate-800/15 relative overflow-hidden backdrop-blur-xs border border-white/[0.03]">
+          <div className="h-3.5 w-36 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden backdrop-blur-xs border border-black/5 dark:border-white/[0.05]">
             <div className="shimmer-light-beam" />
           </div>
         </div>

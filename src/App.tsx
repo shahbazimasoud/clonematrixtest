@@ -575,30 +575,23 @@ export default function App() {
     }
   };
 
-  const handleRefreshStats = () => {
-    fetchStats();
+  const handleRefreshStats = async () => {
+    setIsRefreshingStats(true);
+    await fetchStats();
+    fetchMatrixUsers();
+    fetchLogs();
+    fetchConfig();
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       setWsConnected(true);
-      setIsRefreshingStats(true);
       wsRef.current.send(JSON.stringify({ type: 'request_metrics' }));
-      fetchMatrixUsers();
-      fetchLogs();
-      fetchConfig();
-      setTimeout(() => {
-        setIsRefreshingStats(false);
-        showToast('success', isRtl ? 'آمار و تلمتری سرور با موفقیت بروزرسانی شد' : 'Dashboard stats and connection telemetry refreshed successfully!');
-      }, 1000);
     } else {
       setWsConnected(false);
-      setIsRefreshingStats(true);
-      fetchMatrixUsers();
-      fetchLogs();
-      fetchConfig();
       if (authToken) setupWebSocket(authToken);
-      setTimeout(() => {
-        setIsRefreshingStats(false);
-      }, 1000);
     }
+    setTimeout(() => {
+      setIsRefreshingStats(false);
+      showToast('success', isRtl ? 'آمار و تلمتری سرور با موفقیت بروزرسانی شد' : 'Dashboard stats and connection telemetry refreshed successfully!');
+    }, 1000);
   };
 
   // Navigation and terminal/command execution states
@@ -619,6 +612,8 @@ export default function App() {
   const setWsConnected = (connected: boolean) => {
     setConnectionStatus(connected ? 'connected' : 'disconnected');
   };
+
+  const isDashboardLoading = !stats || isRefreshingStats || connectionStatus === 'connecting';
 
   // Fetch Panel Database on boot and check token verification via HttpOnly cookie or token
   useEffect(() => {
@@ -2415,7 +2410,7 @@ export default function App() {
                     subtext={lang === 'fa' ? 'بار پردازشی هسته سرور' : 'Core CPU processing load'}
                     icon={Cpu}
                     glowColor="cyan"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
@@ -2424,7 +2419,7 @@ export default function App() {
                     subtext={lang === 'fa' ? `مصرف‌شده: ${stats ? (stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1) : 0} GB از ${stats?.memoryTotal || 0} GB` : `Used: ${stats ? (stats.memoryTotal * (stats.memoryUsage / 100)).toFixed(1) : 0} GB of ${stats?.memoryTotal || 0} GB`}
                     icon={Activity}
                     glowColor="purple"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
@@ -2433,7 +2428,7 @@ export default function App() {
                     subtext={lang === 'fa' ? `مصرف‌شده: ${stats ? (stats.diskTotal * (stats.diskUsage / 100)).toFixed(1) : 0} GB از ${stats?.diskTotal || 0} GB (آزاد: ${stats ? stats.diskFree.toFixed(1) : 0} GB)` : `Used: ${stats ? (stats.diskTotal * (stats.diskUsage / 100)).toFixed(1) : 0} GB of ${stats?.diskTotal || 0} GB (Free: ${stats ? stats.diskFree.toFixed(1) : 0} GB)`}
                     icon={HardDrive}
                     glowColor="amber"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => setActiveView('reporting')}
                   />
                   <MetricCard
@@ -2442,7 +2437,7 @@ export default function App() {
                     subtext={lang === 'fa' ? 'کاربران آنلاین و فعال سرور ماتریکس' : 'Active Matrix server users'}
                     icon={Users}
                     glowColor="emerald"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => {
                       setKetesaAdminTab('users');
                       setActiveView('admin');
@@ -2458,7 +2453,7 @@ export default function App() {
                     subtext={lang === 'fa' ? 'برای مدیریت روم‌ها کلیک کنید' : 'Click to manage public rooms'}
                     icon={Globe}
                     glowColor="cyan"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => {
                       setKetesaAdminTab('rooms');
                       setActiveView('admin');
@@ -2470,7 +2465,7 @@ export default function App() {
                     subtext={lang === 'fa' ? 'برای مدیریت روم‌ها کلیک کنید' : 'Click to manage private rooms'}
                     icon={Lock}
                     glowColor="purple"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => {
                       setKetesaAdminTab('rooms');
                       setActiveView('admin');
@@ -2488,7 +2483,7 @@ export default function App() {
                     subtext={lang === 'fa' ? 'برای پاکسازی کش رسانه‌ها کلیک کنید' : 'Click to manage & clean media cache'}
                     icon={Database}
                     glowColor="emerald"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => {
                       setKetesaAdminTab('media');
                       setActiveView('admin');
@@ -2500,7 +2495,7 @@ export default function App() {
                     subtext={lang === 'fa' ? 'برای بررسی و مدیریت گزارش‌ها کلیک کنید' : 'Click to manage & review reports'}
                     icon={Flag}
                     glowColor="rose"
-                    isLoading={!stats}
+                    isLoading={isDashboardLoading}
                     onClick={() => {
                       setKetesaAdminTab('reports');
                       setActiveView('admin');
@@ -2511,126 +2506,188 @@ export default function App() {
                 {/* Element Web & Synapse Matrix Server Version Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {/* Element Web Card */}
-                  <div 
-                    onClick={() => {
-                      setTerminalInitialTab('element-synapse');
-                      setActiveView('terminal');
-                    }}
-                    className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
-                      stats?.elementHasUpdate 
-                        ? 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10' 
-                        : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2.5 rounded-2xl ${isLightMode ? 'bg-emerald-100 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                          <Globe className="w-5 h-5" />
+                  {isDashboardLoading ? (
+                    <div className="spatial-glass rounded-3xl p-5 border border-indigo-500/25 relative overflow-hidden space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 w-3/4">
+                          <div className="w-10 h-10 rounded-2xl bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden shrink-0 border border-black/5 dark:border-white/[0.05]">
+                            <div className="shimmer-light-beam" />
+                          </div>
+                          <div className="space-y-2 flex-1">
+                            <div className="h-4 w-36 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                              <div className="shimmer-light-beam" />
+                            </div>
+                            <div className="h-3 w-48 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                              <div className="shimmer-light-beam" />
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                            {lang === 'fa' ? 'نسخه المنت وب (Element Web)' : 'Element Web Version'}
-                            {stats?.elementHasUpdate && (
-                              <span className="relative flex h-2.5 w-2.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                              </span>
-                            )}
-                          </h4>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {lang === 'fa' ? 'کلاینت رسمی ماتریکس روی سرور متصل' : 'Official Matrix web client on connected server'}
-                          </p>
+                        <div className="w-4 h-4 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden">
+                          <div className="shimmer-light-beam" />
                         </div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 shrink-0" />
+                      <div className="flex items-center justify-between pt-2">
+                        <div className="h-7 w-28 rounded-lg bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                          <div className="shimmer-light-beam" />
+                        </div>
+                        <div className="h-6 w-36 rounded-full bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                          <div className="shimmer-light-beam" />
+                        </div>
+                      </div>
                     </div>
-
-                    <div className="flex flex-wrap items-baseline justify-between gap-2 mt-2">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-mono font-bold text-white">
-                          {stats?.elementVersion || 'v1.11.55'}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          ({lang === 'fa' ? 'فعلی' : 'Installed'})
-                        </span>
+                  ) : (
+                    <div 
+                      onClick={() => {
+                        setTerminalInitialTab('element-synapse');
+                        setActiveView('terminal');
+                      }}
+                      className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
+                        stats?.elementHasUpdate 
+                          ? 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10' 
+                          : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-2xl ${isLightMode ? 'bg-emerald-100 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                            <Globe className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                              {lang === 'fa' ? 'نسخه المنت وب (Element Web)' : 'Element Web Version'}
+                              {stats?.elementHasUpdate && (
+                                <span className="relative flex h-2.5 w-2.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                                </span>
+                              )}
+                            </h4>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {lang === 'fa' ? 'کلاینت رسمی ماتریکس روی سرور متصل' : 'Official Matrix web client on connected server'}
+                            </p>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 shrink-0" />
                       </div>
 
-                      {stats?.elementHasUpdate ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                          {lang === 'fa' 
-                            ? `آپدیت جدید موجود است: ${stats?.elementLatestVersion || 'v1.11.85'}` 
-                            : `New update available: ${stats?.elementLatestVersion || 'v1.11.85'}`}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          <Check className="w-3 h-3" />
-                          {lang === 'fa' ? 'نسخه بروز' : 'Up to date'}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap items-baseline justify-between gap-2 mt-2">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-mono font-bold text-white">
+                            {stats?.elementVersion || 'v1.11.55'}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            ({lang === 'fa' ? 'فعلی' : 'Installed'})
+                          </span>
+                        </div>
+
+                        {stats?.elementHasUpdate ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            {lang === 'fa' 
+                              ? `آپدیت جدید موجود است: ${stats?.elementLatestVersion || 'v1.12.25'}` 
+                              : `New update available: ${stats?.elementLatestVersion || 'v1.12.25'}`}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <Check className="w-3 h-3" />
+                            {lang === 'fa' ? 'نسخه بروز' : 'Up to date'}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Synapse Server Card */}
-                  <div 
-                    onClick={() => {
-                      setTerminalInitialTab('element-synapse');
-                      setActiveView('terminal');
-                    }}
-                    className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
-                      stats?.synapseHasUpdate 
-                        ? 'border-purple-500/40 bg-purple-500/5 hover:border-purple-500/60 hover:bg-purple-500/10' 
-                        : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2.5 rounded-2xl ${isLightMode ? 'bg-purple-100 text-purple-600' : 'bg-purple-500/10 text-purple-400'}`}>
-                          <Server className="w-5 h-5" />
+                  {isDashboardLoading ? (
+                    <div className="spatial-glass rounded-3xl p-5 border border-purple-500/25 relative overflow-hidden space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 w-3/4">
+                          <div className="w-10 h-10 rounded-2xl bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden shrink-0 border border-black/5 dark:border-white/[0.05]">
+                            <div className="shimmer-light-beam" />
+                          </div>
+                          <div className="space-y-2 flex-1">
+                            <div className="h-4 w-36 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                              <div className="shimmer-light-beam" />
+                            </div>
+                            <div className="h-3 w-48 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                              <div className="shimmer-light-beam" />
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                            {lang === 'fa' ? 'نسخه سرور سیناپس (Synapse)' : 'Synapse Server Version'}
-                            {stats?.synapseHasUpdate && (
-                              <span className="relative flex h-2.5 w-2.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
-                              </span>
-                            )}
-                          </h4>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {lang === 'fa' ? 'موتور اصلی هوم‌سرور ماتریکس متصل' : 'Core Matrix Homeserver engine connected'}
-                          </p>
+                        <div className="w-4 h-4 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden">
+                          <div className="shimmer-light-beam" />
                         </div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 shrink-0" />
+                      <div className="flex items-center justify-between pt-2">
+                        <div className="h-7 w-28 rounded-lg bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                          <div className="shimmer-light-beam" />
+                        </div>
+                        <div className="h-6 w-36 rounded-full bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                          <div className="shimmer-light-beam" />
+                        </div>
+                      </div>
                     </div>
-
-                    <div className="flex flex-wrap items-baseline justify-between gap-2 mt-2">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-mono font-bold text-white">
-                          {stats?.synapseVersion || 'v1.102.0'}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          ({lang === 'fa' ? 'فعلی' : 'Installed'})
-                        </span>
+                  ) : (
+                    <div 
+                      onClick={() => {
+                        setTerminalInitialTab('element-synapse');
+                        setActiveView('terminal');
+                      }}
+                      className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
+                        stats?.synapseHasUpdate 
+                          ? 'border-purple-500/40 bg-purple-500/5 hover:border-purple-500/60 hover:bg-purple-500/10' 
+                          : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-2xl ${isLightMode ? 'bg-purple-100 text-purple-600' : 'bg-purple-500/10 text-purple-400'}`}>
+                            <Server className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                              {lang === 'fa' ? 'نسخه سرور سیناپس (Synapse)' : 'Synapse Server Version'}
+                              {stats?.synapseHasUpdate && (
+                                <span className="relative flex h-2.5 w-2.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                                </span>
+                              )}
+                            </h4>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {lang === 'fa' ? 'موتور اصلی هوم‌سرور ماتریکس متصل' : 'Core Matrix Homeserver engine connected'}
+                            </p>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 shrink-0" />
                       </div>
 
-                      {stats?.synapseHasUpdate ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse">
-                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
-                          {lang === 'fa' 
-                            ? `آپدیت جدید موجود است: ${stats?.synapseLatestVersion || 'v1.108.0'}` 
-                            : `New update available: ${stats?.synapseLatestVersion || 'v1.108.0'}`}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          <Check className="w-3 h-3" />
-                          {lang === 'fa' ? 'نسخه بروز' : 'Up to date'}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap items-baseline justify-between gap-2 mt-2">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-mono font-bold text-white">
+                            {stats?.synapseVersion || 'v1.102.0'}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            ({lang === 'fa' ? 'فعلی' : 'Installed'})
+                          </span>
+                        </div>
+
+                        {stats?.synapseHasUpdate ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                            {lang === 'fa' 
+                              ? `آپدیت جدید موجود است: ${stats?.synapseLatestVersion || 'v1.158.0'}` 
+                              : `New update available: ${stats?.synapseLatestVersion || 'v1.158.0'}`}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <Check className="w-3 h-3" />
+                            {lang === 'fa' ? 'نسخه بروز' : 'Up to date'}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Services status and bento components */}

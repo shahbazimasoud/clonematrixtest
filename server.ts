@@ -11976,23 +11976,77 @@ app.get("/api/system/update/check", authenticateToken, checkPermission(["Owner",
 // -------------------------------------------------------------
 // Element Web & Synapse Matrix Server Update & Rollback Suite
 // -------------------------------------------------------------
+let cachedGithubVersions = {
+  elementLatestVersion: '1.12.25',
+  synapseLatestVersion: '1.158.0',
+  lastFetched: 0
+};
+
+async function updateGithubReleasesCache() {
+  const now = Date.now();
+  if (now - cachedGithubVersions.lastFetched < 10 * 60 * 1000) {
+    return cachedGithubVersions;
+  }
+  try {
+    const headers = { 'User-Agent': 'Raven-Matrix-Admin-Panel/2.11' };
+    const [elemRes, synRes] = await Promise.all([
+      fetch('https://api.github.com/repos/element-hq/element-web/releases/latest', { headers }).catch(() => null),
+      fetch('https://api.github.com/repos/element-hq/synapse/releases/latest', { headers }).catch(() => null)
+    ]);
+
+    if (elemRes && elemRes.ok) {
+      const elemData: any = await elemRes.json();
+      if (elemData.tag_name) {
+        cachedGithubVersions.elementLatestVersion = elemData.tag_name.replace(/^v/, '');
+      }
+    }
+
+    if (synRes && synRes.ok) {
+      const synData: any = await synRes.json();
+      if (synData.tag_name) {
+        cachedGithubVersions.synapseLatestVersion = synData.tag_name.replace(/^v/, '');
+      }
+    }
+
+    cachedGithubVersions.lastFetched = Date.now();
+
+    const db = readDb();
+    if (db.elementSynapseVersion) {
+      db.elementSynapseVersion.elementLatestVersion = cachedGithubVersions.elementLatestVersion;
+      db.elementSynapseVersion.synapseLatestVersion = cachedGithubVersions.synapseLatestVersion;
+      writeDb(db);
+    }
+  } catch (err: any) {
+    console.error("Failed to fetch latest GitHub releases:", err.message);
+  }
+  return cachedGithubVersions;
+}
+
 function getElementSynapseVersionData() {
   const db = readDb();
   if (!db.elementSynapseVersion) {
     db.elementSynapseVersion = {
       elementVersion: '1.11.55',
-      elementLatestVersion: '1.11.85',
+      elementLatestVersion: cachedGithubVersions.elementLatestVersion || '1.12.25',
       synapseVersion: '1.102.0',
-      synapseLatestVersion: '1.108.0'
+      synapseLatestVersion: cachedGithubVersions.synapseLatestVersion || '1.158.0'
     };
     writeDb(db);
+  } else {
+    // Ensure latest versions are updated if they were set to older defaults
+    if (db.elementSynapseVersion.elementLatestVersion === '1.11.85') {
+      db.elementSynapseVersion.elementLatestVersion = cachedGithubVersions.elementLatestVersion || '1.12.25';
+    }
+    if (db.elementSynapseVersion.synapseLatestVersion === '1.108.0') {
+      db.elementSynapseVersion.synapseLatestVersion = cachedGithubVersions.synapseLatestVersion || '1.158.0';
+    }
   }
   const data = db.elementSynapseVersion;
   
   const elementInstalled = data.elementVersion || '1.11.55';
-  const elementLatest = data.elementLatestVersion || '1.11.85';
+  const elementLatest = data.elementLatestVersion || cachedGithubVersions.elementLatestVersion || '1.12.25';
   const synapseInstalled = data.synapseVersion || '1.102.0';
-  const synapseLatest = data.synapseLatestVersion || '1.108.0';
+  const synapseLatest = data.synapseLatestVersion || cachedGithubVersions.synapseLatestVersion || '1.158.0';
 
   const elementVerClean = elementInstalled.startsWith('v') ? elementInstalled : `v${elementInstalled}`;
   const elementLatestClean = elementLatest.startsWith('v') ? elementLatest : `v${elementLatest}`;
@@ -12013,8 +12067,9 @@ function getElementSynapseVersionData() {
 }
 
 // GET Element & Synapse Versions & Update Status
-app.get("/api/matrix/element-synapse/versions", authenticateToken, (req, res) => {
+app.get("/api/matrix/element-synapse/versions", authenticateToken, async (req, res) => {
   try {
+    await updateGithubReleasesCache().catch(() => {});
     const data = getElementSynapseVersionData();
     res.json({ success: true, ...data });
   } catch (err: any) {

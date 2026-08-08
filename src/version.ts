@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.2";
+export const PANEL_VERSION = "2.11.3";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.3",
+    date: "2026-08-08",
+    title: "Dashboard Cards Shimmer Loading State on Data Fetch & Manual Refresh",
+    changes: [
+      "Added continuous shimmer loading effect across all Dashboard metric cards (CPU, RAM, Disk, Active Users, Rooms, Media Size, Reports) during initial data load and manual stats refresh.",
+      "Added matching shimmer loading placeholder cards for Element Web and Synapse Server version cards during data refresh."
+    ]
+  },
   {
     version: "2.11.2",
     date: "2026-08-08",
