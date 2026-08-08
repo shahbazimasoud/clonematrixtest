@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.7";
+export const PANEL_VERSION = "2.11.8";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.8",
+    date: "2026-08-08",
+    title: "Real-Time Connected Server Version Detection for Element Web & Synapse Dashboard Cards",
+    changes: [
+      "Updated backend telemetry and WebSocket streams to dynamically inspect the exact installed versions of Synapse homeserver and Element Web client directly from the active connected server.",
+      "Included live detected versions in all periodic WebSocket metrics streams and REST stats endpoints.",
+      "Ensured dashboard Element Web and Synapse cards display live version telemetry with instant update badge detection."
+    ]
+  },
   {
     version: "2.11.7",
     date: "2026-08-08",

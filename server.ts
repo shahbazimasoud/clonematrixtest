@@ -7109,7 +7109,7 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
     }
 
     const reportsCount = await getReportsCount();
-    const esVersions = getElementSynapseVersionData();
+    const esVersions = await detectServerElementSynapseVersions(activeConn);
 
     res.json({
       cpuUsage: cpu,
@@ -12093,11 +12093,116 @@ function getElementSynapseVersionData() {
   };
 }
 
+let versionDetectCache = {
+  timestamp: 0,
+  data: null as any
+};
+
+async function detectServerElementSynapseVersions(activeConnInput?: ConnectionProfile) {
+  const now = Date.now();
+  if (now - versionDetectCache.timestamp < 5000 && versionDetectCache.data) {
+    return versionDetectCache.data;
+  }
+
+  let realSynapseVersion = '';
+  let realElementVersion = '';
+
+  const conn = activeConnInput || getActiveConnection();
+
+  if (conn && conn.id !== 'local') {
+    try {
+      const cmd = `bash -c '
+        SYN_VER=$(curl -s -m 2 http://127.0.0.1:8008/_synapse/admin/v1/server_version 2>/dev/null | grep -oP '"'"'"server_version"\s*:\s*"\K[^"]+' 2>/dev/null || dpkg-query -W -f=\'\${Version}\' matrix-synapse-py3 2>/dev/null || dpkg-query -W -f=\'\${Version}\' matrix-synapse 2>/dev/null || python3 -c "import synapse; print(synapse.__version__)" 2>/dev/null || echo "")
+        EL_VER=$(cat /var/www/element/version 2>/dev/null || cat /var/www/element-web/version 2>/dev/null || grep -oP '"'"'"version"\s*:\s*"\K[^"]+' /var/www/element/package.json 2>/dev/null || echo "")
+        echo "SYN_VER:$SYN_VER"
+        echo "EL_VER:$EL_VER"
+      '`;
+      const out = await executeSSHCommand(conn, cmd);
+      const synMatch = out.match(/SYN_VER:(.*)/);
+      const elMatch = out.match(/EL_VER:(.*)/);
+      if (synMatch && synMatch[1]?.trim()) {
+        realSynapseVersion = synMatch[1].trim().split('-')[0].replace(/^v/i, '');
+      }
+      if (elMatch && elMatch[1]?.trim()) {
+        realElementVersion = elMatch[1].trim().replace(/^v/i, '');
+      }
+    } catch (err) {}
+  } else {
+    try {
+      const synRes = await fetch("http://127.0.0.1:8008/_synapse/admin/v1/server_version", {
+        headers: { 'User-Agent': 'Raven-Matrix-Admin-Panel/2.11' }
+      }).catch(() => null);
+      if (synRes && synRes.ok) {
+        const synData: any = await synRes.json();
+        if (synData.server_version) {
+          realSynapseVersion = String(synData.server_version).replace(/^v/i, '');
+        }
+      }
+    } catch (err) {}
+
+    if (!realSynapseVersion) {
+      try {
+        const dpkgOut = execSync("dpkg-query -W -f='${Version}' matrix-synapse-py3 2>/dev/null || dpkg-query -W -f='${Version}' matrix-synapse 2>/dev/null || python3 -c 'import synapse; print(synapse.__version__)' 2>/dev/null", { encoding: 'utf8', timeout: 2000 });
+        if (dpkgOut && dpkgOut.trim()) {
+          realSynapseVersion = dpkgOut.trim().split('-')[0].replace(/^v/i, '');
+        }
+      } catch (e) {}
+    }
+
+    try {
+      const elPaths = ['/var/www/element/version', '/var/www/element-web/version', '/usr/share/element-web/version'];
+      for (const p of elPaths) {
+        if (fs.existsSync(p)) {
+          const content = fs.readFileSync(p, 'utf8').trim();
+          if (content) {
+            realElementVersion = content.replace(/^v/i, '');
+            break;
+          }
+        }
+      }
+      if (!realElementVersion && fs.existsSync('/var/www/element/package.json')) {
+        const pkg = JSON.parse(fs.readFileSync('/var/www/element/package.json', 'utf8'));
+        if (pkg && pkg.version) realElementVersion = String(pkg.version).replace(/^v/i, '');
+      }
+    } catch (e) {}
+  }
+
+  const db = readDb();
+  if (!db.elementSynapseVersion) {
+    db.elementSynapseVersion = {
+      elementVersion: '1.11.55',
+      elementLatestVersion: cachedGithubVersions.elementLatestVersion || '1.12.25',
+      synapseVersion: '1.102.0',
+      synapseLatestVersion: cachedGithubVersions.synapseLatestVersion || '1.158.0'
+    };
+  }
+
+  if (realElementVersion) {
+    db.elementSynapseVersion.elementVersion = realElementVersion;
+  }
+  if (realSynapseVersion) {
+    db.elementSynapseVersion.synapseVersion = realSynapseVersion;
+  }
+
+  db.elementSynapseVersion.elementLatestVersion = cachedGithubVersions.elementLatestVersion || '1.12.25';
+  db.elementSynapseVersion.synapseLatestVersion = cachedGithubVersions.synapseLatestVersion || '1.158.0';
+
+  writeDb(db);
+
+  const data = getElementSynapseVersionData();
+  versionDetectCache = {
+    timestamp: Date.now(),
+    data
+  };
+  return data;
+}
+
 // GET Element & Synapse Versions & Update Status
 app.get("/api/matrix/element-synapse/versions", authenticateToken, async (req, res) => {
   try {
     await updateGithubReleasesCache().catch(() => {});
-    const data = getElementSynapseVersionData();
+    const activeConn = getActiveConnection();
+    const data = await detectServerElementSynapseVersions(activeConn);
     res.json({ success: true, ...data });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -17275,6 +17380,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       if (trends.length > 20) trends.shift();
 
       const reportsCount = await getReportsCount();
+      const esVersions = await detectServerElementSynapseVersions(activeConn);
 
       const stats = {
         cpuUsage: cpu,
@@ -17297,7 +17403,8 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         messageVolume24h: 12450 + Math.floor(Math.random() * 50),
         uptime: uptimeStr,
         trends,
-        services: activeServices
+        services: activeServices,
+        ...esVersions
       };
 
       ws.send(JSON.stringify({ type: "metrics", stats }));
