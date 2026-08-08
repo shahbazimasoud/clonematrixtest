@@ -2444,6 +2444,7 @@ export default function App() {
                     icon={Users}
                     glowColor="emerald"
                     isLoading={isDashboardLoading}
+                    isDbDisconnected={stats ? stats.isDbConnected === false : false}
                     onClick={() => {
                       setKetesaAdminTab('users');
                       setActiveView('admin');
@@ -2460,6 +2461,7 @@ export default function App() {
                     icon={Globe}
                     glowColor="cyan"
                     isLoading={isDashboardLoading}
+                    isDbDisconnected={stats ? stats.isDbConnected === false : false}
                     onClick={() => {
                       setKetesaAdminTab('rooms');
                       setActiveView('admin');
@@ -2472,6 +2474,7 @@ export default function App() {
                     icon={Lock}
                     glowColor="purple"
                     isLoading={isDashboardLoading}
+                    isDbDisconnected={stats ? stats.isDbConnected === false : false}
                     onClick={() => {
                       setKetesaAdminTab('rooms');
                       setActiveView('admin');
@@ -2490,6 +2493,7 @@ export default function App() {
                     icon={Database}
                     glowColor="emerald"
                     isLoading={isDashboardLoading}
+                    isDbDisconnected={stats ? stats.isDbConnected === false : false}
                     onClick={() => {
                       setKetesaAdminTab('media');
                       setActiveView('admin');
@@ -2502,6 +2506,7 @@ export default function App() {
                     icon={Flag}
                     glowColor="rose"
                     isLoading={isDashboardLoading}
+                    isDbDisconnected={stats ? stats.isDbConnected === false : false}
                     onClick={() => {
                       setKetesaAdminTab('reports');
                       setActiveView('admin');

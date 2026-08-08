@@ -75,6 +75,7 @@ export interface SystemStats {
   synapseVersion?: string;
   synapseLatestVersion?: string;
   synapseHasUpdate?: boolean;
+  isDbConnected?: boolean;
 }
 
 export interface ServiceState {

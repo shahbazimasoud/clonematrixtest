@@ -6989,7 +6989,35 @@ app.post("/api/matrix/rooms/:roomId/messages/delete", authenticateToken, checkPe
 app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
   try {
     const activeConn = getActiveConnection();
+    const isDbConnected = await checkDatabaseConnection(activeConn);
     const { publicRoomsCount, privateRoomsCount } = await getPublicAndPrivateRoomsCount(activeConn);
+
+    let activeUsers = 1;
+    try {
+      let rows = [];
+      try {
+        rows = await Promise.race([
+          queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated = 0 OR deactivated IS NULL"),
+          new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error("DB Timeout")), 1500))
+        ]);
+      } catch (dbErr) {
+        rows = await Promise.race([
+          queryPostgres("SELECT COUNT(*) as count FROM users WHERE deactivated IS NOT TRUE"),
+          new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error("DB Timeout")), 1500))
+        ]);
+      }
+      if (rows && rows.length > 0) {
+        activeUsers = parseInt(rows[0].count || rows[0].coalesce || "1");
+      }
+    } catch (e) {
+      try {
+        const db = readDb();
+        activeUsers = db.matrixUsers ? db.matrixUsers.filter((u: any) => !u.isDeactivated).length : 0;
+      } catch (err) {
+        activeUsers = 0;
+      }
+    }
+
     let totalMediaSizeBytes = 0;
 
     try {
@@ -7066,6 +7094,7 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
       diskUsage: disk.pct,
       diskTotal: disk.total,
       diskFree: disk.free,
+      activeUsers,
       publicRoomsCount,
       privateRoomsCount,
       totalMediaSizeMB,
@@ -7073,6 +7102,7 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
       reportsCount,
       uptime: uptimeStr,
       services: activeServices,
+      isDbConnected,
       ...esVersions
     });
   } catch (err: any) {
@@ -12038,6 +12068,68 @@ function getElementSynapseVersionData() {
     synapseLatestVersion: synapseLatestClean,
     synapseHasUpdate
   };
+}
+
+let dbConnCacheMap = new Map<string, { timestamp: number, isConnected: boolean }>();
+
+async function checkDatabaseConnection(activeConnInput?: ConnectionProfile): Promise<boolean> {
+  const activeConn = activeConnInput || getActiveConnection();
+  const connKey = activeConn?.id || activeConn?.host || "local";
+
+  const cached = dbConnCacheMap.get(connKey);
+  const now = Date.now();
+  if (cached && (now - cached.timestamp < 3000)) {
+    return cached.isConnected;
+  }
+
+  let isConnected = false;
+
+  if (activeConn && activeConn.id !== "local") {
+    if (activeConn.authType === "agent") {
+      try {
+        const res = await executeRemoteAgentTask(activeConn.id, "postgres_query", {
+          query: "SELECT 1 as connected",
+          dbUser: activeConn.dbUser || "synapse_user",
+          dbName: activeConn.dbName || "synapse"
+        });
+        if (res && !res.error && (Array.isArray(res) || res.status === "ok" || (res.length !== undefined && res.length >= 0))) {
+          isConnected = true;
+        }
+      } catch (err) {
+        isConnected = false;
+      }
+    } else {
+      try {
+        const rows = await queryRemotePostgres(activeConn, "SELECT 1 as connected");
+        if (rows && Array.isArray(rows)) {
+          isConnected = true;
+        }
+      } catch (err) {
+        isConnected = false;
+      }
+    }
+  } else {
+    const dbConfig = getSynapseDBConfig();
+    if (dbConfig) {
+      try {
+        const rows = await queryPostgres("SELECT 1 as connected");
+        if (rows && Array.isArray(rows)) {
+          isConnected = true;
+        }
+      } catch (err) {
+        isConnected = false;
+      }
+    } else {
+      isConnected = false;
+    }
+  }
+
+  dbConnCacheMap.set(connKey, {
+    timestamp: Date.now(),
+    isConnected
+  });
+
+  return isConnected;
 }
 
 let roomCountCacheMap = new Map<string, { timestamp: number, data: { publicRoomsCount: number, privateRoomsCount: number } }>();
@@ -17450,6 +17542,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
       const reportsCount = await getReportsCount();
       const esVersions = await detectServerElementSynapseVersions(activeConn);
+      const isDbConnected = await checkDatabaseConnection(activeConn);
 
       const stats = {
         cpuUsage: cpu,
@@ -17473,6 +17566,7 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         uptime: uptimeStr,
         trends,
         services: activeServices,
+        isDbConnected,
         ...esVersions
       };
 

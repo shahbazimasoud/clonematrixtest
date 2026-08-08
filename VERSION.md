@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.11.9** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.10** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.10** - 2026-08-08
+- **Database Connection Lost / Unconfigured Overlay for Dashboard Metrics**:
+  - Added automatic database connectivity verification (`checkDatabaseConnection`) for both REST stats API (`/api/matrix/stats`) and real-time WebSocket metrics streams (`sendMetrics`).
+  - Implemented a blur / dim overlay over **Public Rooms**, **Private Rooms**, **Active Users**, **Stored Media Size**, and **Reported Messages** cards when database connection is disconnected or not configured.
+  - Displayed clear English message `"Database Disconnected"` over database-dependent dashboard cards whenever database connectivity is down.
 
 #### **v2.11.9** - 2026-08-08
 - **Direct Remote Server Integration for Dashboard Public & Private Room Metrics & Versions**:

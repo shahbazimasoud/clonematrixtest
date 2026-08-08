@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { LucideIcon, TrendingUp, TrendingDown } from 'lucide-react';
+import { LucideIcon, TrendingUp, TrendingDown, Database } from 'lucide-react';
 
 interface MetricCardProps {
   title: string;
@@ -19,6 +19,8 @@ interface MetricCardProps {
   id?: string;
   onClick?: () => void;
   isLoading?: boolean;
+  isDbDisconnected?: boolean;
+  dbDisconnectedText?: string;
 }
 
 export default function MetricCard({ 
@@ -30,7 +32,9 @@ export default function MetricCard({
   glowColor = 'cyan',
   id,
   onClick,
-  isLoading
+  isLoading,
+  isDbDisconnected,
+  dbDisconnectedText = "Database Disconnected"
 }: MetricCardProps) {
   
   const glowClasses = {
@@ -81,12 +85,12 @@ export default function MetricCard({
   return (
     <div 
       id={id || `metric-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
-      onClick={onClick}
-      className={`spatial-glass spatial-glass-hover spatial-depth-card rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 border ${glowClasses[glowColor]} ${
-        onClick ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''
+      onClick={!isDbDisconnected ? onClick : undefined}
+      className={`spatial-glass spatial-glass-hover spatial-depth-card rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 border ${glowClasses[glowColor]} relative overflow-hidden ${
+        onClick && !isDbDisconnected ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''
       }`}
     >
-      <div className="flex items-start justify-between">
+      <div className={`flex items-start justify-between ${isDbDisconnected ? 'blur-xs opacity-25 select-none' : ''}`}>
         <div>
           <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{title}</span>
           <h3 className="text-3xl font-display font-bold text-white mt-2 tracking-tight glow-text-cyan">{value}</h3>
@@ -96,7 +100,7 @@ export default function MetricCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
+      <div className={`flex items-center justify-between mt-4 pt-4 border-t border-white/5 ${isDbDisconnected ? 'blur-xs opacity-25 select-none' : ''}`}>
         <span className="text-xs text-slate-400">{subtext}</span>
         {trend && (
           <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
@@ -107,6 +111,20 @@ export default function MetricCard({
           </div>
         )}
       </div>
+
+      {isDbDisconnected && (
+        <div className="absolute inset-0 z-20 backdrop-blur-md bg-slate-950/85 border border-amber-500/35 rounded-2xl flex flex-col items-center justify-center p-4 text-center transition-all duration-300">
+          <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 mb-2 shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+            <Database className="w-5 h-5 text-amber-400 animate-pulse" />
+          </div>
+          <span className="text-xs font-bold text-amber-300 tracking-wider uppercase drop-shadow">
+            {dbDisconnectedText}
+          </span>
+          <span className="text-[10px] text-slate-400 mt-1 leading-tight max-w-[200px]">
+            Database connection is lost or not configured
+          </span>
+        </div>
+      )}
     </div>
   );
 }

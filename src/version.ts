@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.9";
+export const PANEL_VERSION = "2.11.10";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.10",
+    date: "2026-08-08",
+    title: "Database Connection Lost / Unconfigured Overlay for Dashboard Metrics",
+    changes: [
+      "Added automatic database connectivity verification (checkDatabaseConnection) for both REST stats API and real-time WebSocket metrics streams.",
+      "Implemented a blur / dim overlay over Public Rooms, Private Rooms, Active Users, Stored Media Size, and Reported Messages cards when database connection is disconnected or not configured.",
+      "Displayed clear English message 'Database Disconnected' over database-dependent dashboard cards whenever database connectivity is down."
+    ]
+  },
   {
     version: "2.11.9",
     date: "2026-08-08",
