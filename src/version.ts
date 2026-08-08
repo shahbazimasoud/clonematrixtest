@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.8";
+export const PANEL_VERSION = "2.11.9";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.9",
+    date: "2026-08-08",
+    title: "Direct Remote Server Integration for Dashboard Public & Private Room Metrics & Versions",
+    changes: [
+      "Fixed Public and Private room counters on the dashboard to fetch real-time data directly from the active connected Matrix server using Synapse Admin API /_synapse/admin/v1/rooms.",
+      "Ensured room stats immediately reflect the active target server connected via SSH, Agent, or API, avoiding stale local fallback cache.",
+      "Enhanced Element Web and Synapse version detection to query live server HTTP endpoints, SSH file paths (/var/www/element/version), and Python packages for maximum accuracy.",
+      "Synchronized both REST stats API (/api/matrix/stats) and real-time WebSocket metrics streams (sendMetrics) with active connection profiles."
+    ]
+  },
   {
     version: "2.11.8",
     date: "2026-08-08",

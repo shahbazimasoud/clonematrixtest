@@ -6988,97 +6988,44 @@ app.post("/api/matrix/rooms/:roomId/messages/delete", authenticateToken, checkPe
 // -------------------------------------------------------------
 app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
   try {
-    let publicRoomsCount = 0;
-    let privateRoomsCount = 0;
+    const activeConn = getActiveConnection();
+    const { publicRoomsCount, privateRoomsCount } = await getPublicAndPrivateRoomsCount(activeConn);
     let totalMediaSizeBytes = 0;
 
     try {
       const db = readDb();
-      const rooms = db.matrixRooms || [];
-      publicRoomsCount = rooms.filter((r: any) => r.isPublic).length;
-      privateRoomsCount = rooms.filter((r: any) => !r.isPublic).length;
-
       const media = db.matrixMedia || [];
       totalMediaSizeBytes = media.reduce((acc: number, m: any) => acc + (Number(m.fileSize) || 0), 0);
     } catch (err) {
-      publicRoomsCount = 12;
-      privateRoomsCount = 28;
       totalMediaSizeBytes = 1450000000;
     }
 
     try {
-      let pgPub = 0;
-      let pgPriv = 0;
-      let foundPgRooms = false;
-
-      try {
-        const roomCounts = await queryPostgres(`
-          SELECT 
-            COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = true THEN 1 END) as pub_count,
-            COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = false OR COALESCE(rss.public, r.is_public) IS NOT TRUE THEN 1 END) as priv_count
-          FROM rooms r
-          LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
-        `);
-        if (roomCounts && roomCounts.length > 0 && (parseInt(roomCounts[0].pub_count) > 0 || parseInt(roomCounts[0].priv_count) > 0)) {
-          pgPub = parseInt(roomCounts[0].pub_count, 10) || 0;
-          pgPriv = parseInt(roomCounts[0].priv_count, 10) || 0;
-          foundPgRooms = true;
-        }
-      } catch (err1) {
-        try {
-          const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = true");
-          if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
-
-          const privRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = false");
-          if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
-
-          if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
-        } catch (err2) {
-          try {
-            const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public = true");
-            if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
-
-            const privRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public IS NOT TRUE");
-            if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
-
-            if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
-          } catch (err3) {}
+      const mediaRows = await queryPostgres(`
+        SELECT (
+          COALESCE((SELECT SUM(media_length) FROM local_media_repository), 0) + 
+          COALESCE((SELECT SUM(media_length) FROM remote_media_repository), 0)
+        ) as sum_size
+      `);
+      if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
+        const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
+        if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
+          totalMediaSizeBytes = pgMediaSize;
         }
       }
-
-      if (foundPgRooms) {
-        publicRoomsCount = pgPub;
-        privateRoomsCount = pgPriv;
-      }
-
+    } catch (mErr) {
       try {
-        const mediaRows = await queryPostgres(`
-          SELECT (
-            COALESCE((SELECT SUM(media_length) FROM local_media_repository), 0) + 
-            COALESCE((SELECT SUM(media_length) FROM remote_media_repository), 0)
-          ) as sum_size
-        `);
+        const mediaRows = await queryPostgres("SELECT SUM(media_length) as sum_size FROM local_media_repository");
         if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
           const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
           if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
             totalMediaSizeBytes = pgMediaSize;
           }
         }
-      } catch (mErr) {
-        try {
-          const mediaRows = await queryPostgres("SELECT SUM(media_length) as sum_size FROM local_media_repository");
-          if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
-            const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
-            if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
-              totalMediaSizeBytes = pgMediaSize;
-            }
-          }
-        } catch (mErr2) {}
-      }
-    } catch (e) {}
+      } catch (mErr2) {}
+    }
 
     const totalMediaSizeMB = parseFloat((totalMediaSizeBytes / (1024 * 1024)).toFixed(1));
-    const activeConn = getActiveConnection();
     let cpu = 0;
     let mem = { pct: 0, total: 0, free: 0 };
     let disk = { pct: 0, total: 0, free: 0 };
@@ -12093,41 +12040,159 @@ function getElementSynapseVersionData() {
   };
 }
 
-let versionDetectCache = {
-  timestamp: 0,
-  data: null as any
-};
+let roomCountCacheMap = new Map<string, { timestamp: number, data: { publicRoomsCount: number, privateRoomsCount: number } }>();
+
+async function getPublicAndPrivateRoomsCount(activeConnInput?: ConnectionProfile) {
+  const activeConn = activeConnInput || getActiveConnection();
+  const connKey = activeConn?.id || activeConn?.host || "local";
+
+  const cached = roomCountCacheMap.get(connKey);
+  const now = Date.now();
+  if (cached && (now - cached.timestamp < 3000)) {
+    return cached.data;
+  }
+
+  let publicRoomsCount = 0;
+  let privateRoomsCount = 0;
+  let success = false;
+
+  // 1. Call Synapse Admin API /_synapse/admin/v1/rooms?limit=1000
+  try {
+    const apiRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/rooms?limit=1000");
+    if (apiRes && (Array.isArray(apiRes.rooms) || Array.isArray(apiRes.chunk) || Array.isArray(apiRes))) {
+      const rawRooms = Array.isArray(apiRes.rooms) ? apiRes.rooms : (Array.isArray(apiRes.chunk) ? apiRes.chunk : (Array.isArray(apiRes) ? apiRes : []));
+      let pub = 0;
+      let priv = 0;
+      for (const r of rawRooms) {
+        const isPub = r.public === true || r.join_rules === "public" || r.isPublic === true;
+        if (isPub) pub++;
+        else priv++;
+      }
+      publicRoomsCount = pub;
+      privateRoomsCount = priv;
+      success = true;
+    } else if (apiRes && typeof apiRes.total_rooms === "number") {
+      const rawRooms = Array.isArray(apiRes.rooms) ? apiRes.rooms : [];
+      let pub = 0;
+      let priv = 0;
+      for (const r of rawRooms) {
+        const isPub = r.public === true || r.join_rules === "public" || r.isPublic === true;
+        if (isPub) pub++;
+        else priv++;
+      }
+      publicRoomsCount = pub;
+      privateRoomsCount = Math.max(0, apiRes.total_rooms - pub);
+      success = true;
+    }
+  } catch (err: any) {}
+
+  // 2. Query Postgres
+  if (!success) {
+    try {
+      const roomCounts = await queryPostgres(`
+        SELECT 
+          COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = true THEN 1 END) as pub_count,
+          COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = false OR COALESCE(rss.public, r.is_public) IS NOT TRUE THEN 1 END) as priv_count
+        FROM rooms r
+        LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
+      `);
+      if (roomCounts && roomCounts.length > 0) {
+        publicRoomsCount = parseInt(roomCounts[0].pub_count, 10) || 0;
+        privateRoomsCount = parseInt(roomCounts[0].priv_count, 10) || 0;
+        success = true;
+      }
+    } catch (pgErr) {
+      try {
+        const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = true");
+        const privRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = false");
+        if (pubRows && privRows && (pubRows.length > 0 || privRows.length > 0)) {
+          publicRoomsCount = parseInt(pubRows[0]?.count, 10) || 0;
+          privateRoomsCount = parseInt(privRows[0]?.count, 10) || 0;
+          success = true;
+        }
+      } catch (pgErr2) {}
+    }
+  }
+
+  // 3. Client Public Rooms API
+  if (!success) {
+    try {
+      const pubRes = await callSynapseAdminAPI("GET", "/_matrix/client/v3/publicRooms?limit=500");
+      if (pubRes && Array.isArray(pubRes.chunk)) {
+        publicRoomsCount = pubRes.chunk.length;
+        success = true;
+      }
+    } catch (pubErr) {}
+  }
+
+  // 4. Local DB Fallback
+  if (!success) {
+    try {
+      const db = readDb();
+      const rooms = db.matrixRooms || [];
+      publicRoomsCount = rooms.filter((r: any) => r.isPublic).length;
+      privateRoomsCount = rooms.filter((r: any) => !r.isPublic).length;
+    } catch (dbErr) {
+      publicRoomsCount = 0;
+      privateRoomsCount = 0;
+    }
+  }
+
+  const resData = { publicRoomsCount, privateRoomsCount };
+  roomCountCacheMap.set(connKey, {
+    timestamp: Date.now(),
+    data: resData
+  });
+
+  return resData;
+}
+
+let versionDetectCacheMap = new Map<string, { timestamp: number, data: any }>();
 
 async function detectServerElementSynapseVersions(activeConnInput?: ConnectionProfile) {
+  const activeConn = activeConnInput || getActiveConnection();
+  const connKey = activeConn?.id || activeConn?.host || "local";
+
+  const cached = versionDetectCacheMap.get(connKey);
   const now = Date.now();
-  if (now - versionDetectCache.timestamp < 5000 && versionDetectCache.data) {
-    return versionDetectCache.data;
+  if (cached && (now - cached.timestamp < 3000)) {
+    return cached.data;
   }
 
   let realSynapseVersion = '';
   let realElementVersion = '';
 
-  const conn = activeConnInput || getActiveConnection();
+  // 1. Detect Synapse Version
+  // Try Synapse Admin API /_synapse/admin/v1/server_version first
+  try {
+    const verRes = await callSynapseAdminAPI("GET", "/_synapse/admin/v1/server_version");
+    if (verRes && verRes.server_version) {
+      realSynapseVersion = String(verRes.server_version).replace(/^v/i, '').trim();
+    }
+  } catch (err) {}
 
-  if (conn && conn.id !== 'local') {
+  // SSH / Agent fallback for Synapse
+  if (!realSynapseVersion && activeConn && activeConn.id !== 'local') {
     try {
-      const cmd = `bash -c '
-        SYN_VER=$(curl -s -m 2 http://127.0.0.1:8008/_synapse/admin/v1/server_version 2>/dev/null | grep -oP '"'"'"server_version"\s*:\s*"\K[^"]+' 2>/dev/null || dpkg-query -W -f=\'\${Version}\' matrix-synapse-py3 2>/dev/null || dpkg-query -W -f=\'\${Version}\' matrix-synapse 2>/dev/null || python3 -c "import synapse; print(synapse.__version__)" 2>/dev/null || echo "")
-        EL_VER=$(cat /var/www/element/version 2>/dev/null || cat /var/www/element-web/version 2>/dev/null || grep -oP '"'"'"version"\s*:\s*"\K[^"]+' /var/www/element/package.json 2>/dev/null || echo "")
-        echo "SYN_VER:$SYN_VER"
-        echo "EL_VER:$EL_VER"
-      '`;
-      const out = await executeSSHCommand(conn, cmd);
-      const synMatch = out.match(/SYN_VER:(.*)/);
-      const elMatch = out.match(/EL_VER:(.*)/);
-      if (synMatch && synMatch[1]?.trim()) {
-        realSynapseVersion = synMatch[1].trim().split('-')[0].replace(/^v/i, '');
+      const synCmd = `curl -s -m 2 http://127.0.0.1:8008/_synapse/admin/v1/server_version 2>/dev/null | grep -oP '"server_version"\\s*:\\s*"\K[^"]+' 2>/dev/null || dpkg-query -W -f='\${Version}' matrix-synapse-py3 2>/dev/null || dpkg-query -W -f='\${Version}' matrix-synapse 2>/dev/null || python3 -c "import synapse; print(synapse.__version__)" 2>/dev/null || echo ""`;
+      let out = "";
+      if (activeConn.authType === "agent") {
+        out = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: synCmd });
+      } else {
+        out = await executeSSHCommand(activeConn, synCmd);
+        if (!out || !out.trim()) {
+          const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+          out = await executeSSHCommand(activeConn, `${sudoPrefix}${synCmd}`);
+        }
       }
-      if (elMatch && elMatch[1]?.trim()) {
-        realElementVersion = elMatch[1].trim().replace(/^v/i, '');
+      if (out && out.trim() && !out.includes("error") && !out.includes("not found")) {
+        realSynapseVersion = out.trim().split('-')[0].replace(/^v/i, '');
       }
     } catch (err) {}
-  } else {
+  }
+
+  // Local server fallback for Synapse
+  if (!realSynapseVersion) {
     try {
       const synRes = await fetch("http://127.0.0.1:8008/_synapse/admin/v1/server_version", {
         headers: { 'User-Agent': 'Raven-Matrix-Admin-Panel/2.11' }
@@ -12148,7 +12213,57 @@ async function detectServerElementSynapseVersions(activeConnInput?: ConnectionPr
         }
       } catch (e) {}
     }
+  }
 
+  // 2. Detect Element Web Version
+  // Try HTTP fetch /version from active server domain or host
+  const connAny = activeConn as any;
+  const hostIp = connAny?.host && connAny.host.trim() !== "localhost" && connAny.host.trim() !== "127.0.0.1" ? connAny.host.trim() : null;
+  const domain = connAny?.domain;
+  const urlsToFetch = Array.from(new Set([
+    domain ? `https://${domain}/version` : null,
+    domain ? `http://${domain}/version` : null,
+    hostIp ? `http://${hostIp}/version` : null,
+    hostIp ? `https://${hostIp}/version` : null,
+    `http://127.0.0.1/version`,
+    `http://localhost/version`
+  ])).filter(Boolean) as string[];
+
+  for (const vUrl of urlsToFetch) {
+    try {
+      const vRes = await fetch(vUrl, { headers: { 'User-Agent': 'Raven-Matrix-Admin-Panel/2.11' } }).catch(() => null);
+      if (vRes && vRes.ok) {
+        const txt = await vRes.text();
+        if (txt && txt.trim() && !txt.includes("<html") && txt.trim().length < 40) {
+          realElementVersion = txt.trim().replace(/^v/i, '');
+          break;
+        }
+      }
+    } catch (err) {}
+  }
+
+  // SSH / Agent check for Element Web
+  if (!realElementVersion && activeConn && activeConn.id !== 'local') {
+    try {
+      const elCmd = `cat /var/www/element/version 2>/dev/null || cat /var/www/element-web/version 2>/dev/null || grep -oP '"version"\\s*:\\s*"\K[^"]+' /var/www/element/package.json 2>/dev/null || echo ""`;
+      let out = "";
+      if (activeConn.authType === "agent") {
+        out = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: elCmd });
+      } else {
+        out = await executeSSHCommand(activeConn, elCmd);
+        if (!out || !out.trim()) {
+          const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+          out = await executeSSHCommand(activeConn, `${sudoPrefix}${elCmd}`);
+        }
+      }
+      if (out && out.trim() && !out.includes("error") && !out.includes("No such file")) {
+        realElementVersion = out.trim().replace(/^v/i, '');
+      }
+    } catch (err) {}
+  }
+
+  // Local filesystem fallback for Element Web
+  if (!realElementVersion) {
     try {
       const elPaths = ['/var/www/element/version', '/var/www/element-web/version', '/usr/share/element-web/version'];
       for (const p of elPaths) {
@@ -12189,12 +12304,21 @@ async function detectServerElementSynapseVersions(activeConnInput?: ConnectionPr
 
   writeDb(db);
 
-  const data = getElementSynapseVersionData();
-  versionDetectCache = {
-    timestamp: Date.now(),
-    data
+  const resData = {
+    elementVersion: db.elementSynapseVersion.elementVersion || '1.11.55',
+    elementLatestVersion: db.elementSynapseVersion.elementLatestVersion || '1.12.25',
+    synapseVersion: db.elementSynapseVersion.synapseVersion || '1.102.0',
+    synapseLatestVersion: db.elementSynapseVersion.synapseLatestVersion || '1.158.0',
+    elementHasUpdate: (db.elementSynapseVersion.elementVersion !== db.elementSynapseVersion.elementLatestVersion),
+    synapseHasUpdate: (db.elementSynapseVersion.synapseVersion !== db.elementSynapseVersion.synapseLatestVersion)
   };
-  return data;
+
+  versionDetectCacheMap.set(connKey, {
+    timestamp: Date.now(),
+    data: resData
+  });
+
+  return resData;
 }
 
 // GET Element & Synapse Versions & Update Status
@@ -17268,96 +17392,41 @@ wss.on("connection", (ws: WebSocket, request: any) => {
 
       const time = new Date().toLocaleTimeString().slice(0, 8);
 
-      let publicRoomsCount = 0;
-      let privateRoomsCount = 0;
+      const { publicRoomsCount, privateRoomsCount } = await getPublicAndPrivateRoomsCount(activeConn);
       let totalMediaSizeBytes = 0;
 
       try {
         const db = readDb();
-        const rooms = db.matrixRooms || [];
-        publicRoomsCount = rooms.filter((r: any) => r.isPublic).length;
-        privateRoomsCount = rooms.filter((r: any) => !r.isPublic).length;
-
         const media = db.matrixMedia || [];
         totalMediaSizeBytes = media.reduce((acc: number, m: any) => acc + (Number(m.fileSize) || 0), 0);
       } catch (err) {
-        publicRoomsCount = 12;
-        privateRoomsCount = 28;
         totalMediaSizeBytes = 1450000000;
       }
 
       // Query Postgres for accurate real-time metrics
       try {
-        let pgPub = 0;
-        let pgPriv = 0;
-        let foundPgRooms = false;
-
-        try {
-          const roomCounts = await queryPostgres(`
-            SELECT 
-              COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = true THEN 1 END) as pub_count,
-              COUNT(CASE WHEN COALESCE(rss.public, r.is_public) = false OR COALESCE(rss.public, r.is_public) IS NOT TRUE THEN 1 END) as priv_count
-            FROM rooms r
-            LEFT JOIN room_stats_state rss ON r.room_id = rss.room_id
-          `);
-          if (roomCounts && roomCounts.length > 0 && (parseInt(roomCounts[0].pub_count) > 0 || parseInt(roomCounts[0].priv_count) > 0)) {
-            pgPub = parseInt(roomCounts[0].pub_count, 10) || 0;
-            pgPriv = parseInt(roomCounts[0].priv_count, 10) || 0;
-            foundPgRooms = true;
-          }
-        } catch (err1) {
-          try {
-            const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = true");
-            if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
-
-            const privRows = await queryPostgres("SELECT COUNT(*) as count FROM room_stats_state WHERE public = false");
-            if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
-
-            if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
-          } catch (err2) {
-            try {
-              const pubRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public = true");
-              if (pubRows && pubRows.length > 0) pgPub = parseInt(pubRows[0].count, 10) || 0;
-
-              const privRows = await queryPostgres("SELECT COUNT(*) as count FROM rooms WHERE is_public IS NOT TRUE");
-              if (privRows && privRows.length > 0) pgPriv = parseInt(privRows[0].count, 10) || 0;
-
-              if (pgPub > 0 || pgPriv > 0) foundPgRooms = true;
-            } catch (err3) {}
+        const mediaRows = await queryPostgres(`
+          SELECT (
+            COALESCE((SELECT SUM(media_length) FROM local_media_repository), 0) + 
+            COALESCE((SELECT SUM(media_length) FROM remote_media_repository), 0)
+          ) as sum_size
+        `);
+        if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
+          const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
+          if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
+            totalMediaSizeBytes = pgMediaSize;
           }
         }
-
-        if (foundPgRooms) {
-          publicRoomsCount = pgPub;
-          privateRoomsCount = pgPriv;
-        }
-
+      } catch (mErr) {
         try {
-          const mediaRows = await queryPostgres(`
-            SELECT (
-              COALESCE((SELECT SUM(media_length) FROM local_media_repository), 0) + 
-              COALESCE((SELECT SUM(media_length) FROM remote_media_repository), 0)
-            ) as sum_size
-          `);
+          const mediaRows = await queryPostgres("SELECT SUM(media_length) as sum_size FROM local_media_repository");
           if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
             const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
             if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
               totalMediaSizeBytes = pgMediaSize;
             }
           }
-        } catch (mErr) {
-          try {
-            const mediaRows = await queryPostgres("SELECT SUM(media_length) as sum_size FROM local_media_repository");
-            if (mediaRows && mediaRows.length > 0 && mediaRows[0].sum_size) {
-              const pgMediaSize = parseInt(mediaRows[0].sum_size, 10);
-              if (!isNaN(pgMediaSize) && pgMediaSize > 0) {
-                totalMediaSizeBytes = pgMediaSize;
-              }
-            }
-          } catch (mErr2) {}
-        }
-      } catch (e) {
-        // use local db values
+        } catch (mErr2) {}
       }
 
       const totalMediaSizeMB = parseFloat((totalMediaSizeBytes / (1024 * 1024)).toFixed(1));

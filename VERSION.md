@@ -16,11 +16,18 @@
 
 ---
 
-## Current Panel Version: **v2.11.7** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.9** (Released: 2026-08-08)
 
 ### Changelog History
 
-#### **v2.11.7** - 2026-08-08
+#### **v2.11.9** - 2026-08-08
+- **Direct Remote Server Integration for Dashboard Public & Private Room Metrics & Versions**:
+  - Fixed Public and Private room counters on the dashboard to fetch real-time data directly from the active connected Matrix server using Synapse Admin API `/_synapse/admin/v1/rooms`.
+  - Ensured room stats immediately reflect the active target server connected via SSH, Agent, or API, avoiding stale local fallback cache.
+  - Enhanced Element Web and Synapse version detection to query live server HTTP endpoints, SSH file paths (`/var/www/element/version`), and Python packages for maximum accuracy.
+  - Synchronized both REST stats API (`/api/matrix/stats`) and real-time WebSocket metrics streams (`sendMetrics`) with active connection profiles.
+
+#### **v2.11.8** - 2026-08-08
 - **Custom Step-by-Step Element Web & Synapse Server Update Workflows with Rollback Storage**:
   - Implemented step-by-step bash update pipeline for **Element Web Only** option (GitHub API lookup, tarball download/extract, config preservation, rollbacks to `/opt/matrix_rollback`, nginx reload).
   - Implemented step-by-step bash update pipeline for **Synapse Server Only** option (`homeserver.yaml` timestamped backup to `/opt/matrix_rollback`, `apt update`, service stop, `apt install --only-upgrade -y matrix-synapse-py3`, service & worker restart, and health check curl loop).
