@@ -2979,13 +2979,18 @@ export default function App() {
             {activeView === 'connections' && (
               <ConnectionManager
                 authToken={authToken || ''}
-                onProfileChanged={() => {
-                  fetchConfig();
-                  fetchLogs();
-                  fetchPanelUsers();
-                  fetchMatrixUsers();
-                  fetchBackups();
-                  fetchConnections();
+                onProfileChanged={async () => {
+                  setIsRefreshingStats(true);
+                  setStats(null);
+                  await fetchConfig();
+                  await fetchLogs();
+                  await fetchPanelUsers();
+                  await fetchMatrixUsers();
+                  await fetchBackups();
+                  await fetchConnections();
+                  await fetchStats();
+                  if (authToken) setupWebSocket(authToken);
+                  setIsRefreshingStats(false);
                 }}
                 showToast={showToast}
                 isLightMode={isLightMode}

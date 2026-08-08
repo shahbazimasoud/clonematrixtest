@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.4";
+export const PANEL_VERSION = "2.11.5";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.5",
+    date: "2026-08-08",
+    title: "Connected Server Telemetry Sync & Dynamic Profile Stats Refetch",
+    changes: [
+      "Updated backend /api/matrix/stats endpoint to query active connection profile metrics and services instead of local system metrics when connected to a remote server.",
+      "Ensured active connection profile switches trigger full stats reset and telemetry refetch for the target connected server.",
+      "Preserved all dashboard card structures, titles, and layout containers during shimmer state so real server metrics load smoothly."
+    ]
+  },
   {
     version: "2.11.4",
     date: "2026-08-08",

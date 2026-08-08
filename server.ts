@@ -7078,10 +7078,36 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
     } catch (e) {}
 
     const totalMediaSizeMB = parseFloat((totalMediaSizeBytes / (1024 * 1024)).toFixed(1));
-    const cpu = getCPUUsage();
-    const mem = getMemoryUsage();
-    const disk = getDiskUsage();
-    const uptimeStr = getUptime();
+    const activeConn = getActiveConnection();
+    let cpu = 0;
+    let mem = { pct: 0, total: 0, free: 0 };
+    let disk = { pct: 0, total: 0, free: 0 };
+    let uptimeStr = "";
+    let activeServices: any[] = [];
+
+    if (activeConn && activeConn.id !== "local") {
+      try {
+        const batch = await getRemoteBatchMetrics(activeConn);
+        cpu = batch.cpu;
+        mem = batch.mem;
+        disk = batch.disk;
+        uptimeStr = batch.uptimeStr;
+        activeServices = batch.activeServices;
+      } catch (e) {
+        cpu = getCPUUsage();
+        mem = getMemoryUsage();
+        disk = getDiskUsage();
+        uptimeStr = getUptime();
+        activeServices = getServicesStatus();
+      }
+    } else {
+      cpu = getCPUUsage();
+      mem = getMemoryUsage();
+      disk = getDiskUsage();
+      uptimeStr = getUptime();
+      activeServices = getServicesStatus();
+    }
+
     const reportsCount = await getReportsCount();
     const esVersions = getElementSynapseVersionData();
 
@@ -7099,6 +7125,7 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
       totalMediaSizeBytes,
       reportsCount,
       uptime: uptimeStr,
+      services: activeServices,
       ...esVersions
     });
   } catch (err: any) {

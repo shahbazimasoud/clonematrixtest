@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.11.4** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.5** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.5** - 2026-08-08
+- **Connected Server Telemetry Sync & Dynamic Profile Stats Refetch**:
+  - Updated backend `/api/matrix/stats` endpoint to query active connection profile metrics and services instead of local system metrics when connected to a remote server.
+  - Ensured active connection profile switches trigger full stats reset and telemetry refetch for the target connected server.
+  - Preserved all dashboard card structures, titles, and layout containers during shimmer state so real server metrics load smoothly.
 
 #### **v2.11.4** - 2026-08-08
 - **Dashboard Shimmer Persistence on Server Fetch & Service/Connection Cards Shimmer & Version Badges**:
