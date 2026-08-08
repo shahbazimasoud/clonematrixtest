@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.10.4** (Released: 2026-08-07)
+## Current Panel Version: **v2.10.5** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.10.5** - 2026-08-08
+- **SSTP Master Systemd Unit Provisioning**: Resolved `Unit sstp-client.service could not be found` by automatically provisioning both template (`/etc/systemd/system/sstp-client@.service`) and master daemon (`/etc/systemd/system/sstp-client.service`) units on target remote Linux servers.
+- **Automatic Protocol Port Mapping**: Updated profile creation forms to automatically set default protocol ports (SSTP: 443, WireGuard: 51820, OpenVPN: 1194, L2TP: 1701, PPTP: 1723, V2Ray: 443, etc.) while allowing user customization.
+- **Remote Target VPN Profile Execution**: Guaranteed all VPN connection profiles, SSTP connections, start/stop actions, status checks, and journalctl log retrievals execute exclusively on the selected target remote server via WebSocket tunnel.
 
 #### **v2.10.4** - 2026-08-07
 - **Target Server Execution Plane Enforcement**: Guaranteed all VPN and SSTP connection profiles run commands exclusively on the selected target remote server via WebSocket tunnel.

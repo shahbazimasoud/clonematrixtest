@@ -16,8 +16,8 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.4";
-export const PANEL_BUILD_DATE = "2026-08-07";
+export const PANEL_VERSION = "2.10.5";
+export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
 
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.5",
+    date: "2026-08-08",
+    title: "SSTP Master Systemd Unit Provisioning, Automatic Protocol Port Selection & Remote Target Profile Execution",
+    changes: [
+      "SSTP Master Systemd Unit Resolution: Fixed 'Unit sstp-client.service could not be found' error by auto-provisioning both template (/etc/systemd/system/sstp-client@.service) and master daemon (/etc/systemd/system/sstp-client.service) units on target remote Linux servers.",
+      "Automatic Protocol Port Mapping: Configured profile creation forms to auto-select default protocol ports (SSTP: 443, WireGuard: 51820, OpenVPN: 1194, L2TP: 1701, PPTP: 1723, V2Ray: 443, etc.) while keeping the port field fully customizable.",
+      "Remote Target VPN Profile Execution: Ensured VPN profiles, SSTP connections, start/stop actions, status checks, and journalctl log retrievals execute exclusively on the selected target remote server via WebSocket tunnel."
+    ]
+  },
   {
     version: "2.10.4",
     date: "2026-08-07",

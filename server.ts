@@ -18458,7 +18458,23 @@ RestartSec=5s
 WantedBy=multi-user.target
 `;
 
-  await runServerCommandOnTarget(targetId, `cat << 'EOF' > /etc/systemd/system/sstp-client@.service\n${unitContent}\nEOF\nsystemctl daemon-reload`);
+  const masterUnitContent = `[Unit]
+Description=SSTP VPN Client Master Daemon Service
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for conf in /etc/sstp-client/*.conf; do [ -f "$conf" ] && systemctl start "sstp-client@$(basename "$conf" .conf).service"; done || true'
+ExecStop=/bin/sh -c 'for conf in /etc/sstp-client/*.conf; do [ -f "$conf" ] && systemctl stop "sstp-client@$(basename "$conf" .conf).service"; done || true'
+ExecReload=/bin/sh -c 'for conf in /etc/sstp-client/*.conf; do [ -f "$conf" ] && systemctl restart "sstp-client@$(basename "$conf" .conf).service"; done || true'
+
+[Install]
+WantedBy=multi-user.target
+`;
+
+  await runServerCommandOnTarget(targetId, `cat << 'EOF' > /etc/systemd/system/sstp-client@.service\n${unitContent}\nEOF\ncat << 'EOF' > /etc/systemd/system/sstp-client.service\n${masterUnitContent}\nEOF\nsystemctl daemon-reload`);
 }
 
 async function writeSstpProfileConfigFile(targetId: string, profileId: string, profile: any) {
@@ -18946,6 +18962,10 @@ app.post("/api/vpn-clients/package/service-control", async (req: any, res: any) 
   let execResult = "";
 
   try {
+    if (type === "sstp") {
+      await ensureSstpSystemdUnit(targetId);
+    }
+
     if (action === "start") {
       execResult = await runServerCommandOnTarget(targetId, `systemctl start ${serviceName} 2>/dev/null || service ${serviceName} start 2>/dev/null`);
     } else if (action === "stop") {
@@ -19018,9 +19038,25 @@ app.post("/api/vpn-clients/package/logs", async (req: any, res: any) => {
 });
 
 // 8. GET /api/vpn-proxy/client-connections
-app.get("/api/vpn-proxy/client-connections", (req: any, res: any) => {
+app.get("/api/vpn-proxy/client-connections", async (req: any, res: any) => {
+  const targetId = (req.query.targetId as string) || "local";
   const conns = getSavedVpnConnections();
-  res.json(conns);
+  const filtered = conns.filter(c => !c.targetId || c.targetId === targetId || targetId === "all");
+  const enriched = await Promise.all(filtered.map(async (conn) => {
+    if (conn.protocol === "sstp") {
+      try {
+        const realStatus = await getSstpRealStatusOnTarget(targetId, conn.id);
+        return {
+          ...conn,
+          status: realStatus.vpnStatus,
+          assignedIp: realStatus.localAddress || conn.assignedIp,
+          realStatus
+        };
+      } catch (_) {}
+    }
+    return conn;
+  }));
+  res.json(enriched);
 });
 
 // 9. POST /api/vpn-proxy/client-connections

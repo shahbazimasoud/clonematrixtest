@@ -1033,9 +1033,9 @@ export default function ReportingPanel({
     }
   };
 
-  const fetchVpnConnections = async () => {
+  const fetchVpnConnections = async (targetId: string = selectedTargetId) => {
     try {
-      const res = await fetch('/api/vpn-proxy/client-connections', {
+      const res = await fetch(`/api/vpn-proxy/client-connections?targetId=${encodeURIComponent(targetId)}`, {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (res.ok) {
@@ -1051,7 +1051,7 @@ export default function ReportingPanel({
     if (activeSubTab === 'vpn') {
       fetchTargetConnections();
       fetchVpnPackagesAndOs(selectedTargetId);
-      fetchVpnConnections();
+      fetchVpnConnections(selectedTargetId);
       fetchRemoteTargetInfo(selectedTargetId);
     }
   }, [activeSubTab, selectedTargetId]);
@@ -5800,7 +5800,18 @@ export default function ReportingPanel({
                     <label className={`block font-semibold mb-1 ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{isRtl ? 'پروتکل VPN:' : 'VPN Protocol:'}</label>
                     <select
                       value={connForm.protocol}
-                      onChange={(e) => setConnForm({ ...connForm, protocol: e.target.value })}
+                      onChange={(e) => {
+                        const proto = e.target.value;
+                        const defaultPort = 
+                          proto === 'wireguard' ? 51820 :
+                          proto === 'v2ray' ? 443 :
+                          proto === 'l2tp' ? 1701 :
+                          proto === 'sstp' ? 443 :
+                          proto === 'pptp' ? 1723 :
+                          proto === 'openvpn' ? 1194 :
+                          proto === 'tailscale' ? 41641 : 443;
+                        setConnForm(prev => ({ ...prev, protocol: proto, port: defaultPort }));
+                      }}
                       className={`w-full rounded-xl px-3.5 py-2.5 border focus:outline-none ${
                         isLightMode
                           ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600'
