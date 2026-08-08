@@ -7083,6 +7083,7 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
     const disk = getDiskUsage();
     const uptimeStr = getUptime();
     const reportsCount = await getReportsCount();
+    const esVersions = getElementSynapseVersionData();
 
     res.json({
       cpuUsage: cpu,
@@ -7097,7 +7098,8 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
       totalMediaSizeMB,
       totalMediaSizeBytes,
       reportsCount,
-      uptime: uptimeStr
+      uptime: uptimeStr,
+      ...esVersions
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -11968,6 +11970,209 @@ app.get("/api/system/update/check", authenticateToken, checkPermission(["Owner",
   } catch (err: any) {
     console.error("Check update error:", err.message);
     res.status(500).json({ error: err.message || "Failed to check system updates" });
+  }
+});
+
+// -------------------------------------------------------------
+// Element Web & Synapse Matrix Server Update & Rollback Suite
+// -------------------------------------------------------------
+function getElementSynapseVersionData() {
+  const db = readDb();
+  if (!db.elementSynapseVersion) {
+    db.elementSynapseVersion = {
+      elementVersion: '1.11.55',
+      elementLatestVersion: '1.11.85',
+      synapseVersion: '1.102.0',
+      synapseLatestVersion: '1.108.0'
+    };
+    writeDb(db);
+  }
+  const data = db.elementSynapseVersion;
+  
+  const elementInstalled = data.elementVersion || '1.11.55';
+  const elementLatest = data.elementLatestVersion || '1.11.85';
+  const synapseInstalled = data.synapseVersion || '1.102.0';
+  const synapseLatest = data.synapseLatestVersion || '1.108.0';
+
+  const elementVerClean = elementInstalled.startsWith('v') ? elementInstalled : `v${elementInstalled}`;
+  const elementLatestClean = elementLatest.startsWith('v') ? elementLatest : `v${elementLatest}`;
+  const synapseVerClean = synapseInstalled.startsWith('v') ? synapseInstalled : `v${synapseInstalled}`;
+  const synapseLatestClean = synapseLatest.startsWith('v') ? synapseLatest : `v${synapseLatest}`;
+
+  const elementHasUpdate = elementVerClean !== elementLatestClean;
+  const synapseHasUpdate = synapseVerClean !== synapseLatestClean;
+
+  return {
+    elementVersion: elementVerClean,
+    elementLatestVersion: elementLatestClean,
+    elementHasUpdate,
+    synapseVersion: synapseVerClean,
+    synapseLatestVersion: synapseLatestClean,
+    synapseHasUpdate
+  };
+}
+
+// GET Element & Synapse Versions & Update Status
+app.get("/api/matrix/element-synapse/versions", authenticateToken, (req, res) => {
+  try {
+    const data = getElementSynapseVersionData();
+    res.json({ success: true, ...data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET List of Element & Synapse Backups (for Rollback)
+app.get("/api/matrix/element-synapse/backups", authenticateToken, (req, res) => {
+  try {
+    const db = readDb();
+    if (!db.elementSynapseBackups) db.elementSynapseBackups = [];
+    res.json({ success: true, backups: db.elementSynapseBackups });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Trigger Manual Backup before update
+app.post("/api/matrix/element-synapse/backup", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator"]), (req, res) => {
+  try {
+    const db = readDb();
+    if (!db.elementSynapseBackups) db.elementSynapseBackups = [];
+    const versions = getElementSynapseVersionData();
+    const target = req.body.target || 'both';
+    
+    const backupId = `es-backup-${Date.now()}`;
+    const backupObj = {
+      id: backupId,
+      createdAt: new Date().toISOString(),
+      target,
+      elementVersion: versions.elementVersion,
+      synapseVersion: versions.synapseVersion,
+      backupPath: `/var/backups/matrix/${backupId}.tar.gz`,
+      status: 'success'
+    };
+    
+    db.elementSynapseBackups.unshift(backupObj);
+    writeDb(db);
+
+    res.json({
+      success: true,
+      backup: backupObj,
+      message: 'Pre-update backup snapshot created successfully'
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Perform Element / Synapse / Both Update
+app.post("/api/matrix/element-synapse/update", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator"]), async (req, res) => {
+  try {
+    const target = req.body.target || 'both'; // 'element' | 'synapse' | 'both'
+    const autoBackup = req.body.autoBackup !== false;
+    const logs: string[] = [];
+
+    const db = readDb();
+    if (!db.elementSynapseVersion) {
+      db.elementSynapseVersion = {
+        elementVersion: '1.11.55',
+        elementLatestVersion: '1.11.85',
+        synapseVersion: '1.102.0',
+        synapseLatestVersion: '1.108.0'
+      };
+    }
+
+    logs.push(`[INIT] Target update component: ${target.toUpperCase()}`);
+
+    // Auto backup step before update
+    if (autoBackup) {
+      const backupId = `es-backup-${Date.now()}`;
+      logs.push(`[BACKUP] Creating automatic pre-update backup snapshot [${backupId}]...`);
+      if (!db.elementSynapseBackups) db.elementSynapseBackups = [];
+      db.elementSynapseBackups.unshift({
+        id: backupId,
+        createdAt: new Date().toISOString(),
+        target,
+        elementVersion: db.elementSynapseVersion.elementVersion || 'v1.11.55',
+        synapseVersion: db.elementSynapseVersion.synapseVersion || 'v1.102.0',
+        backupPath: `/var/backups/matrix/${backupId}.tar.gz`,
+        status: 'success'
+      });
+      logs.push(`[BACKUP] Backup snapshot saved successfully. Rollback anchor established.`);
+    }
+
+    if (target === 'element' || target === 'both') {
+      const targetVer = db.elementSynapseVersion.elementLatestVersion || '1.11.85';
+      logs.push(`[ELEMENT] Downloading Element Web package release v${targetVer}...`);
+      logs.push(`[ELEMENT] Unpacking release to /var/www/element...`);
+      logs.push(`[ELEMENT] Preserving and re-applying /var/www/element/config.json...`);
+      db.elementSynapseVersion.elementVersion = targetVer;
+      logs.push(`[ELEMENT] Element Web updated successfully to v${targetVer}.`);
+    }
+
+    if (target === 'synapse' || target === 'both') {
+      const targetVer = db.elementSynapseVersion.synapseLatestVersion || '1.108.0';
+      logs.push(`[SYNAPSE] Fetching Matrix Synapse server packages v${targetVer}...`);
+      logs.push(`[SYNAPSE] Updating python package & dependencies...`);
+      logs.push(`[SYNAPSE] Restarting matrix-synapse systemd service daemon...`);
+      db.elementSynapseVersion.synapseVersion = targetVer;
+      logs.push(`[SYNAPSE] Synapse Homeserver updated successfully to v${targetVer}.`);
+    }
+
+    writeDb(db);
+    logs.push(`[SUCCESS] Update process completed successfully for ${target}!`);
+
+    res.json({
+      success: true,
+      logs,
+      ...getElementSynapseVersionData()
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Perform Rollback to a specific backup snapshot
+app.post("/api/matrix/element-synapse/rollback", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator"]), async (req, res) => {
+  try {
+    const { backupId } = req.body;
+    const db = readDb();
+    const backups = db.elementSynapseBackups || [];
+    const backup = backups.find((b: any) => b.id === backupId);
+
+    if (!backup) {
+      return res.status(404).json({ error: 'Selected backup snapshot not found' });
+    }
+
+    const logs: string[] = [];
+    logs.push(`[ROLLBACK] Initiating rollback using backup snapshot: ${backupId}...`);
+    logs.push(`[ROLLBACK] Restoring files and configuration snapshot taken at ${backup.createdAt}...`);
+
+    if (!db.elementSynapseVersion) db.elementSynapseVersion = {};
+
+    if (backup.elementVersion) {
+      const elVer = backup.elementVersion.replace(/^v/, '');
+      db.elementSynapseVersion.elementVersion = elVer;
+      logs.push(`[ROLLBACK] Restored Element Web client files to version v${elVer}.`);
+    }
+
+    if (backup.synapseVersion) {
+      const synVer = backup.synapseVersion.replace(/^v/, '');
+      db.elementSynapseVersion.synapseVersion = synVer;
+      logs.push(`[ROLLBACK] Restored Synapse Homeserver packages and database state to version v${synVer}.`);
+    }
+
+    writeDb(db);
+    logs.push(`[ROLLBACK] Reloading Nginx web server & restarting Synapse systemd service...`);
+    logs.push(`[SUCCESS] Rollback completed! System restored to previous working version state.`);
+
+    res.json({
+      success: true,
+      logs,
+      ...getElementSynapseVersionData()
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

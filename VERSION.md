@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.10.7** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.0** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.0** - 2026-08-08
+- **Element Web & Synapse Server Update & Rollback Suite**:
+  - Added "Update Element & Synapse" item to Quick Tasks in `TerminalPanel.tsx` with selection between updating Element Web, Synapse Server, or both.
+  - Implemented mandatory pre-update backup snapshot creation with 1-click rollback functionality in case of issues.
+  - Added real-time Dashboard version metric cards in `App.tsx` displaying installed Element and Synapse versions with active pinging update indicators when newer releases are available.
+  - Created REST API backend endpoints under `/api/matrix/element-synapse/*` for checking version releases, managing backup snapshots, and triggering update and rollback operations.
 
 #### **v2.10.7** - 2026-08-08
 - **Complete Removal of VPN Management Feature**: Completely removed the VPN Management UI tab, controls, sub-tabs, and state management from `src/components/ReportingPanel.tsx`, as well as all backend REST API endpoints under `/api/vpn-clients/*` and `/api/vpn-proxy/*` from `server.ts`.

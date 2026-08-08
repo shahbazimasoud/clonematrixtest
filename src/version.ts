@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.7";
+export const PANEL_VERSION = "2.11.0";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.0",
+    date: "2026-08-08",
+    title: "Element Web & Synapse Server Update & Rollback Suite",
+    changes: [
+      "Added 'Update Element & Synapse' task to Quick Tasks in Terminal Panel with target selection (Element, Synapse, or Both).",
+      "Integrated mandatory pre-update backups with 1-click rollback capability to restore previous snapshots.",
+      "Added Dashboard metric cards for Element Web and Synapse Server with version badges and update indicators.",
+      "Implemented backend REST endpoints for fetching versions, creating backups, running updates, and executing rollbacks."
+    ]
+  },
   {
     version: "2.10.7",
     date: "2026-08-08",

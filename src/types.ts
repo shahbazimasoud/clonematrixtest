@@ -69,6 +69,12 @@ export interface SystemStats {
   diskIops?: number;
   diskLatencyMs?: number;
   services?: ServiceState[];
+  elementVersion?: string;
+  elementLatestVersion?: string;
+  elementHasUpdate?: boolean;
+  synapseVersion?: string;
+  synapseLatestVersion?: string;
+  synapseHasUpdate?: boolean;
 }
 
 export interface ServiceState {

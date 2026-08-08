@@ -512,7 +512,7 @@ export default function App() {
   const [userDropdownOpen, setUserDropdownOpen] = useState<boolean>(false);
   const [isGuidedTourOpen, setIsGuidedTourOpen] = useState<boolean>(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState<boolean>(false);
-  const [terminalInitialTab, setTerminalInitialTab] = useState<'console' | 'install' | 'updates'>('console');
+  const [terminalInitialTab, setTerminalInitialTab] = useState<'console' | 'install' | 'updates' | 'element-synapse'>('console');
 
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const userAvatarBtnRef = useRef<HTMLButtonElement>(null);
@@ -2506,6 +2506,131 @@ export default function App() {
                       setActiveView('admin');
                     }}
                   />
+                </div>
+
+                {/* Element Web & Synapse Matrix Server Version Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Element Web Card */}
+                  <div 
+                    onClick={() => {
+                      setTerminalInitialTab('element-synapse');
+                      setActiveView('terminal');
+                    }}
+                    className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
+                      stats?.elementHasUpdate 
+                        ? 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10' 
+                        : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2.5 rounded-2xl ${isLightMode ? 'bg-emerald-100 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                          <Globe className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            {lang === 'fa' ? 'نسخه المنت وب (Element Web)' : 'Element Web Version'}
+                            {stats?.elementHasUpdate && (
+                              <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {lang === 'fa' ? 'کلاینت رسمی ماتریکس روی سرور متصل' : 'Official Matrix web client on connected server'}
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 shrink-0" />
+                    </div>
+
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 mt-2">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-mono font-bold text-white">
+                          {stats?.elementVersion || 'v1.11.55'}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          ({lang === 'fa' ? 'فعلی' : 'Installed'})
+                        </span>
+                      </div>
+
+                      {stats?.elementHasUpdate ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                          {lang === 'fa' 
+                            ? `آپدیت جدید موجود است: ${stats?.elementLatestVersion || 'v1.11.85'}` 
+                            : `New update available: ${stats?.elementLatestVersion || 'v1.11.85'}`}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <Check className="w-3 h-3" />
+                          {lang === 'fa' ? 'نسخه بروز' : 'Up to date'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Synapse Server Card */}
+                  <div 
+                    onClick={() => {
+                      setTerminalInitialTab('element-synapse');
+                      setActiveView('terminal');
+                    }}
+                    className={`spatial-glass rounded-3xl p-5 border transition-all cursor-pointer group relative overflow-hidden ${
+                      stats?.synapseHasUpdate 
+                        ? 'border-purple-500/40 bg-purple-500/5 hover:border-purple-500/60 hover:bg-purple-500/10' 
+                        : 'border-white/10 hover:border-indigo-500/30 hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2.5 rounded-2xl ${isLightMode ? 'bg-purple-100 text-purple-600' : 'bg-purple-500/10 text-purple-400'}`}>
+                          <Server className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            {lang === 'fa' ? 'نسخه سرور سیناپس (Synapse)' : 'Synapse Server Version'}
+                            {stats?.synapseHasUpdate && (
+                              <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {lang === 'fa' ? 'موتور اصلی هوم‌سرور ماتریکس متصل' : 'Core Matrix Homeserver engine connected'}
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform rtl:group-hover:-translate-x-1 shrink-0" />
+                    </div>
+
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 mt-2">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-mono font-bold text-white">
+                          {stats?.synapseVersion || 'v1.102.0'}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          ({lang === 'fa' ? 'فعلی' : 'Installed'})
+                        </span>
+                      </div>
+
+                      {stats?.synapseHasUpdate ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                          {lang === 'fa' 
+                            ? `آپدیت جدید موجود است: ${stats?.synapseLatestVersion || 'v1.108.0'}` 
+                            : `New update available: ${stats?.synapseLatestVersion || 'v1.108.0'}`}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <Check className="w-3 h-3" />
+                          {lang === 'fa' ? 'نسخه بروز' : 'Up to date'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Services status and bento components */}

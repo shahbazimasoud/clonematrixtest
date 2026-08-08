@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { 
   Terminal, Play, ShieldAlert, Circle, RefreshCw, Trash2, ArrowUpRight, 
   Download, Upload, Eye, FileText, Database, UserCheck, ShieldCheck, Globe, Key, 
-  Folder, Copy, Check, Info, Lock, Tag, X
+  Folder, Copy, Check, Info, Lock, Tag, X, RotateCcw, Undo2, Server
 } from 'lucide-react';
 import { MatrixConfig } from '../types';
 import { PANEL_VERSION, PANEL_BUILD_DATE, VERSION_HISTORY } from '../version';
@@ -21,8 +21,8 @@ interface TerminalPanelProps {
   lang: 'en' | 'fa' | 'es' | 'ar' | 'de' | 'ru';
   isLightMode?: boolean;
   showToast: (type: 'success' | 'error', text: string) => void;
-  initialTab?: 'console' | 'install' | 'updates';
-  onTabChange?: (tab: 'console' | 'install' | 'updates') => void;
+  initialTab?: 'console' | 'install' | 'updates' | 'element-synapse';
+  onTabChange?: (tab: 'console' | 'install' | 'updates' | 'element-synapse') => void;
   config?: MatrixConfig;
   activeConnection?: any;
 }
@@ -377,7 +377,7 @@ export default function TerminalPanel({
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const consoleContainerRef = useRef<HTMLDivElement>(null);
   const installContainerRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<'console' | 'install' | 'updates'>('console');
+  const [activeTab, setActiveTab] = useState<'console' | 'install' | 'updates' | 'element-synapse'>('console');
   const [showDbPass, setShowDbPass] = useState<boolean>(false);
 
   // Derive connection & config values matching option 8 -> 2 in matrix-installer.sh
@@ -399,7 +399,7 @@ export default function TerminalPanel({
     }
   }, [initialTab]);
 
-  const handleTabChange = (tab: 'console' | 'install' | 'updates') => {
+  const handleTabChange = (tab: 'console' | 'install' | 'updates' | 'element-synapse') => {
     setActiveTab(tab);
     if (onTabChange) {
       onTabChange(tab);
@@ -424,6 +424,178 @@ export default function TerminalPanel({
   const [isExportingBackup, setIsExportingBackup] = useState<boolean>(false);
   const [isImportingBackup, setIsImportingBackup] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Element & Synapse Update Suite States
+  const [esTarget, setEsTarget] = useState<'element' | 'synapse' | 'both'>('both');
+  const [esAutoBackup, setEsAutoBackup] = useState<boolean>(true);
+  const [esVersions, setEsVersions] = useState<{
+    elementVersion: string;
+    elementLatestVersion: string;
+    elementHasUpdate: boolean;
+    synapseVersion: string;
+    synapseLatestVersion: string;
+    synapseHasUpdate: boolean;
+  }>({
+    elementVersion: 'v1.11.55',
+    elementLatestVersion: 'v1.11.85',
+    elementHasUpdate: true,
+    synapseVersion: 'v1.102.0',
+    synapseLatestVersion: 'v1.108.0',
+    synapseHasUpdate: true
+  });
+  const [esBackups, setEsBackups] = useState<any[]>([]);
+  const [isEsUpdating, setIsEsUpdating] = useState<boolean>(false);
+  const [isEsRollingBack, setIsEsRollingBack] = useState<boolean>(false);
+  const [esLogs, setEsLogs] = useState<string[]>([
+    '# سیستم مدیریت بروزرسانی و بازگردانی (Rollback) المنت و سیناپس آماده است.',
+    '# گزینه‌های آپدیت را انتخاب کنید و کلید «شروع بروزرسانی» را بزنید. قبل از آپدیت نسخه پشتیبان تهیه خواهد شد.'
+  ]);
+
+  const fetchEsVersions = async () => {
+    try {
+      const res = await fetch('/api/matrix/element-synapse/versions', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEsVersions({
+          elementVersion: data.elementVersion,
+          elementLatestVersion: data.elementLatestVersion,
+          elementHasUpdate: data.elementHasUpdate,
+          synapseVersion: data.synapseVersion,
+          synapseLatestVersion: data.synapseLatestVersion,
+          synapseHasUpdate: data.synapseHasUpdate
+        });
+      }
+    } catch (e) {}
+  };
+
+  const fetchEsBackups = async () => {
+    try {
+      const res = await fetch('/api/matrix/element-synapse/backups', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.backups)) setEsBackups(data.backups);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchEsVersions();
+    fetchEsBackups();
+  }, [authToken]);
+
+  const handleRunEsUpdate = async () => {
+    if (isEsUpdating) return;
+    if (userRole === 'Viewer') {
+      showToast('error', ['fa', 'ar'].includes(lang) ? 'دسترسی غیرمجاز: نقش شما اجازه این عملیات را ندارد' : 'Unauthorized');
+      return;
+    }
+    setIsEsUpdating(true);
+    setEsLogs((prev) => [
+      ...prev,
+      `--------------------------------------------------`,
+      `[TASK] شروع فرآیند بروزرسانی برای هدف: ${esTarget.toUpperCase()}`,
+      `[TASK] تهیه بک‌آپ خودکار قبل از اجرا: ${esAutoBackup ? 'فعال (امکان رول‌بک محفوظ است)' : 'غیرفعال'}`
+    ]);
+
+    try {
+      const res = await fetch('/api/matrix/element-synapse/update', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ target: esTarget, autoBackup: esAutoBackup })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.logs)) {
+          setEsLogs((prev) => [...prev, ...data.logs]);
+        }
+        setEsVersions({
+          elementVersion: data.elementVersion,
+          elementLatestVersion: data.elementLatestVersion,
+          elementHasUpdate: data.elementHasUpdate,
+          synapseVersion: data.synapseVersion,
+          synapseLatestVersion: data.synapseLatestVersion,
+          synapseHasUpdate: data.synapseHasUpdate
+        });
+        fetchEsBackups();
+        showToast('success', ['fa', 'ar'].includes(lang) ? 'بروزرسانی با موفقیت انجام شد' : 'Update completed successfully!');
+      } else {
+        const err = await res.json();
+        setEsLogs((prev) => [...prev, `[ERR] ${err.error || 'Update failed'}`]);
+        showToast('error', ['fa', 'ar'].includes(lang) ? 'خطا در انجام بروزرسانی' : 'Update failed');
+      }
+    } catch (e: any) {
+      setEsLogs((prev) => [...prev, `[ERR] ${e.message || 'Network error'}`]);
+      showToast('error', ['fa', 'ar'].includes(lang) ? 'خطا در ارتباط با سرور' : 'Network error');
+    } finally {
+      setIsEsUpdating(false);
+    }
+  };
+
+  const handleRunEsRollback = async (backupId: string) => {
+    if (isEsRollingBack) return;
+    if (userRole === 'Viewer') {
+      showToast('error', ['fa', 'ar'].includes(lang) ? 'دسترسی غیرمجاز: نقش شما اجازه این عملیات را ندارد' : 'Unauthorized');
+      return;
+    }
+
+    const confirmed = safeConfirm(
+      ['fa', 'ar'].includes(lang) 
+        ? 'آیا از رول‌بک و بازگردانی سیستم به این نسخه پشتیبان مطمئن هستید؟' 
+        : 'Are you sure you want to rollback to this backup snapshot?'
+    );
+    if (!confirmed) return;
+
+    setIsEsRollingBack(true);
+    setEsLogs((prev) => [
+      ...prev,
+      `--------------------------------------------------`,
+      `[ROLLBACK] شروع فرآیند بازگردانی (Rollback) با اسنپ‌شات ID: ${backupId}`
+    ]);
+
+    try {
+      const res = await fetch('/api/matrix/element-synapse/rollback', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ backupId })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.logs)) {
+          setEsLogs((prev) => [...prev, ...data.logs]);
+        }
+        setEsVersions({
+          elementVersion: data.elementVersion,
+          elementLatestVersion: data.elementLatestVersion,
+          elementHasUpdate: data.elementHasUpdate,
+          synapseVersion: data.synapseVersion,
+          synapseLatestVersion: data.synapseLatestVersion,
+          synapseHasUpdate: data.synapseHasUpdate
+        });
+        showToast('success', ['fa', 'ar'].includes(lang) ? 'بازگردانی (Rollback) با موفقیت انجام شد' : 'Rollback executed successfully!');
+      } else {
+        const err = await res.json();
+        setEsLogs((prev) => [...prev, `[ERR] ${err.error || 'Rollback failed'}`]);
+        showToast('error', ['fa', 'ar'].includes(lang) ? 'خطا در بازگردانی' : 'Rollback failed');
+      }
+    } catch (e: any) {
+      setEsLogs((prev) => [...prev, `[ERR] ${e.message || 'Network error'}`]);
+      showToast('error', ['fa', 'ar'].includes(lang) ? 'خطا در ارتباط با سرور' : 'Network error');
+    } finally {
+      setIsEsRollingBack(false);
+    }
+  };
 
   const isRtl = ['fa', 'ar'].includes(lang);
   const hasWriteAccess = userRole !== 'Viewer';
@@ -732,6 +904,35 @@ export default function TerminalPanel({
               <Play className="w-4 h-4 text-rose-400 transition-transform group-hover:scale-125 shrink-0" />
             </button>
 
+            {/* Task: Update Element & Synapse */}
+            <button
+              type="button"
+              onClick={() => {
+                handleTabChange('element-synapse');
+              }}
+              disabled={isExecuting}
+              className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between group cursor-pointer ${
+                activeTab === 'element-synapse'
+                  ? 'bg-indigo-600/20 border-indigo-500/40 text-white ring-1 ring-indigo-500/30'
+                  : 'border-white/5 bg-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-slate-200'
+              } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
+            >
+              <div>
+                <h4 className={`text-sm font-semibold flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  {isRtl ? 'آپدیت المنت و سیناپس' : 'Update Element & Synapse'}
+                  {(esVersions.elementHasUpdate || esVersions.synapseHasUpdate) && (
+                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                  )}
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {isRtl 
+                    ? 'انتخاب بروزرسانی المنت، سیناپس یا هر دو با پشتیبان‌گیری و امکان رول‌بک' 
+                    : 'Update Element, Synapse, or both with pre-backup and rollback'}
+                </p>
+              </div>
+              <Play className="w-4 h-4 text-indigo-400 transition-transform group-hover:scale-125 shrink-0" />
+            </button>
+
             {/* Active SSH Terminal Navigation Shortcut */}
             <button
               type="button"
@@ -839,6 +1040,21 @@ export default function TerminalPanel({
               <span>panel-updates</span>
               {updateAvailable && (
                 <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+              )}
+            </button>
+            <button 
+              type="button"
+              onClick={() => handleTabChange('element-synapse')} 
+              className={`text-xs px-3 py-1.5 rounded-lg font-mono flex items-center gap-1.5 cursor-pointer transition-all duration-200 ${
+                activeTab === 'element-synapse' 
+                  ? 'bg-indigo-600 text-white font-bold shadow-md ring-1 ring-indigo-400/50' 
+                  : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <RefreshCw className={`h-3 w-3 ${isEsUpdating ? 'animate-spin' : ''}`} />
+              <span>element-synapse</span>
+              {(esVersions.elementHasUpdate || esVersions.synapseHasUpdate) && (
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
               )}
             </button>
           </div>
@@ -1146,7 +1362,7 @@ export default function TerminalPanel({
 
               <div ref={terminalEndRef} />
             </div>
-          ) : (
+          ) : activeTab === 'updates' ? (
             <div className="space-y-4 font-sans text-xs">
               {/* Header inside console */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/5 border border-white/5">
@@ -1368,6 +1584,310 @@ export default function TerminalPanel({
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 font-sans text-xs">
+              {/* Top Banner Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/5 border border-white/5">
+                <div>
+                  <h3 className="font-bold text-sm text-gray-100 flex items-center gap-2">
+                    <RefreshCw className={`h-4 w-4 text-indigo-400 ${isEsUpdating ? 'animate-spin' : ''}`} />
+                    <span>{isRtl ? 'مدیریت بروزرسانی المنت و سیناپس' : 'Element & Synapse Update Suite'}</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                      <Server className="h-3 w-3" />
+                      <span>Matrix Stack</span>
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {isRtl 
+                      ? 'بروزرسانی کلاینت المنت و هوم‌سرور سیناپس با تهیه بک‌آپ خودکار و قابلیت بازگردانی (Rollback)' 
+                      : 'Update Element Web client & Synapse Homeserver with auto-backup and 1-click rollback'}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchEsVersions();
+                      fetchEsBackups();
+                      showToast('success', isRtl ? 'وضعیت نسخه‌ها بروزرسانی شد' : 'Versions refreshed');
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-bold border border-white/10 bg-white/5 hover:bg-white/10 text-gray-200 transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>{isRtl ? 'بررسی مجدد' : 'Check Versions'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Version Comparison Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Element Card */}
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col justify-between space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <Globe className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-white text-xs">Element Web</h4>
+                        <p className="text-[11px] text-slate-400">Matrix Web Client Interface</p>
+                      </div>
+                    </div>
+                    {esVersions.elementHasUpdate ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                        {isRtl ? `آپدیت موجود: ${esVersions.elementLatestVersion}` : `Update: ${esVersions.elementLatestVersion}`}
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        {isRtl ? 'بروز است' : 'Up to date'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between font-mono bg-black/40 p-2.5 rounded-xl border border-white/5">
+                    <span className="text-slate-400">{isRtl ? 'نسخه سرور فعلی:' : 'Installed:'}</span>
+                    <span className="font-bold text-white text-sm">{esVersions.elementVersion}</span>
+                  </div>
+                </div>
+
+                {/* Synapse Card */}
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col justify-between space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                        <Server className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-white text-xs">Synapse Server</h4>
+                        <p className="text-[11px] text-slate-400">Matrix Core Homeserver Engine</p>
+                      </div>
+                    </div>
+                    {esVersions.synapseHasUpdate ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse">
+                        {isRtl ? `آپدیت موجود: ${esVersions.synapseLatestVersion}` : `Update: ${esVersions.synapseLatestVersion}`}
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        {isRtl ? 'بروز است' : 'Up to date'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between font-mono bg-black/40 p-2.5 rounded-xl border border-white/5">
+                    <span className="text-slate-400">{isRtl ? 'نسخه سرور فعلی:' : 'Installed:'}</span>
+                    <span className="font-bold text-white text-sm">{esVersions.synapseVersion}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Update Options & Action Panel */}
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-4">
+                <h4 className="font-bold text-white text-xs flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-indigo-400" />
+                  <span>{isRtl ? 'پیکربندی و اجرای بروزرسانی' : 'Update Configuration & Execution'}</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Option 1: Element */}
+                  <div 
+                    onClick={() => setEsTarget('element')}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center gap-3 ${
+                      esTarget === 'element'
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-white ring-1 ring-emerald-500/30'
+                        : 'bg-black/30 border-white/5 text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <input 
+                      type="radio" 
+                      name="esTarget" 
+                      checked={esTarget === 'element'} 
+                      onChange={() => setEsTarget('element')}
+                      className="accent-emerald-500 cursor-pointer" 
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">{isRtl ? 'فقط المنت وب (Element)' : 'Element Web Only'}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{isRtl ? 'بروزرسانی کلاینت فرانت‌اند' : 'Update web client files'}</span>
+                    </div>
+                  </div>
+
+                  {/* Option 2: Synapse */}
+                  <div 
+                    onClick={() => setEsTarget('synapse')}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center gap-3 ${
+                      esTarget === 'synapse'
+                        ? 'bg-purple-500/20 border-purple-500/50 text-white ring-1 ring-purple-500/30'
+                        : 'bg-black/30 border-white/5 text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <input 
+                      type="radio" 
+                      name="esTarget" 
+                      checked={esTarget === 'synapse'} 
+                      onChange={() => setEsTarget('synapse')}
+                      className="accent-purple-500 cursor-pointer" 
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">{isRtl ? 'فقط سیناپس (Synapse)' : 'Synapse Server Only'}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{isRtl ? 'بروزرسانی موتور اصلی سرور' : 'Update core backend server'}</span>
+                    </div>
+                  </div>
+
+                  {/* Option 3: Both */}
+                  <div 
+                    onClick={() => setEsTarget('both')}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center gap-3 ${
+                      esTarget === 'both'
+                        ? 'bg-indigo-500/20 border-indigo-500/50 text-white ring-1 ring-indigo-500/30'
+                        : 'bg-black/30 border-white/5 text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <input 
+                      type="radio" 
+                      name="esTarget" 
+                      checked={esTarget === 'both'} 
+                      onChange={() => setEsTarget('both')}
+                      className="accent-indigo-500 cursor-pointer" 
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">{isRtl ? 'هر دو (Element & Synapse)' : 'Both Components'}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{isRtl ? 'بروزرسانی کامل کلاینت و سرور' : 'Full system update'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pre-update Backup Checkbox */}
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 flex items-center justify-between">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-medium">
+                    <input 
+                      type="checkbox" 
+                      checked={esAutoBackup} 
+                      onChange={(e) => setEsAutoBackup(e.target.checked)}
+                      className="w-4 h-4 rounded accent-amber-500 cursor-pointer" 
+                    />
+                    <span>
+                      {isRtl 
+                        ? 'تهیه نسخه پشتیبان (Backup) قبل از اجرا جهت امکان رول‌بک در صورت بروز مشکل' 
+                        : 'Create mandatory backup snapshot before update for rollback capability'}
+                    </span>
+                  </label>
+                  <span className="text-[10px] font-mono bg-amber-500/20 px-2 py-0.5 rounded text-amber-300 border border-amber-500/30">
+                    {isRtl ? 'توصیه‌شده' : 'Recommended'}
+                  </span>
+                </div>
+
+                {/* Submit Update Button */}
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    disabled={isEsUpdating || userRole === 'Viewer'}
+                    onClick={handleRunEsUpdate}
+                    className="flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:brightness-110 text-white shadow-lg shadow-indigo-500/25 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isEsUpdating ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Play className="w-4 h-4 fill-white" />
+                    )}
+                    <span>
+                      {isEsUpdating 
+                        ? (isRtl ? 'در حال بروزرسانی...' : 'Updating...') 
+                        : (isRtl ? 'شروع بروزرسانی' : 'Start Update Process')}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Execution Log Stream */}
+              <div className="flex flex-col h-[200px] rounded-xl border border-white/5 bg-black/50 overflow-hidden shadow-sm">
+                <div className="flex items-center justify-between border-b border-white/5 px-4 py-2 bg-black/30">
+                  <span className="font-mono text-[10px] text-gray-400 font-bold">element-synapse-updater@matrix:~</span>
+                  <button 
+                    type="button"
+                    onClick={() => setEsLogs(['# Console logs cleared.'])}
+                    className="text-[9px] text-gray-500 hover:text-gray-300 font-semibold uppercase px-1.5 py-0.5 rounded border border-white/5 hover:border-white/10 transition-all font-mono cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="flex-1 p-3 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-1 select-text text-left ltr">
+                  {esLogs.map((log, idx) => (
+                    <div 
+                      key={idx}
+                      className={
+                        log.startsWith('[ERR]') 
+                          ? 'text-red-400 font-bold' 
+                          : log.startsWith('[SUCCESS]') 
+                            ? 'text-emerald-400 font-bold'
+                            : log.startsWith('[BACKUP]')
+                              ? 'text-amber-300 font-semibold'
+                              : log.startsWith('[ELEMENT]') || log.startsWith('[SYNAPSE]')
+                                ? 'text-indigo-300'
+                                : log.startsWith('#')
+                                  ? 'text-slate-500'
+                                  : 'text-slate-300'
+                      }
+                    >
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rollback Center (مرکز رول‌بک و بازگردانی) */}
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                  <h4 className="font-bold text-white text-xs flex items-center gap-2">
+                    <Undo2 className="w-4 h-4 text-amber-400" />
+                    <span>{isRtl ? 'مرکز رول‌بک و بازگردانی به نسخه‌های قبلی (Rollback Center)' : 'Rollback & Restore Center'}</span>
+                  </h4>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {esBackups.length} {isRtl ? 'نسخه پشتیبان موجود' : 'Snapshots available'}
+                  </span>
+                </div>
+
+                {esBackups.length === 0 ? (
+                  <div className="p-4 text-center text-slate-400 text-xs bg-black/20 rounded-xl border border-white/5">
+                    {isRtl 
+                      ? 'هنوز هیچ بک‌آپی ثبت نشده است. با اجرای بروزرسانی، نسخه پشتیبان خودکار ایجاد خواهد شد.' 
+                      : 'No backup snapshots found. A backup will be automatically captured upon running an update.'}
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {esBackups.map((b) => (
+                      <div 
+                        key={b.id} 
+                        className="p-3 rounded-xl bg-black/40 border border-white/5 flex flex-wrap items-center justify-between gap-2 hover:border-amber-500/30 transition-all"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 font-mono text-xs text-white">
+                            <span className="font-bold text-amber-300">{b.id}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-white/10 text-slate-300 uppercase">
+                              {b.target}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 flex items-center gap-3">
+                            <span>📅 {new Date(b.createdAt).toLocaleString(lang === 'fa' ? 'fa-IR' : 'en-US')}</span>
+                            <span>📦 Element: <strong className="text-slate-200">{b.elementVersion}</strong></span>
+                            <span>⚙️ Synapse: <strong className="text-slate-200">{b.synapseVersion}</strong></span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isEsRollingBack || userRole === 'Viewer'}
+                          onClick={() => handleRunEsRollback(b.id)}
+                          className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <RotateCcw className={`w-3.5 h-3.5 ${isEsRollingBack ? 'animate-spin' : ''}`} />
+                          <span>{isRtl ? 'رول‌بک به این نسخه' : 'Rollback to this snapshot'}</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
