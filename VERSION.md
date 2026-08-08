@@ -16,9 +16,12 @@
 
 ---
 
-## Current Panel Version: **v2.10.6** (Released: 2026-08-08)
+## Current Panel Version: **v2.10.7** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.10.7** - 2026-08-08
+- **Complete Removal of VPN Management Feature**: Completely removed the VPN Management UI tab, controls, sub-tabs, and state management from `src/components/ReportingPanel.tsx`, as well as all backend REST API endpoints under `/api/vpn-clients/*` and `/api/vpn-proxy/*` from `server.ts`.
 
 #### **v2.10.6** - 2026-08-08
 - **Installer Script Display Version Update**: Modified `setup-panel.sh`, `matrix-installer.sh`, and `install-matrix-stack.sh` to output `latest` instead of numeric version labels in installation banners and logs.

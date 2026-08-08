@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.6";
+export const PANEL_VERSION = "2.10.7";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.7",
+    date: "2026-08-08",
+    title: "Complete Removal of VPN Management Feature",
+    changes: [
+      "Removed VPN Management UI: Removed the 'VPN Management' tab button, states, handlers, and views from src/components/ReportingPanel.tsx.",
+      "Removed VPN Backend Endpoints: Cleaned up all /api/vpn-clients/* and /api/vpn-proxy/* REST API handlers and helper functions from server.ts."
+    ]
+  },
   {
     version: "2.10.6",
     date: "2026-08-08",
