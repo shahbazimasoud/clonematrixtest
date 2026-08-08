@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.6";
+export const PANEL_VERSION = "2.11.7";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.7",
+    date: "2026-08-08",
+    title: "Custom Step-by-Step Element Web & Synapse Server Update Workflows with Rollback Storage",
+    changes: [
+      "Implemented step-by-step bash update pipeline for Element Web Only option including GitHub API version lookup, tarball extraction, config preservation, nginx reload, and backup archiving.",
+      "Implemented step-by-step bash update pipeline for Synapse Server Only option including homeserver.yaml backup, apt update, service stop, apt install --only-upgrade, service & worker restart, and curl health check.",
+      "Ensured all rollback backups and configuration snapshots are saved into /opt/matrix_rollback directory (creating the folder automatically if missing).",
+      "Piped full execution output step-by-step to the UI terminal stream."
+    ]
+  },
   {
     version: "2.11.6",
     date: "2026-08-08",

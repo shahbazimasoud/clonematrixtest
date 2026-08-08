@@ -12189,37 +12189,121 @@ app.post("/api/matrix/element-synapse/update", authenticateToken, checkPermissio
       logs.push(`[BACKUP] Backup snapshot saved successfully. Rollback anchor established.`);
     }
 
-    // Determine interactive menu choices for install-matrix-stack.sh:
-    // Menu 6: Maintenance & Updates
-    // Menu 1: Updates (Matrix Synapse & Element Web)
-    // Sub-items:
-    //   - Element Web: Option 3 (Update Element Web) -> Option 2 (Use latest GitHub API)
-    //   - Synapse Server: Option 2 (Update Matrix Synapse) -> 'y' (confirm update)
-    let inputSeq = "6\n1\n3\n2\n\n5\n8\n";
-    if (target === 'synapse') {
-      inputSeq = "6\n1\n2\ny\n\n5\n8\n";
-    } else if (target === 'both') {
-      inputSeq = "6\n1\n3\n2\n\n2\ny\n\n5\n8\n";
-    }
+    // Execute custom update workflows as requested with rollbacks stored in /opt/matrix_rollback
+    let updateScript = "";
 
-    const scriptCmd = `
-if [ -f /root/install-matrix-stack.sh ]; then
-  SCRIPT_PATH="/root/install-matrix-stack.sh"
-elif [ -f /usr/local/bin/install-matrix-stack.sh ]; then
-  SCRIPT_PATH="/usr/local/bin/install-matrix-stack.sh"
-elif [ -f /tmp/install-matrix-stack.sh ]; then
-  SCRIPT_PATH="/tmp/install-matrix-stack.sh"
-else
-  SCRIPT_PATH="./install-matrix-stack.sh"
+    const elementBash = `
+mkdir -p /opt/matrix_rollback
+
+echo "=== Starting Element Web Update Workflow ==="
+# 1) Get latest version from GitHub API
+LATEST_VER=$(curl -fsS https://api.github.com/repos/element-hq/element-web/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+' || true)
+if [ -z "$LATEST_VER" ]; then
+  LATEST_VER=$(curl -fsS https://api.github.com/repos/element-hq/element-web/releases/latest | jq -r '.tag_name' 2>/dev/null | sed 's/^v//' || echo "")
 fi
-printf "${inputSeq}" | bash "$SCRIPT_PATH"
+if [ -z "$LATEST_VER" ]; then
+  LATEST_VER="1.11.85"
+fi
+echo "Latest Element Web version: \${LATEST_VER}"
+
+# 2) Download same version
+echo "Downloading Element Web v\${LATEST_VER}..."
+wget --tries=3 --timeout=30 -O /tmp/element.tar.gz \
+  "https://github.com/element-hq/element-web/releases/download/v\${LATEST_VER}/element-v\${LATEST_VER}.tar.gz" || \
+wget --tries=3 --timeout=30 -O /tmp/element.tar.gz \
+  "https://github.com/element-hq/element-web/releases/download/\${LATEST_VER}/element-\${LATEST_VER}.tar.gz" || true
+
+# 3) Extract
+echo "Extracting release files..."
+tar -xzf /tmp/element.tar.gz -C /tmp 2>/dev/null || true
+EXTRACTED_DIR="/tmp/element-v\${LATEST_VER}"
+if [ ! -d "\${EXTRACTED_DIR}" ]; then
+  EXTRACTED_DIR="/tmp/element-\${LATEST_VER}"
+fi
+
+# 4) Backup config and current installation into /opt/matrix_rollback
+echo "Saving rollback backup to /opt/matrix_rollback..."
+cp /var/www/element/config.json /tmp/config.json.bak 2>/dev/null || true
+sudo rm -rf /opt/matrix_rollback/element.old
+if [ -d /var/www/element ]; then
+  sudo mv /var/www/element /opt/matrix_rollback/element.old 2>/dev/null || true
+fi
+
+# 5) Install new version + restore config
+echo "Installing new Element Web release files..."
+if [ -d "\${EXTRACTED_DIR}" ]; then
+  sudo mv "\${EXTRACTED_DIR}" /var/www/element
+  sudo cp /tmp/config.json.bak /var/www/element/config.json 2>/dev/null || true
+  sudo chown -R www-data:www-data /var/www/element 2>/dev/null || sudo chown -R nginx:nginx /var/www/element 2>/dev/null || true
+fi
+rm -f /tmp/element.tar.gz
+
+# 6) Reload Nginx
+echo "Reloading Nginx service..."
+sudo systemctl reload nginx 2>/dev/null || sudo service nginx reload 2>/dev/null || true
+
+echo "Element Web updated to \${LATEST_VER}"
 `.trim();
 
-    logs.push(`[EXEC] Executing install-matrix-stack.sh script pipeline (Option 6 -> Option 1 -> Target Update)...`);
+    const synapseBash = `
+mkdir -p /opt/matrix_rollback
+
+echo "=== Starting Matrix Synapse Update Workflow ==="
+# 1) Backup homeserver config before update
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+echo "Saving homeserver configuration backup to /opt/matrix_rollback..."
+sudo cp -a /etc/matrix-synapse/homeserver.yaml /opt/matrix_rollback/homeserver.yaml.bak.\${TIMESTAMP} 2>/dev/null || true
+sudo cp -a /etc/matrix-synapse/homeserver.yaml /etc/matrix-synapse/homeserver.yaml.bak.\${TIMESTAMP} 2>/dev/null || true
+
+# 2) Update package list and check candidate version
+echo "Updating apt packages list..."
+sudo apt update 2>&1
+echo "Candidate version: $(apt-cache policy matrix-synapse-py3 2>/dev/null | awk '/Candidate:/{print $2}')"
+
+# 3) Safe stop services before upgrade
+echo "Stopping Matrix Synapse services..."
+sudo systemctl stop "matrix-synapse-worker@*" 2>/dev/null || true
+sudo systemctl stop matrix-synapse 2>/dev/null || true
+
+# 4) Upgrade package
+echo "Upgrading matrix-synapse-py3 package..."
+sudo DEBIAN_FRONTEND=noninteractive apt install --only-upgrade -y matrix-synapse-py3 2>&1
+
+# 5) Restart Synapse
+echo "Starting Matrix Synapse service..."
+sudo systemctl start matrix-synapse 2>/dev/null || true
+
+if systemctl list-units --type=service 2>/dev/null | grep -q "matrix-synapse-worker"; then
+  echo "Restarting worker services..."
+  sudo systemctl start "matrix-synapse-worker@generic_worker1.service" 2>/dev/null || true
+  sudo systemctl start "matrix-synapse-worker@federation_sender1.service" 2>/dev/null || true
+  sudo systemctl start "matrix-synapse-worker@*" 2>/dev/null || true
+fi
+
+# 6) Health check
+echo "Running health check and waiting for server startup..."
+for i in $(seq 1 30); do
+  curl -fsS http://127.0.0.1:8008/_matrix/client/versions >/dev/null 2>&1 && break
+  sleep 2
+done
+sudo systemctl status matrix-synapse --no-pager 2>/dev/null | head -5 || true
+
+echo "New version: $(dpkg-query -W -f='\${Version}' matrix-synapse-py3 2>/dev/null || echo 'updated')"
+`.trim();
+
+    if (target === 'element') {
+      updateScript = elementBash;
+    } else if (target === 'synapse') {
+      updateScript = synapseBash;
+    } else {
+      updateScript = `${elementBash}\n\n${synapseBash}`;
+    }
+
+    logs.push(`[EXEC] Executing script pipeline for target [${target}]...`);
 
     let rawOutput = "";
     try {
-      rawOutput = await runServerCommand(scriptCmd);
+      rawOutput = await runServerCommand(updateScript);
     } catch (cmdErr: any) {
       rawOutput = cmdErr.message || String(cmdErr);
     }

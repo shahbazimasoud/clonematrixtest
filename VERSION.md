@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.11.6** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.7** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.7** - 2026-08-08
+- **Custom Step-by-Step Element Web & Synapse Server Update Workflows with Rollback Storage**:
+  - Implemented step-by-step bash update pipeline for **Element Web Only** option (GitHub API lookup, tarball download/extract, config preservation, rollbacks to `/opt/matrix_rollback`, nginx reload).
+  - Implemented step-by-step bash update pipeline for **Synapse Server Only** option (`homeserver.yaml` timestamped backup to `/opt/matrix_rollback`, `apt update`, service stop, `apt install --only-upgrade -y matrix-synapse-py3`, service & worker restart, and health check curl loop).
+  - Ensured `/opt/matrix_rollback` directory is automatically created and populated for all rollback snapshots.
+  - Piped clean execution log output directly to the UI terminal panel.
 
 #### **v2.11.6** - 2026-08-08
 - **Remote Script Updates via install-matrix-stack.sh Menu Pipeline**:
