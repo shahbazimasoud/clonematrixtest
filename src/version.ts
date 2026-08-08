@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.1";
+export const PANEL_VERSION = "2.11.2";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.2",
+    date: "2026-08-08",
+    title: "Fix Terminal Console Uncaught ReferenceError TDZ Initialization Crash",
+    changes: [
+      "Resolved 'Cannot access safeConfirm/isRtl before initialization' ReferenceError when mounting or navigating to Terminal Panel console mode.",
+      "Moved helper function declarations (isRtl, hasWriteAccess, safeConfirm) to top of TerminalPanel component body to prevent TDZ scoping errors."
+    ]
+  },
   {
     version: "2.11.1",
     date: "2026-08-08",

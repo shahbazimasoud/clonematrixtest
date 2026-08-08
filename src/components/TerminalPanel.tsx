@@ -374,6 +374,17 @@ export default function TerminalPanel({
   config,
   activeConnection
 }: TerminalPanelProps) {
+  const isRtl = ['fa', 'ar'].includes(lang);
+  const hasWriteAccess = userRole !== 'Viewer';
+
+  const safeConfirm = (msg: string): boolean => {
+    try {
+      return window.confirm(msg);
+    } catch (_) {
+      return true;
+    }
+  };
+
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const consoleContainerRef = useRef<HTMLDivElement>(null);
   const installContainerRef = useRef<HTMLDivElement>(null);
@@ -611,17 +622,6 @@ export default function TerminalPanel({
       showToast('error', ['fa', 'ar'].includes(lang) ? 'خطا در ارتباط با سرور' : 'Network error');
     } finally {
       setIsEsRollingBack(false);
-    }
-  };
-
-  const isRtl = ['fa', 'ar'].includes(lang);
-  const hasWriteAccess = userRole !== 'Viewer';
-
-  const safeConfirm = (msg: string): boolean => {
-    try {
-      return window.confirm(msg);
-    } catch (_) {
-      return true;
     }
   };
 

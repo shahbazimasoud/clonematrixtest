@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.11.1** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.2** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.2** - 2026-08-08
+- **Fix Terminal Console Uncaught ReferenceError TDZ Initialization Crash**:
+  - Resolved JavaScript runtime crash `Uncaught ReferenceError: Cannot access 'je' before initialization` occurring when loading or opening the web console.
+  - Moved `isRtl`, `hasWriteAccess`, and `safeConfirm` function declarations to the top of the `TerminalPanel` component body to prevent Temporal Dead Zone (TDZ) scoping errors in bundled JS.
 
 #### **v2.11.1** - 2026-08-08
 - **Terminal Log Stream Localization & High-Contrast Light Mode Styling**:
