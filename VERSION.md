@@ -16,9 +16,12 @@
 
 ---
 
-## Current Panel Version: **v2.10.5** (Released: 2026-08-08)
+## Current Panel Version: **v2.10.6** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.10.6** - 2026-08-08
+- **Installer Script Display Version Update**: Modified `setup-panel.sh`, `matrix-installer.sh`, and `install-matrix-stack.sh` to output `latest` instead of numeric version labels in installation banners and logs.
 
 #### **v2.10.5** - 2026-08-08
 - **SSTP Master Systemd Unit Provisioning**: Resolved `Unit sstp-client.service could not be found` by automatically provisioning both template (`/etc/systemd/system/sstp-client@.service`) and master daemon (`/etc/systemd/system/sstp-client.service`) units on target remote Linux servers.

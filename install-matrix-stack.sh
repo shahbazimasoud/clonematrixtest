@@ -80,7 +80,7 @@ WORKERS_CONF_FILE="/etc/matrix-stack-workers.conf"
 PGADMIN_CONF_FILE="/etc/matrix-pgadmin.conf"
 DEPLOYMENT_CONF_FILE="/etc/matrix-stack-deployment.conf"
 AUDIT_LOG="/var/log/matrix-stack-audit.log"
-VERSION="3.1"
+VERSION="latest"
 
 # NOTE: script runs with `set -u`, so every LDAP_* variable must exist
 # BEFORE it's ever referenced -- including inside ldap_menu's status
@@ -150,7 +150,7 @@ print_header() {
   echo "$ASCII_BANNER"
  
 
-  echo "🚀 Matrix Stack Manager v${VERSION} (Enterprise)"
+  echo "🚀 Matrix Stack Manager latest (Enterprise)"
   echo "🔗 Telegram: https://t.me/shahbazimasoud"
   echo "📝 Log file: ${LOG_FILE}"
   echo
@@ -12732,7 +12732,7 @@ deployment_menu() {
 main_menu() {
   while true; do
     print_header
-    echo "════════ Matrix Stack Manager v${VERSION} ════════"
+    echo "════════ Matrix Stack Manager latest ════════"
 echo
     echo "1)  🧩 Install / Reinstall Matrix + Element + TURN (PostgreSQL)"
     echo "2)  👤 User Management"

@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.10.5";
+export const PANEL_VERSION = "2.10.6";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,14 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.10.6",
+    date: "2026-08-08",
+    title: "Installer Script Display Version Update to 'latest'",
+    changes: [
+      "Installer Banner & Version Output: Updated setup-panel.sh, matrix-installer.sh, and install-matrix-stack.sh to print 'latest' instead of numeric version strings during installation."
+    ]
+  },
   {
     version: "2.10.5",
     date: "2026-08-08",

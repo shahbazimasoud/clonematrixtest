@@ -27,25 +27,9 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-PANEL_VERSION="2.6.5"
+PANEL_VERSION="latest"
 detect_panel_version() {
-  local target_dir="${1:-.}"
-  if [ -f "$target_dir/src/version.ts" ]; then
-    local EXTRACTED_VER
-    EXTRACTED_VER=$(grep -oP 'export const PANEL_VERSION = ["\x27]\K[^"\x27]+' "$target_dir/src/version.ts" 2>/dev/null || true)
-    if [ -n "$EXTRACTED_VER" ]; then
-      PANEL_VERSION="$EXTRACTED_VER"
-      return 0
-    fi
-  fi
-  if [ -f "$target_dir/package.json" ]; then
-    local EXTRACTED_VER
-    EXTRACTED_VER=$(grep -oP '"version":\s*"\K[^"]+' "$target_dir/package.json" 2>/dev/null || true)
-    if [ -n "$EXTRACTED_VER" ] && [ "$EXTRACTED_VER" != "0.0.0" ]; then
-      PANEL_VERSION="$EXTRACTED_VER"
-      return 0
-    fi
-  fi
+  PANEL_VERSION="latest"
 }
 
 detect_panel_version "."
@@ -65,7 +49,7 @@ cat << EOF
     RAVEN — INTELLIGENT MATRIX STACK MANAGEMENT PANEL
     Developer: Masoud Shahbazi (https://www.linkedin.com/in/masoudshahbazi/)
 
-    Version: v${PANEL_VERSION}
+    Version: latest
 
 ======================================================================
 EOF
