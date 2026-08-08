@@ -113,14 +113,14 @@ export default function MetricCard({
       </div>
 
       {isDbDisconnected && (
-        <div className="absolute inset-0 z-20 backdrop-blur-md bg-slate-950/85 border border-amber-500/35 rounded-2xl flex flex-col items-center justify-center p-4 text-center transition-all duration-300">
-          <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 mb-2 shadow-[0_0_15px_rgba(245,158,11,0.25)]">
-            <Database className="w-5 h-5 text-amber-400 animate-pulse" />
+        <div className="absolute inset-0 z-20 backdrop-blur-md bg-slate-100/80 dark:bg-slate-900/80 border border-amber-500/35 rounded-2xl flex flex-col items-center justify-center p-4 text-center transition-all duration-300 shadow-lg">
+          <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 mb-2 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <Database className="w-5 h-5 text-amber-600 dark:text-amber-400 animate-pulse" />
           </div>
-          <span className="text-xs font-bold text-amber-300 tracking-wider uppercase drop-shadow">
+          <span className="text-xs font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase drop-shadow-xs">
             {dbDisconnectedText}
           </span>
-          <span className="text-[10px] text-slate-400 mt-1 leading-tight max-w-[200px]">
+          <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300 mt-1 leading-tight max-w-[200px]">
             Database connection is lost or not configured
           </span>
         </div>

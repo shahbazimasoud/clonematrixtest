@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.11.10** (Released: 2026-08-08)
+## Current Panel Version: **v2.11.11** (Released: 2026-08-08)
 
 ### Changelog History
+
+#### **v2.11.11** - 2026-08-08
+- **Light Translucent Gray Frosted Blur for DB Disconnected Overlay**:
+  - Updated DB Disconnected card overlay to a light frosted translucent backdrop (`slate-100/80` light mode & `slate-900/80` dark mode) with smooth blur filter.
+  - Refined typography and warning badge contrast to harmonize seamlessly with clean light theme aesthetics.
 
 #### **v2.11.10** - 2026-08-08
 - **Database Connection Lost / Unconfigured Overlay for Dashboard Metrics**:

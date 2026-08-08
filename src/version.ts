@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.10";
+export const PANEL_VERSION = "2.11.11";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.11",
+    date: "2026-08-08",
+    title: "Light Translucent Gray Frosted Blur for DB Disconnected Overlay",
+    changes: [
+      "Updated DB Disconnected card overlay to a light frosted translucent backdrop (slate-100/80 light mode & slate-900/80 dark mode) with smooth blur filter.",
+      "Refined typography and warning badge contrast to harmonize seamlessly with clean light theme."
+    ]
+  },
   {
     version: "2.11.10",
     date: "2026-08-08",
