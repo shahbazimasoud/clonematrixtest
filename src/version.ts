@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.11.5";
+export const PANEL_VERSION = "2.11.6";
 export const PANEL_BUILD_DATE = "2026-08-08";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.11.6",
+    date: "2026-08-08",
+    title: "Remote Script Updates via install-matrix-stack.sh Menu Pipeline",
+    changes: [
+      "Updated Element Web & Synapse update workflow to execute install-matrix-stack.sh menu choices on the active connected server.",
+      "Mapped Element Web Only target to Maintenance & Updates (Item 6) -> Updates (Item 1) -> Update Element Web (Item 3) -> Use latest (Item 2).",
+      "Mapped Synapse Server Only target to Maintenance & Updates (Item 6) -> Updates (Item 1) -> Update Matrix Synapse (Item 2) -> Confirm (y).",
+      "Mapped Both Components target to execute both Element Web and Synapse update menu sequences sequentially.",
+      "Cleaned ANSI formatting and piped live terminal output directly to the UI execution stream."
+    ]
+  },
   {
     version: "2.11.5",
     date: "2026-08-08",

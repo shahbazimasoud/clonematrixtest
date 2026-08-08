@@ -12147,6 +12147,12 @@ app.post("/api/matrix/element-synapse/backup", authenticateToken, checkPermissio
   }
 });
 
+// Helper to strip ANSI codes from script terminal output
+function stripAnsi(str: string): string {
+  if (!str) return '';
+  return str.replace(/[\u001b\u009b][\({{}}]*(?:[a-zA-Z0-9]#?)*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=>~]/g, '');
+}
+
 // POST Perform Element / Synapse / Both Update
 app.post("/api/matrix/element-synapse/update", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator"]), async (req, res) => {
   try {
@@ -12183,26 +12189,62 @@ app.post("/api/matrix/element-synapse/update", authenticateToken, checkPermissio
       logs.push(`[BACKUP] Backup snapshot saved successfully. Rollback anchor established.`);
     }
 
-    if (target === 'element' || target === 'both') {
-      const targetVer = db.elementSynapseVersion.elementLatestVersion || '1.11.85';
-      logs.push(`[ELEMENT] Downloading Element Web package release v${targetVer}...`);
-      logs.push(`[ELEMENT] Unpacking release to /var/www/element...`);
-      logs.push(`[ELEMENT] Preserving and re-applying /var/www/element/config.json...`);
-      db.elementSynapseVersion.elementVersion = targetVer;
-      logs.push(`[ELEMENT] Element Web updated successfully to v${targetVer}.`);
+    // Determine interactive menu choices for install-matrix-stack.sh:
+    // Menu 6: Maintenance & Updates
+    // Menu 1: Updates (Matrix Synapse & Element Web)
+    // Sub-items:
+    //   - Element Web: Option 3 (Update Element Web) -> Option 2 (Use latest GitHub API)
+    //   - Synapse Server: Option 2 (Update Matrix Synapse) -> 'y' (confirm update)
+    let inputSeq = "6\n1\n3\n2\n\n5\n8\n";
+    if (target === 'synapse') {
+      inputSeq = "6\n1\n2\ny\n\n5\n8\n";
+    } else if (target === 'both') {
+      inputSeq = "6\n1\n3\n2\n\n2\ny\n\n5\n8\n";
     }
 
+    const scriptCmd = `
+if [ -f /root/install-matrix-stack.sh ]; then
+  SCRIPT_PATH="/root/install-matrix-stack.sh"
+elif [ -f /usr/local/bin/install-matrix-stack.sh ]; then
+  SCRIPT_PATH="/usr/local/bin/install-matrix-stack.sh"
+elif [ -f /tmp/install-matrix-stack.sh ]; then
+  SCRIPT_PATH="/tmp/install-matrix-stack.sh"
+else
+  SCRIPT_PATH="./install-matrix-stack.sh"
+fi
+printf "${inputSeq}" | bash "$SCRIPT_PATH"
+`.trim();
+
+    logs.push(`[EXEC] Executing install-matrix-stack.sh script pipeline (Option 6 -> Option 1 -> Target Update)...`);
+
+    let rawOutput = "";
+    try {
+      rawOutput = await runServerCommand(scriptCmd);
+    } catch (cmdErr: any) {
+      rawOutput = cmdErr.message || String(cmdErr);
+    }
+
+    const cleanedOutput = stripAnsi(rawOutput);
+    const scriptLines = cleanedOutput
+      .split('\n')
+      .map(l => l.trimEnd())
+      .filter(l => l.length > 0);
+
+    logs.push(...scriptLines);
+
+    if (target === 'element' || target === 'both') {
+      if (db.elementSynapseVersion.elementLatestVersion) {
+        db.elementSynapseVersion.elementVersion = db.elementSynapseVersion.elementLatestVersion;
+      }
+    }
     if (target === 'synapse' || target === 'both') {
-      const targetVer = db.elementSynapseVersion.synapseLatestVersion || '1.108.0';
-      logs.push(`[SYNAPSE] Fetching Matrix Synapse server packages v${targetVer}...`);
-      logs.push(`[SYNAPSE] Updating python package & dependencies...`);
-      logs.push(`[SYNAPSE] Restarting matrix-synapse systemd service daemon...`);
-      db.elementSynapseVersion.synapseVersion = targetVer;
-      logs.push(`[SYNAPSE] Synapse Homeserver updated successfully to v${targetVer}.`);
+      if (db.elementSynapseVersion.synapseLatestVersion) {
+        db.elementSynapseVersion.synapseVersion = db.elementSynapseVersion.synapseLatestVersion;
+      }
     }
 
     writeDb(db);
-    logs.push(`[SUCCESS] Update process completed successfully for ${target}!`);
+    logs.push(`[SUCCESS] Update process completed for ${target}!`);
 
     res.json({
       success: true,
