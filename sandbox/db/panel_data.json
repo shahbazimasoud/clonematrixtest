@@ -1,0 +1,880 @@
+{
+  "users": [
+    {
+      "id": "usr-1",
+      "username": "admin",
+      "email": "admin@company.local",
+      "passwordHash": "$2b$10$oX6HHsc3BDS.vH9aE/vzOek0uXuYFV22mSTl9OMk0QroZlkGqRIae",
+      "role": "Owner",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=admin"
+    },
+    {
+      "id": "usr-2",
+      "username": "masoud",
+      "email": "masoud.shahbazii@gmail.com",
+      "passwordHash": "$2b$10$QPE6t1v41RcL0A9LA5pGsu56Ti2he3s.k8AJWI8vOeJy.Or9iafBS",
+      "role": "Super Admin",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=masoud"
+    },
+    {
+      "id": "usr-3",
+      "username": "moderator",
+      "email": "mod@company.local",
+      "passwordHash": "$2b$10$TBrHPNVEOqZnBxTknN0MeO.6/DX864MJ8.2iFyuIV5M4Uw07Hackm",
+      "role": "Moderator",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=moderator"
+    },
+    {
+      "id": "usr-4",
+      "username": "viewer",
+      "email": "viewer@company.local",
+      "passwordHash": "$2b$10$kK4vi/4n6y0I3SLkVphmeuMbd3o7sY0TgSS8apm8SDXeI7U62Xwly",
+      "role": "Viewer",
+      "isActive": true,
+      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=viewer"
+    }
+  ],
+  "matrixUsers": [],
+  "auditLogs": [
+    {
+      "id": "log-1783929877328",
+      "timestamp": "2026-07-13T08:04:37.328Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "health_check",
+      "status": "success",
+      "details": "Executed system command: health_check"
+    },
+    {
+      "id": "log-1783929703582",
+      "timestamp": "2026-07-13T08:01:43.582Z",
+      "username": "admin",
+      "action": "Create Backup",
+      "target": "matrix-backup-20260713-080143.tar.gz",
+      "status": "success",
+      "details": "Initiated manual backup. Included SSL: No"
+    },
+    {
+      "id": "log-1783929694831",
+      "timestamp": "2026-07-13T08:01:34.830Z",
+      "username": "admin",
+      "action": "Create Backup",
+      "target": "matrix-backup-20260713-080134.tar.gz",
+      "status": "success",
+      "details": "Initiated manual backup. Included SSL: No"
+    },
+    {
+      "id": "log-1783929466510",
+      "timestamp": "2026-07-13T07:57:46.510Z",
+      "username": "admin",
+      "action": "Ban User from Room",
+      "target": "@alice:matrix.company.local",
+      "status": "success",
+      "details": "Banned @alice:matrix.company.local from room: General Organization Chat"
+    },
+    {
+      "id": "log-1783929362160",
+      "timestamp": "2026-07-13T07:56:02.160Z",
+      "username": "admin",
+      "action": "Ban User from Room",
+      "target": "@masoud:matrix.company.local",
+      "status": "success",
+      "details": "Banned @masoud:matrix.company.local from room: Infrastructure & Security"
+    },
+    {
+      "id": "log-1783929358262",
+      "timestamp": "2026-07-13T07:55:58.262Z",
+      "username": "admin",
+      "action": "Terminate Device Session",
+      "target": "@masoud:matrix.company.local",
+      "status": "success",
+      "details": "Force logged out device DEV-IOS-2988 for user @masoud:matrix.company.local"
+    },
+    {
+      "id": "log-1783924568424",
+      "timestamp": "2026-07-13T06:36:08.424Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "workers_enable",
+      "status": "success",
+      "details": "Executed system command: workers_enable"
+    },
+    {
+      "id": "log-1783923562751",
+      "timestamp": "2026-07-13T06:19:22.751Z",
+      "username": "admin",
+      "action": "Save Configuration",
+      "target": "System",
+      "status": "success",
+      "details": "Modified server stack and Synapse homeserver parameters."
+    },
+    {
+      "id": "log-1783922630416",
+      "timestamp": "2026-07-13T06:03:50.416Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "install",
+      "status": "success",
+      "details": "Executed system command: install"
+    },
+    {
+      "id": "log-1783922625292",
+      "timestamp": "2026-07-13T06:03:45.292Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "backup",
+      "status": "success",
+      "details": "Executed system command: backup"
+    },
+    {
+      "id": "log-1783922624840",
+      "timestamp": "2026-07-13T06:03:44.840Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "workers_enable",
+      "status": "success",
+      "details": "Executed system command: workers_enable"
+    },
+    {
+      "id": "log-1783922624839",
+      "timestamp": "2026-07-13T06:03:44.839Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "workers_enable",
+      "status": "success",
+      "details": "Executed system command: workers_enable"
+    },
+    {
+      "id": "log-1783922624236",
+      "timestamp": "2026-07-13T06:03:44.236Z",
+      "username": "admin",
+      "action": "Console Command",
+      "target": "e2ee_disable",
+      "status": "success",
+      "details": "Executed system command: e2ee_disable"
+    },
+    {
+      "id": "log-1",
+      "timestamp": "2026-07-13T03:42:25.034Z",
+      "username": "system",
+      "action": "Server Booted",
+      "target": "Server",
+      "status": "success",
+      "details": "Matrix Stack Manager Web Panel initiated successfully."
+    },
+    {
+      "id": "log-2",
+      "timestamp": "2026-07-13T04:42:25.035Z",
+      "username": "admin",
+      "action": "Configure LDAP",
+      "target": "LDAP Auth",
+      "status": "success",
+      "details": "Tested LDAP connection and saved changes."
+    }
+  ],
+  "backups": [
+    {
+      "id": "bak-1783929703582",
+      "filename": "matrix-backup-20260713-080143.tar.gz",
+      "size": "141.8 MB",
+      "timestamp": "2026-07-13T08:01:43.582Z",
+      "hasSSL": false
+    },
+    {
+      "id": "bak-1783929694830",
+      "filename": "matrix-backup-20260713-080134.tar.gz",
+      "size": "143.6 MB",
+      "timestamp": "2026-07-13T08:01:34.830Z",
+      "hasSSL": false
+    },
+    {
+      "id": "bak-1",
+      "filename": "matrix-backup-20260710-120000.tar.gz",
+      "size": "142.8 MB",
+      "timestamp": "2026-07-10T12:00:00.000Z",
+      "hasSSL": true
+    },
+    {
+      "id": "bak-2",
+      "filename": "matrix-backup-20260711-120000.tar.gz",
+      "size": "143.2 MB",
+      "timestamp": "2026-07-11T12:00:00.000Z",
+      "hasSSL": true
+    }
+  ],
+  "undoHistory": [
+    {
+      "id": "undo-1",
+      "timestamp": "2026-07-13T04:42:25.035Z",
+      "description": "Update LDAP Settings",
+      "files": [
+        "/etc/matrix-stack-ldap.conf",
+        "/etc/matrix-synapse/homeserver.yaml"
+      ]
+    }
+  ],
+  "ldapConfig": {
+    "enabled": false,
+    "uri": "ldap://ldap.company.local:389",
+    "base": "ou=users,dc=company,dc=local",
+    "mode": "search",
+    "start_tls": false,
+    "bind_dn": "cn=svc-matrix,dc=company,dc=local",
+    "uid_attr": "sAMAccountName",
+    "mail_attr": "mail",
+    "name_attr": "cn"
+  },
+  "workersConfig": {
+    "enabled": true,
+    "count": 2,
+    "federationSender": false,
+    "basePort": 8083
+  },
+  "matrixRooms": [],
+  "matrixMedia": [],
+  "registrationTokens": [
+    {
+      "token": "ORG-STAFF-PROMO-2026",
+      "usesAllowed": 50,
+      "usesCount": 12,
+      "expiryTime": "2026-12-31T23:59:59.000Z",
+      "isActive": true
+    },
+    {
+      "token": "INFRA-DEV-ROOT-KEY",
+      "usesAllowed": 5,
+      "usesCount": 5,
+      "expiryTime": "2026-08-15T00:00:00.000Z",
+      "isActive": false
+    },
+    {
+      "token": "TEMP-GUEST-TOKEN",
+      "usesAllowed": 1,
+      "usesCount": 0,
+      "expiryTime": "2026-07-20T12:00:00.000Z",
+      "isActive": true
+    }
+  ],
+  "connections": [
+    {
+      "id": "local",
+      "name": "Local Server (This Machine)",
+      "host": "localhost",
+      "port": 22,
+      "username": "",
+      "authType": "key",
+      "isActive": true
+    }
+  ],
+  "eventReports": [],
+  "adSyncSettings": {
+    "enabled": true,
+    "intervalMinutes": 5,
+    "lastSyncAt": "2026-08-18T12:35:00.002Z"
+  },
+  "adSyncLogs": [
+    {
+      "id": "sync_1787056500002",
+      "timestamp": "2026-08-18T12:35:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1787056200005",
+      "timestamp": "2026-08-18T12:30:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1787055900006",
+      "timestamp": "2026-08-18T12:25:00.006Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786739400001",
+      "timestamp": "2026-08-14T20:30:00.001Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786739100002",
+      "timestamp": "2026-08-14T20:25:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786738800004",
+      "timestamp": "2026-08-14T20:20:00.004Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786738500002",
+      "timestamp": "2026-08-14T20:15:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786738200002",
+      "timestamp": "2026-08-14T20:10:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786737900002",
+      "timestamp": "2026-08-14T20:05:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786737600003",
+      "timestamp": "2026-08-14T20:00:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786737300002",
+      "timestamp": "2026-08-14T19:55:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786737000002",
+      "timestamp": "2026-08-14T19:50:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786736700002",
+      "timestamp": "2026-08-14T19:45:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786736400002",
+      "timestamp": "2026-08-14T19:40:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786736100002",
+      "timestamp": "2026-08-14T19:35:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786735800001",
+      "timestamp": "2026-08-14T19:30:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786735500003",
+      "timestamp": "2026-08-14T19:25:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786735200002",
+      "timestamp": "2026-08-14T19:20:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786734900003",
+      "timestamp": "2026-08-14T19:15:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786734600003",
+      "timestamp": "2026-08-14T19:10:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786734300005",
+      "timestamp": "2026-08-14T19:05:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786734000005",
+      "timestamp": "2026-08-14T19:00:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786733700005",
+      "timestamp": "2026-08-14T18:55:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786732200002",
+      "timestamp": "2026-08-14T18:30:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786731900003",
+      "timestamp": "2026-08-14T18:25:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786731600003",
+      "timestamp": "2026-08-14T18:20:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786731300002",
+      "timestamp": "2026-08-14T18:15:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786731000002",
+      "timestamp": "2026-08-14T18:10:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786730700004",
+      "timestamp": "2026-08-14T18:05:00.004Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786730400006",
+      "timestamp": "2026-08-14T18:00:00.006Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786730100005",
+      "timestamp": "2026-08-14T17:55:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786729800003",
+      "timestamp": "2026-08-14T17:50:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786729500003",
+      "timestamp": "2026-08-14T17:45:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786729200003",
+      "timestamp": "2026-08-14T17:40:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786728900002",
+      "timestamp": "2026-08-14T17:35:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786728600002",
+      "timestamp": "2026-08-14T17:30:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786728300003",
+      "timestamp": "2026-08-14T17:25:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786728000003",
+      "timestamp": "2026-08-14T17:20:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786727700003",
+      "timestamp": "2026-08-14T17:15:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786727400005",
+      "timestamp": "2026-08-14T17:10:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786727100002",
+      "timestamp": "2026-08-14T17:05:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786726800003",
+      "timestamp": "2026-08-14T17:00:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786726500003",
+      "timestamp": "2026-08-14T16:55:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786726200005",
+      "timestamp": "2026-08-14T16:50:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786725900002",
+      "timestamp": "2026-08-14T16:45:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786725600003",
+      "timestamp": "2026-08-14T16:40:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786725300002",
+      "timestamp": "2026-08-14T16:35:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786725000003",
+      "timestamp": "2026-08-14T16:30:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786724700004",
+      "timestamp": "2026-08-14T16:25:00.004Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1786722600002",
+      "timestamp": "2026-08-14T15:50:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    }
+  ]
+}
