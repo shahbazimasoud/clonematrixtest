@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.17.8** (Released: 2026-08-18)
+## Current Panel Version: **v2.17.9** (Released: 2026-08-18)
 
 ### Changelog History
+
+#### **v2.17.9** - 2026-08-18
+- **Synapse-Authoritative Room Ban Architecture & State Verification**:
+  - **Synapse-Authoritative Room Ban**: Implemented strict Matrix Client-Server API integration for banning room members (`PUT /_matrix/client/v3/rooms/{roomId}/state/m.room.member/{mxid}` and `POST /_matrix/client/v3/rooms/{roomId}/ban` with `membership="ban"`) without modifying PostgreSQL tables directly.
+  - **Strict Membership State Verification**: Operation success is only declared when Synapse homeserver state explicitly confirms `membership="ban"` for the target user in the room.
+  - **Profile & Identity Preservation**: User profile properties (display names, active states, avatar URLs) remain strictly preserved without mutation during ban execution.
+  - **Synchronized Moderation Logs & UI**: Added structured `bannedUsersLogs` history recording and post-confirmation frontend state updates with background room member synchronization.
 
 #### **v2.17.8** - 2026-08-18
 - **Synapse-Authoritative Room Kick and Member Moderation Architecture**:

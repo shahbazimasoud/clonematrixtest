@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.17.8";
+export const PANEL_VERSION = "2.17.9";
 export const PANEL_BUILD_DATE = "2026-08-18";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.17.9",
+    date: "2026-08-18",
+    title: "Synapse-Authoritative Room Ban Architecture & State Verification",
+    changes: [
+      "Synapse-Authoritative Room Ban: Implemented strict Matrix Client-Server API integration for banning room members (PUT /_matrix/client/v3/rooms/{roomId}/state/m.room.member/{mxid} and POST /_matrix/client/v3/rooms/{roomId}/ban with membership='ban') without modifying PostgreSQL tables directly.",
+      "Strict Membership State Verification: Operation success is only declared when Synapse homeserver state explicitly confirms membership='ban' for the target user in the room.",
+      "Profile & Identity Preservation: User profile properties (display names, active states, avatar URLs) remain strictly preserved without mutation during ban execution.",
+      "Synchronized Moderation Logs & UI: Added structured `bannedUsersLogs` history recording and post-confirmation frontend state updates with background room member synchronization."
+    ]
+  },
   {
     version: "2.17.8",
     date: "2026-08-18",

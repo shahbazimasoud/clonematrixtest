@@ -6139,15 +6139,21 @@ async function handleRoomKickOrBan(
   const adminMxid = adminInfo?.adminMxid || (await getAdminMxidForRoom(normRoomId));
 
   const encodedRoomId = encodeURIComponent(normRoomId);
-  const reasonStr = reason?.trim() || (action === 'kick' ? `Kicked via Admin Panel by ${requesterUsername}` : `Banned via Admin Panel by ${requesterUsername}`);
+  const encodedTargetMxid = encodeURIComponent(normTargetMxid);
+  const reasonStr = (reason && reason.trim()) ? reason.trim() : (action === 'kick' ? `Kicked via Admin Panel by ${requesterUsername}` : `Banned via Admin Panel by ${requesterUsername}`);
 
   let actionSuccess = false;
   let actionErrorMsg = "";
 
-  // 2. Execute standard Matrix moderation endpoint (POST /_matrix/client/v3/rooms/{roomId}/kick or /ban)
-  const candidateEndpoints = [
-    { method: "POST", path: `/_matrix/client/v3/rooms/${encodedRoomId}/${action}`, body: { user_id: normTargetMxid, reason: reasonStr } },
-    { method: "POST", path: `/_matrix/client/v3/rooms/${encodedRoomId}/${action}?user_id=${encodeURIComponent(adminMxid)}`, body: { user_id: normTargetMxid, reason: reasonStr } }
+  // 2. Candidate Matrix moderation endpoints (strictly adhering to Matrix CS API)
+  const candidateEndpoints = action === 'ban' ? [
+    { method: "PUT", path: `/_matrix/client/v3/rooms/${encodedRoomId}/state/m.room.member/${encodedTargetMxid}?user_id=${encodeURIComponent(adminMxid)}`, body: { membership: "ban", reason: reasonStr } },
+    { method: "POST", path: `/_matrix/client/v3/rooms/${encodedRoomId}/ban?user_id=${encodeURIComponent(adminMxid)}`, body: { user_id: normTargetMxid, reason: reasonStr } },
+    { method: "PUT", path: `/_matrix/client/v3/rooms/${encodedRoomId}/state/m.room.member/${encodedTargetMxid}`, body: { membership: "ban", reason: reasonStr } },
+    { method: "POST", path: `/_matrix/client/v3/rooms/${encodedRoomId}/ban`, body: { user_id: normTargetMxid, reason: reasonStr } }
+  ] : [
+    { method: "POST", path: `/_matrix/client/v3/rooms/${encodedRoomId}/kick`, body: { user_id: normTargetMxid, reason: reasonStr } },
+    { method: "POST", path: `/_matrix/client/v3/rooms/${encodedRoomId}/kick?user_id=${encodeURIComponent(adminMxid)}`, body: { user_id: normTargetMxid, reason: reasonStr } }
   ];
 
   for (const ep of candidateEndpoints) {
@@ -6164,11 +6170,11 @@ async function handleRoomKickOrBan(
     }
   }
 
-  // 3. Strict Verification of Synapse State: verify target's membership state in Synapse
-  const verifiedState = await getRoomMemberState(normRoomId, normTargetMxid);
-  const isStillJoined = verifiedState && verifiedState.membership === "join";
+  // 3. Strict Verification of Synapse State: query Synapse for target's membership state
+  const verifiedState = await getRoomMemberState(normRoomId, normTargetMxid, adminMxid);
 
   if (action === 'kick') {
+    const isStillJoined = verifiedState && verifiedState.membership === "join";
     if (isStillJoined) {
       // Synapse did NOT accept or process the kick
       throw new Error(actionErrorMsg || `Synapse kick verification failed: user ${normTargetMxid} is still joined to room ${normRoomId}`);
@@ -6211,36 +6217,36 @@ async function handleRoomKickOrBan(
     writeDb(db);
   }
 
-  // 5. Record in kickedUsersLogs (only upon confirmed kick)
-  if (action === 'kick') {
-    let userIp = "N/A";
-    let userAgent = "N/A";
-    try {
-      const devRes: any = await queryPostgres(
-        "SELECT last_seen_ip, user_agent FROM devices WHERE LOWER(user_id) = LOWER($1) ORDER BY last_seen_ts DESC LIMIT 1",
-        [normTargetMxid]
-      );
-      const rows = devRes?.rows || devRes;
-      if (Array.isArray(rows) && rows.length > 0) {
-        userIp = rows[0].last_seen_ip || "N/A";
-        userAgent = rows[0].user_agent || "N/A";
-      }
-    } catch (e) {}
+  // 5. History logging for moderation action
+  let userIp = "N/A";
+  let userAgent = "N/A";
+  try {
+    const devRes: any = await queryPostgres(
+      "SELECT last_seen_ip, user_agent FROM devices WHERE LOWER(user_id) = LOWER($1) ORDER BY last_seen_ts DESC LIMIT 1",
+      [normTargetMxid]
+    );
+    const rows = devRes?.rows || devRes;
+    if (Array.isArray(rows) && rows.length > 0) {
+      userIp = rows[0].last_seen_ip || "N/A";
+      userAgent = rows[0].user_agent || "N/A";
+    }
+  } catch (e) {}
 
-    if (userIp === "N/A") {
-      const dbU = (db.matrixUsers || []).find((u: any) => u.mxid?.toLowerCase() === normTargetMxid.toLowerCase());
-      if (dbU) {
-        userIp = dbU.lastSeenIp || dbU.ip || (dbU.connections && dbU.connections[0] ? dbU.connections[0].ip : "N/A");
-        if (dbU.connections && dbU.connections[0] && dbU.connections[0].userAgent) {
-          userAgent = dbU.connections[0].userAgent;
-        }
+  if (userIp === "N/A") {
+    const dbU = (db.matrixUsers || []).find((u: any) => u.mxid?.toLowerCase() === normTargetMxid.toLowerCase());
+    if (dbU) {
+      userIp = dbU.lastSeenIp || dbU.ip || (dbU.connections && dbU.connections[0] ? dbU.connections[0].ip : "N/A");
+      if (dbU.connections && dbU.connections[0] && dbU.connections[0].userAgent) {
+        userAgent = dbU.connections[0].userAgent;
       }
     }
+  }
 
+  const roomNameVal = room?.name || room?.canonicalAlias || normRoomId;
+  const userDisplayNameVal = user?.displayName || normTargetMxid.split(":")[0].replace("@", "");
+
+  if (action === 'kick') {
     if (!db.kickedUsersLogs) db.kickedUsersLogs = [];
-    const roomNameVal = room?.name || room?.canonicalAlias || normRoomId;
-    const userDisplayNameVal = user?.displayName || normTargetMxid.split(":")[0].replace("@", "");
-
     db.kickedUsersLogs.unshift({
       id: `kick_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       roomId: normRoomId,
@@ -6248,6 +6254,21 @@ async function handleRoomKickOrBan(
       userMxid: normTargetMxid,
       userDisplayName: userDisplayNameVal,
       kickedBy: requesterUsername,
+      reason: reasonStr,
+      timestamp: new Date().toISOString(),
+      userIp,
+      userAgent
+    });
+    writeDb(db);
+  } else if (action === 'ban') {
+    if (!db.bannedUsersLogs) db.bannedUsersLogs = [];
+    db.bannedUsersLogs.unshift({
+      id: `ban_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      roomId: normRoomId,
+      roomName: roomNameVal,
+      userMxid: normTargetMxid,
+      userDisplayName: userDisplayNameVal,
+      bannedBy: requesterUsername,
       reason: reasonStr,
       timestamp: new Date().toISOString(),
       userIp,
@@ -9092,7 +9113,7 @@ async function getSynapseUserProfile(mxid: string): Promise<{
   return { mxid: normMxid, displayName, avatarUrl, isAdmin, isDeactivated };
 }
 
-async function getRoomMemberState(roomId: string, mxid: string): Promise<{
+async function getRoomMemberState(roomId: string, mxid: string, adminMxid?: string): Promise<{
   membership: "join" | "invite" | "ban" | "leave" | "unknown";
   displayName: string | null;
   avatarUrl: string | null;
@@ -9102,8 +9123,23 @@ async function getRoomMemberState(roomId: string, mxid: string): Promise<{
 
   // 1. Matrix Client API: GET /_matrix/client/v3/rooms/<roomId>/state/m.room.member/<mxid>
   try {
+    const qPath = adminMxid
+      ? `/_matrix/client/v3/rooms/${encodeURIComponent(normRoomId)}/state/m.room.member/${encodeURIComponent(normMxid)}?user_id=${encodeURIComponent(adminMxid)}`
+      : `/_matrix/client/v3/rooms/${encodeURIComponent(normRoomId)}/state/m.room.member/${encodeURIComponent(normMxid)}`;
+    const stateRes = await callSynapseAdminAPI("GET", qPath);
+    if (stateRes && stateRes.membership && !stateRes.errcode && !stateRes.error) {
+      return {
+        membership: stateRes.membership,
+        displayName: stateRes.displayname ? String(stateRes.displayname).trim() : null,
+        avatarUrl: stateRes.avatar_url ? String(stateRes.avatar_url) : null
+      };
+    }
+  } catch (err: any) {}
+
+  // 1b. Fallback without user_id param
+  try {
     const stateRes = await callSynapseAdminAPI("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(normRoomId)}/state/m.room.member/${encodeURIComponent(normMxid)}`);
-    if (stateRes && stateRes.membership) {
+    if (stateRes && stateRes.membership && !stateRes.errcode && !stateRes.error) {
       return {
         membership: stateRes.membership,
         displayName: stateRes.displayname ? String(stateRes.displayname).trim() : null,
