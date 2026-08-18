@@ -1,0 +1,11 @@
+[
+  {
+    "id": "local",
+    "name": "Local Server (This Machine)",
+    "host": "localhost",
+    "port": 22,
+    "username": "",
+    "authType": "key",
+    "isActive": true
+  }
+]

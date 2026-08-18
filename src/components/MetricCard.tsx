@@ -1,0 +1,130 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React from 'react';
+import { LucideIcon, TrendingUp, TrendingDown, Database } from 'lucide-react';
+
+interface MetricCardProps {
+  title: string;
+  value?: string | number | null;
+  subtext?: string;
+  icon: LucideIcon;
+  trend?: {
+    value: number;
+    isPositive: boolean;
+  };
+  glowColor?: 'cyan' | 'purple' | 'amber' | 'emerald' | 'rose';
+  id?: string;
+  onClick?: () => void;
+  isLoading?: boolean;
+  isDbDisconnected?: boolean;
+  dbDisconnectedText?: string;
+}
+
+export default function MetricCard({ 
+  title, 
+  value, 
+  subtext, 
+  icon: Icon, 
+  trend, 
+  glowColor = 'cyan',
+  id,
+  onClick,
+  isLoading,
+  isDbDisconnected,
+  dbDisconnectedText = "Database Disconnected"
+}: MetricCardProps) {
+  
+  const glowClasses = {
+    cyan: 'shadow-[0_0_15px_rgba(99,102,241,0.12)] border-indigo-500/25 hover:border-indigo-500/45 text-indigo-400',
+    purple: 'shadow-[0_0_15px_rgba(139,92,246,0.12)] border-purple-500/25 hover:border-purple-500/45 text-purple-400',
+    amber: 'shadow-[0_0_15px_rgba(245,158,11,0.12)] border-amber-500/25 hover:border-amber-500/45 text-amber-400',
+    emerald: 'shadow-[0_0_15px_rgba(16,185,129,0.12)] border-emerald-500/25 hover:border-emerald-500/45 text-emerald-400',
+    rose: 'shadow-[0_0_15px_rgba(244,63,94,0.12)] border-rose-500/25 hover:border-rose-500/45 text-rose-400',
+  };
+
+  const ambientGlowBg = {
+    cyan: 'bg-indigo-500/5',
+    purple: 'bg-purple-500/5',
+    amber: 'bg-amber-500/5',
+    emerald: 'bg-emerald-500/5',
+    rose: 'bg-rose-500/5'
+  };
+
+  if (isLoading || value === undefined || value === null) {
+    return (
+      <div 
+        id={id || `metric-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
+        className={`spatial-glass rounded-2xl p-5 flex flex-col justify-between border ${glowClasses[glowColor]} relative overflow-hidden`}
+      >
+        <div className="flex items-start justify-between">
+          <div className="space-y-3 w-full">
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">{title}</span>
+            {/* Value Shimmer Box */}
+            <div className="h-8 w-28 rounded-lg bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden backdrop-blur-xs border border-black/5 dark:border-white/[0.05]">
+              <div className="shimmer-light-beam" />
+            </div>
+          </div>
+          <div className={`p-3 rounded-xl ${ambientGlowBg[glowColor]} border border-white/5 shrink-0`}>
+            <Icon className="w-6 h-6 text-slate-500/40 animate-pulse" />
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-white/5">
+          {/* Subtext Shimmer Box */}
+          <div className="h-3.5 w-36 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden backdrop-blur-xs border border-black/5 dark:border-white/[0.05]">
+            <div className="shimmer-light-beam" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      id={id || `metric-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
+      onClick={!isDbDisconnected ? onClick : undefined}
+      className={`spatial-glass spatial-glass-hover spatial-depth-card rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 border ${glowClasses[glowColor]} relative overflow-hidden ${
+        onClick && !isDbDisconnected ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''
+      }`}
+    >
+      <div className={`flex items-start justify-between ${isDbDisconnected ? 'blur-xs opacity-25 select-none' : ''}`}>
+        <div>
+          <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{title}</span>
+          <h3 className="text-3xl font-display font-bold text-white mt-2 tracking-tight glow-text-cyan">{value}</h3>
+        </div>
+        <div className={`p-3 rounded-xl ${ambientGlowBg[glowColor]} border border-white/5`}>
+          <Icon className="w-6 h-6" />
+        </div>
+      </div>
+
+      <div className={`flex items-center justify-between mt-4 pt-4 border-t border-white/5 ${isDbDisconnected ? 'blur-xs opacity-25 select-none' : ''}`}>
+        <span className="text-xs text-slate-400">{subtext}</span>
+        {trend && (
+          <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+            trend.isPositive ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'
+          }`}>
+            {trend.isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+            <span>{trend.value}%</span>
+          </div>
+        )}
+      </div>
+
+      {isDbDisconnected && (
+        <div className="absolute inset-0 z-20 backdrop-blur-md bg-slate-100/80 dark:bg-slate-900/80 border border-amber-500/35 rounded-2xl flex flex-col items-center justify-center p-4 text-center transition-all duration-300 shadow-lg">
+          <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 mb-2 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <Database className="w-5 h-5 text-amber-600 dark:text-amber-400 animate-pulse" />
+          </div>
+          <span className="text-xs font-bold text-amber-700 dark:text-amber-300 tracking-wider uppercase drop-shadow-xs">
+            {dbDisconnectedText}
+          </span>
+          <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300 mt-1 leading-tight max-w-[200px]">
+            Database connection is lost or not configured
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}

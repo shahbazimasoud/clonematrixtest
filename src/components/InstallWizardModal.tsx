@@ -1,0 +1,1793 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  X, Server, Globe, ShieldAlert, ShieldCheck, Key, Settings, 
+  CheckCircle, Check, Loader2, ChevronLeft, ChevronRight, 
+  AlertCircle, FileText, CloudDownload, Folder, BookOpen, ArrowRight, Activity,
+  Database, UserCheck
+} from 'lucide-react';
+
+interface InstallWizardModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (config: any) => void;
+  lang: string;
+  isLightMode: boolean;
+  defaultHost?: string;
+  defaultDomain?: string;
+}
+
+const translations = {
+  en: {
+    title: "Configure Matrix Enterprise Stack",
+    subtitle: "Complete the step-by-step wizard to configure and deploy a fully production-ready, non-interactive Matrix cluster.",
+    step: "Step",
+    next: "Next",
+    back: "Back",
+    cancel: "Cancel",
+    confirmInstall: "Confirm & Start Installation",
+    
+    // Step 1: Installation Source
+    sourceTitle: "Installation Source",
+    sourceDesc: "Specify how you want to retrieve the required packages for the installation.",
+    sourceOnline: "Online Installation",
+    sourceOnlineDesc: "Download all components dynamically from the official repositories and GitHub during the install process.",
+    sourceOffline: "Offline / Local Installation",
+    sourceOfflineDesc: "Use local package files, pre-downloaded Debian packages, and static assets from the server.",
+    offlineConfigLabel: "Offline Config File Path (Optional)",
+    offlineConfigPlaceholder: "e.g., /etc/matrix-stack.conf",
+    offlineConfigHelp: "If specified, values from this file will be loaded as defaults.",
+    offlineElementLabel: "Offline Element Web Tarball Path (Optional)",
+    offlineElementPlaceholder: "e.g., /tmp/element-web.tar.gz",
+    offlineSynapseDebLabel: "Synapse .deb Package Folder (Optional)",
+    offlineSynapseDebPlaceholder: "e.g., /tmp/synapse_debs",
+
+    // Step 2: Server Settings
+    serverTitle: "Server & Domains",
+    serverDesc: "Specify your core networking, domain routing, and certificate delivery settings.",
+    hsDomainLabel: "Matrix Homeserver Domain",
+    hsDomainPlaceholder: "matrix.company.local",
+    elementDomainLabel: "Element Web Frontend Domain",
+    elementDomainPlaceholder: "chat.company.local",
+    baseDomainLabel: "Base Domain (for Well-Known pointers)",
+    baseDomainPlaceholder: "company.local",
+    publicIpLabel: "Server Public IP Address",
+    publicIpPlaceholder: "e.g., 198.51.100.42",
+    leEmailLabel: "Notification / SSL Let's Encrypt Email",
+    leEmailPlaceholder: "admin@company.local",
+    dbNotice: "Database Notice: The PostgreSQL database cluster is automatically configured with dedicated names and secure random passwords. No manual database inputs are required.",
+
+    // Step 3: SSL Certificate
+    sslTitle: "SSL/TLS Security Layer",
+    sslDesc: "Select the encryption method for secure HTTPS connections between clients, servers, and homeservers.",
+    sslAuto: "Automatic Resolution",
+    sslAutoDesc: "Automatically detects domain: Internal domains (.local, .lan) resolve to Self-Signed; Public domains request Let's Encrypt certificates.",
+    sslSelfSigned: "Force Self-Signed Certificates",
+    sslSelfSignedDesc: "Create a safe, local 10-year 4096-bit self-signed certificate. Perfect for private VPNs, development, or closed networks.",
+    sslCustom: "Custom PEM Certificates",
+    sslCustomDesc: "Upload or specify paths to your own pre-generated, trusted SSL certificate files.",
+    customCertLabel: "Fullchain PEM File Path",
+    customCertPlaceholder: "e.g., /etc/ssl/certs/matrix.crt",
+    customKeyLabel: "Private Key PEM File Path",
+    customKeyPlaceholder: "e.g., /etc/ssl/private/matrix.key",
+    customChainLabel: "CA Chain Certificate PEM File Path (Optional)",
+    customChainPlaceholder: "e.g., /etc/ssl/certs/ca-bundle.crt",
+
+    // Step 4: Element Web
+    elementTitle: "Element Web Frontend",
+    elementDesc: "Configure the deployment strategy for the Element Web chat client.",
+    elementOnline: "Online GitHub Distribution",
+    elementOnlineDesc: "Download and deploy standard Element release packages directly from GitHub.",
+    elementVersionLabel: "Custom Element Version (Optional)",
+    elementVersionPlaceholder: "e.g., 1.11.55 (defaults to latest supported stable)",
+    elementOffline: "Local Distribution Tarball",
+    elementOfflineDesc: "Decompress and host a static .tar.gz archive of Element Web pre-uploaded to the server.",
+    elementOfflinePathLabel: "Local Element Tarball File Path",
+    elementOfflinePathPlaceholder: "e.g., /tmp/element-web.tar.gz",
+    elementOfflineLabelLabel: "Offline Version Tag (Optional)",
+    elementOfflineLabelPlaceholder: "e.g., v1.11.55",
+
+    // Step 5: LDAP Addons
+    ldapTitle: "Enterprise Directory (LDAP)",
+    ldapDesc: "Enable LDAP integration to allow your users to log in using their enterprise directory accounts.",
+    ldapCheckbox: "Configure LDAP Authentication right after installation completes?",
+    ldapNotice: "If checked, the system will prompt you with the LDAP Wizard immediately after the core installation finishes successfully.",
+    ldapUriLabel: "LDAP Server URI",
+    ldapUriPlaceholder: "e.g., ldap://ldap.company.local:389 or ldaps://ldap.company.local:636",
+    ldapBindDnLabel: "LDAP Bind DN",
+    ldapBindDnPlaceholder: "e.g., cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "LDAP Bind Password",
+    ldapBindPasswordPlaceholder: "Enter password for the LDAP Bind DN account",
+    ldapBaseDnLabel: "LDAP User Search Base DN",
+    ldapBaseDnPlaceholder: "e.g., ou=users,dc=company,dc=local",
+
+    // Step 6: Summary & Confirm
+    summaryTitle: "Installation Summary",
+    summaryDesc: "Please review all your installation parameters carefully. Clicking confirm will trigger a non-interactive verbose deployment.",
+    confirmReady: "System Ready for Non-Interactive Deployment",
+    confirmReadyDesc: "All mandatory fields have been validated. The server will execute the installation script and pipe the real-time verbose logs directly into your web console.",
+    source: "Source",
+    domains: "Domains",
+    ssl: "SSL Mode",
+    element: "Element Web",
+    ldap: "LDAP Auth",
+    yes: "Yes",
+    no: "No",
+    online: "Online",
+    offline: "Offline",
+
+    // Validations
+    errDomain: "Please enter a valid domain format.",
+    errIp: "Please enter a valid IPv4 address.",
+    errEmail: "Please enter a valid email address.",
+    errRequired: "This field is required.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Mandatory Steps After Installation Completes",
+    postInstallGuideSub: "Follow these essential steps after installation to connect the panel to PostgreSQL and enable Matrix API capabilities:",
+    stepDbTitle: "1. Enter Database Credentials in 'Server Connections'",
+    stepDbDesc: "Copy the password from the 'PostgreSQL Database Connection Info' card below. Then navigate to 'Server Connections' in the side menu, edit your active server profile, and fill in the database credentials (Host: 127.0.0.1, Port: 5432, DB: synapse, User: synapse_user, and Password). This allows the panel to query users and rooms directly from PostgreSQL.",
+    stepAdminTitle: "2. Register Synapse Admin User & Save Admin Credentials",
+    stepAdminDesc: "Go to 'User Management' (or Matrix Admin) in the panel menu and use 'Register New User' to create an account with Synapse Admin privileges enabled. Next, return to 'Server Connections', edit your active server profile, expand 'Show Admin Token Settings', and save this admin account's credentials/token so API requests can be executed."
+  },
+  fa: {
+    title: "پیکربندی هوشمند پکیج ماتریکس (Stack)",
+    subtitle: "این ویزارد چندمرحله‌ای به شما امکان می‌دهد اطلاعات نصب را تنظیم کرده تا فرآیند نصب بدون هیچ پرسش تعاملی (Non-interactive) انجام شود.",
+    step: "مرحله",
+    next: "مرحله بعدی",
+    back: "مرحله قبلی",
+    cancel: "انصراف",
+    confirmInstall: "تایید و شروع نصب پکیج",
+    
+    // Step 1: Installation Source
+    sourceTitle: "منبع تامین پکیج‌های نصب",
+    sourceDesc: "نحوه دریافت فایل‌های نصب ماتریکس و کلاینت آن را مشخص کنید.",
+    sourceOnline: "دانلود آنلاین (Online)",
+    sourceOnlineDesc: "تمام پکیج‌ها و کدهای کلاینت به صورت پویا در حین نصب از اینترنت و ریپازیتوری‌های رسمی دریافت می‌شوند.",
+    sourceOffline: "فایل‌های محلی و آفلاین (Offline)",
+    sourceOfflineDesc: "استفاده از فایل‌های کلاینت دانلود شده، پکیج‌های deb محلی و کانفیگ‌های قبلی روی سرور.",
+    offlineConfigLabel: "مسیر فایل کانفیگ ذخیره‌شده از نصب قبلی (اختیاری)",
+    offlineConfigPlaceholder: "مثال: /etc/matrix-stack.conf",
+    offlineConfigHelp: "در صورت وجود، مقادیر پیش‌فرض بقیه فرم از روی این فایل پر خواهند شد.",
+    offlineElementLabel: "مسیر فایل Element Web به صورت tar.gz (اختیاری)",
+    offlineElementPlaceholder: "مثال: /tmp/element-web.tar.gz",
+    offlineSynapseDebLabel: "مسیر پوشه حاوی فایل‌های .deb پکیج Synapse (اختیاری)",
+    offlineSynapseDebPlaceholder: "مثال: /tmp/synapse_debs",
+
+    // Step 2: Server Settings
+    serverTitle: "تنظیمات دامنه و سرور",
+    serverDesc: "آدرس دامنه‌ها و آی‌پی سرور جهت مسیریابی صحیح وب و چت را وارد نمایید.",
+    hsDomainLabel: "دامنه Matrix Homeserver (اجباری)",
+    hsDomainPlaceholder: "matrix.company.local",
+    elementDomainLabel: "دامنه Element Web (اجباری)",
+    elementDomainPlaceholder: "chat.company.local",
+    baseDomainLabel: "دامنه پایه برای well-known (اجباری)",
+    baseDomainPlaceholder: "company.local",
+    publicIpLabel: "آی‌پی پابلیک سرور (اجباری)",
+    publicIpPlaceholder: "مثال: 198.51.100.42",
+    leEmailLabel: "ایمیل Let's Encrypt و اعلان‌ها (اجباری)",
+    leEmailPlaceholder: "admin@company.local",
+    dbNotice: "توضیح پایگاه‌داده: پایگاه‌داده PostgreSQL است و به صورت خودکار با نام دیتابیس، یوزر، و پسورد تصادفی توسط خود اسکریپت ساخته می‌شود و نیازی به پرسیدن از کاربر نیست.",
+
+    // Step 3: SSL Certificate
+    sslTitle: "تنظیمات گواهی امنیتی SSL/TLS",
+    sslDesc: "روش رمزنگاری و تامین گواهی‌های SSL برای دامنه‌ها را تعیین کنید.",
+    sslAuto: "تشخیص هوشمند و خودکار (Auto)",
+    sslAutoDesc: "تشخیص خودکار بر اساس دامنه: دامنه‌های داخلی (.local/.lan) مجهز به Self-signed و دامنه‌های عمومی مجهز به Let's Encrypt خواهند شد.",
+    sslSelfSigned: "گواهی امضا شده شخصی اجباری (Self-Signed)",
+    sslSelfSignedDesc: "ساخت گواهی امنیتی بومی ۱۰ ساله و ۴۰۹۶ بیتی. مناسب شبکه‌های داخلی، VPN و اهداف توسعه.",
+    sslCustom: "گواهی شخصی سفارشی (PEM Certificate)",
+    sslCustomDesc: "در صورت داشتن گواهی معتبر خریداری شده، مسیر فایل‌های PEM را در سرور مشخص کنید.",
+    customCertLabel: "مسیر فایل گواهی اصلی (Cert / Fullchain PEM)",
+    customCertPlaceholder: "مثال: /etc/ssl/certs/matrix.crt",
+    customKeyLabel: "مسیر فایل کلید خصوصی (Private Key PEM)",
+    customKeyPlaceholder: "مثال: /etc/ssl/private/matrix.key",
+    customChainLabel: "مسیر فایل زنجیره گواهی (CA Chain PEM - اختیاری)",
+    customChainPlaceholder: "مثال: /etc/ssl/certs/ca-bundle.crt",
+
+    // Step 4: Element Web
+    elementTitle: "تنظیمات وب کلاینت Element Web",
+    elementDesc: "روش استقرار و نسخه مورد استفاده کلاینت چت Element را مشخص کنید.",
+    elementOnline: "دانلود خودکار آنلاین از گیت‌هاب",
+    elementOnlineDesc: "دانلود مستقیم پکیج رسمی وب کلاینت از مخازن گیت‌هاب المنت.",
+    elementVersionLabel: "ورژن دلخواه المنت (اختیاری)",
+    elementVersionPlaceholder: "مثال: 1.11.55 (در صورت خالی بودن آخرین نسخه پایدار نصب می‌شود)",
+    elementOffline: "استفاده از فایل فشرده محلی (tar.gz)",
+    elementOfflineDesc: "استفاده از پکیج از پیش دانلود شده المنت وب که در سرور قرار دارد.",
+    elementOfflinePathLabel: "مسیر فایل tar.gz المنت کلاینت روی سرور",
+    elementOfflinePathPlaceholder: "مثال: /tmp/element-web.tar.gz",
+    elementOfflineLabelLabel: "برچسب ورژن کلاینت آفلاین (اختیاری)",
+    elementOfflineLabelPlaceholder: "مثال: v1.11.55",
+
+    // Step 5: LDAP Addons
+    ldapTitle: "یکپارچه‌سازی سرویس LDAP (اختیاری)",
+    ldapDesc: "امکان احراز هویت کاربران سازمانی از طریق سرویس دایرکتوری سنترال (LDAP).",
+    ldapCheckbox: "آیا می‌خواهید همین الان احراز هویت LDAP را پیکربندی کنید؟",
+    ldapNotice: "در صورت انتخاب، بلافاصله پس از اتمام موفق نصب اصلی ماتریکس، ویزارد تنظیمات سرور LDAP به شما نمایش داده می‌شود.",
+    ldapUriLabel: "آدرس سرور LDAP (URI)",
+    ldapUriPlaceholder: "مثال: ldap://ldap.company.local:389 یا ldaps://ldap.company.local:636",
+    ldapBindDnLabel: "مشخصه اتصال (Bind DN)",
+    ldapBindDnPlaceholder: "مثال: cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "کلمه عبور اتصال (Bind Password)",
+    ldapBindPasswordPlaceholder: "پسورد اکانت متصل شونده به اکتیو دایرکتوری",
+    ldapBaseDnLabel: "پایه جستجوی کاربران (User Search Base DN)",
+    ldapBaseDnPlaceholder: "مثال: ou=users,dc=company,dc=local",
+
+    // Step 6: Summary & Confirm
+    summaryTitle: "خلاصه پیکربندی و شروع نصب",
+    summaryDesc: "لطفاً مقادیر واردشده را با دقت مرور کنید. با کلیک بر روی دکمه شروع، عملیات نصب به صورت غیرتعاملی در پس‌زمینه آغاز خواهد شد.",
+    confirmReady: "آماده‌سازی نهایی برای استقرار بدون وقفه",
+    confirmReadyDesc: "تمامی مقادیر اجباری تایید شدند. ترمینال کنسول وب را باز نگه دارید تا جزئیات و ورباس نصب را به صورت زنده تماشا کنید.",
+    source: "منبع فایل‌ها",
+    domains: "دامنه‌ها",
+    ssl: "حالت گواهی SSL",
+    element: "پکیج کلاینت",
+    ldap: "پیکربندی LDAP",
+    yes: "بله",
+    no: "خیر",
+    online: "آنلاین (اینترنتی)",
+    offline: "آفلاین (محلی)",
+
+    // Validations
+    errDomain: "فرمت دامنه نامعتبر است.",
+    errIp: "آی‌پی وارد شده نامعتبر است (فرمت IPv4).",
+    errEmail: "ایمیل وارد شده نامعتبر است.",
+    errRequired: "پر کردن این فیلد اجباری است.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "اقدام‌های ضروری بلافاصله پس از اتمام نصب پکیج",
+    postInstallGuideSub: "پس از پایان فرآیند نصب، جهت اتصال پنل به دیتابیس و فعال‌سازی کامل امکانات مدیریت و API موارد زیر را انجام دهید:",
+    stepDbTitle: "۱. ورود مشخصات دیتابیس در بخش «ارتباط با سرور»",
+    stepDbDesc: "رمز عبور دیتابیس را از کارت «مشخصات اتصال به دیتابیس PostgreSQL» در همین صفحه کپی کنید. سپس به صفحه «ارتباط با سرور» در منوی کناری رفته، سرور مربوطه را ویرایش کنید و اطلاعات دیتابیس (میزبان: 127.0.0.1، پورت: 5432، نام دیتابیس: synapse، نام کاربری: synapse_user و رمز عبور کپی‌شده) را وارد کنید تا پنل بتواند اطلاعات کاربران و لیست اتاق‌ها را مستقیماً بخواند.",
+    stepAdminTitle: "۲. ساخت کاربر ادمین و ثبت مشخصات در «ارتباط با سرور»",
+    stepAdminDesc: "به بخش «مدیریت کاربران» مراجعه کرده و در بخش «ایجاد کاربر جدید» (Register New User) یک کاربر با دسترسی مدیرکل Synapse بسازید. سپس به بخش «ارتباط با سرور» بازگشته، سرور فعال را ویرایش کرده، بخش «Show Admin Token Settings» را باز کنید و مشخصات یا توکن دسترسی این کاربر ادمین را وارد نمایید تا امکان اجرای APIهای ماتریکس فراهم شود."
+  },
+  es: {
+    title: "Configurar Pila de Matrix Enterprise",
+    subtitle: "Complete el asistente paso a paso para configurar e implementar un clúster Matrix no interactivo listo para producción.",
+    step: "Paso",
+    next: "Siguiente",
+    back: "Atrás",
+    cancel: "Cancelar",
+    confirmInstall: "Confirmar e Iniciar Instalación",
+    sourceTitle: "Origen de Instalación",
+    sourceDesc: "Especifique cómo desea recuperar los paquetes requeridos para la instalación.",
+    sourceOnline: "Instalación en Línea",
+    sourceOnlineDesc: "Descargue todos los componentes dinámicamente de los repositorios oficiales y GitHub durante la instalación.",
+    sourceOffline: "Instalación Fuera de Línea / Local",
+    sourceOfflineDesc: "Use archivos de paquetes locales, paquetes Debian pre-descargados y activos estáticos del servidor.",
+    offlineConfigLabel: "Ruta del Archivo de Configuración Fuera de Línea (Opcional)",
+    offlineConfigPlaceholder: "ej., /etc/matrix-stack.conf",
+    offlineConfigHelp: "Si se especifica, los valores de este archivo se cargarán por defecto.",
+    offlineElementLabel: "Ruta del Tarball de Element Web Fuera de Línea (Opcional)",
+    offlineElementPlaceholder: "ej., /tmp/element-web.tar.gz",
+    offlineSynapseDebLabel: "Carpeta de Paquetes .deb de Synapse (Opcional)",
+    offlineSynapseDebPlaceholder: "ej., /tmp/synapse_debs",
+    serverTitle: "Servidor y Dominios",
+    serverDesc: "Especifique la red principal, el enrutamiento de dominios y la configuración de certificados.",
+    hsDomainLabel: "Dominio de Matrix Homeserver",
+    hsDomainPlaceholder: "matrix.company.local",
+    elementDomainLabel: "Dominio de Element Web Frontend",
+    elementDomainPlaceholder: "chat.company.local",
+    baseDomainLabel: "Dominio Base (para punteros Well-Known)",
+    baseDomainPlaceholder: "company.local",
+    publicIpLabel: "Dirección IP Pública del Servidor",
+    publicIpPlaceholder: "ej., 198.51.100.42",
+    leEmailLabel: "Correo Electrónico de Let's Encrypt",
+    leEmailPlaceholder: "admin@company.local",
+    dbNotice: "Aviso de Base de Datos: La base de datos PostgreSQL se configura automáticamente con nombres dedicados y contraseñas seguras aleatorias.",
+    sslTitle: "Capa de Seguridad SSL/TLS",
+    sslDesc: "Seleccione el método de cifrado para conexiones HTTPS seguras.",
+    sslAuto: "Resolución Automática",
+    sslAutoDesc: "Detecta automáticamente el dominio: Dominios internos (.local) usan Autofirmado; Dominios públicos solicitan Let's Encrypt.",
+    sslSelfSigned: "Forzar Certificados Autofirmados",
+    sslSelfSignedDesc: "Cree un certificado autofirmado seguro de 10 años. Perfecto para VPNs privadas o desarrollo.",
+    sslCustom: "Certificados PEM Personalizados",
+    sslCustomDesc: "Especifique las rutas a sus propios archivos de certificados SSL de confianza.",
+    customCertLabel: "Ruta del Archivo PEM Fullchain",
+    customCertPlaceholder: "ej., /etc/ssl/certs/matrix.crt",
+    customKeyLabel: "Ruta del Archivo PEM Private Key",
+    customKeyPlaceholder: "ej., /etc/ssl/private/matrix.key",
+    customChainLabel: "Ruta del Archivo PEM CA Chain (Opcional)",
+    customChainPlaceholder: "ej., /etc/ssl/certs/ca-bundle.crt",
+    elementTitle: "Element Web Frontend",
+    elementDesc: "Configure la estrategia de despliegue para el cliente de chat Element Web.",
+    elementOnline: "Distribución en Línea de GitHub",
+    elementOnlineDesc: "Descargue y despliegue paquetes estándar de Element directamente desde GitHub.",
+    elementVersionLabel: "Versión de Element Personalizada (Opcional)",
+    elementVersionPlaceholder: "ej., 1.11.55 (por defecto estable)",
+    elementOffline: "Archivo Tarball Local",
+    elementOfflineDesc: "Descomprima y aloje un archivo estático de Element Web pre-subido.",
+    elementOfflinePathLabel: "Ruta del Archivo Tarball Local de Element",
+    elementOfflinePathPlaceholder: "ej., /tmp/element-web.tar.gz",
+    elementOfflineLabelLabel: "Etiqueta de Versión Fuera de Línea (Opcional)",
+    elementOfflineLabelPlaceholder: "ej., v1.11.55",
+    ldapTitle: "Directorio Corporativo (LDAP)",
+    ldapDesc: "Habilite la integración LDAP para permitir que sus usuarios inicien sesión con sus cuentas corporativas.",
+    ldapCheckbox: "¿Configurar autenticación LDAP justo después de la instalación?",
+    ldapNotice: "Si está marcado, se le guiará por el Asistente LDAP inmediatamente después de que finalice la instalación principal.",
+    ldapUriLabel: "URI del Servidor LDAP",
+    ldapUriPlaceholder: "ej., ldap://ldap.company.local:389",
+    ldapBindDnLabel: "DN de Vinculación LDAP",
+    ldapBindDnPlaceholder: "ej., cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "Contraseña de Vinculación LDAP",
+    ldapBindPasswordPlaceholder: "Introduzca la contraseña para el DN de vinculación",
+    ldapBaseDnLabel: "DN Base de Búsqueda de Usuarios",
+    ldapBaseDnPlaceholder: "ej., ou=users,dc=company,dc=local",
+    summaryTitle: "Resumen de Instalación",
+    summaryDesc: "Revise todos los parámetros cuidadosamente. Hacer clic en confirmar iniciará un despliegue no interactivo.",
+    confirmReady: "Sistema Listo para Despliegue No Interactivo",
+    confirmReadyDesc: "Todos los campos obligatorios han sido validados. El servidor ejecutará el script de instalación y transmitirá los registros en tiempo real.",
+    source: "Origen",
+    domains: "Dominios",
+    ssl: "Modo SSL",
+    element: "Element Web",
+    ldap: "Autenticación LDAP",
+    yes: "Sí",
+    no: "No",
+    online: "En línea",
+    offline: "Fuera de línea",
+    errDomain: "Ingrese un formato de dominio válido.",
+    errIp: "Ingrese una dirección IPv4 válida.",
+    errEmail: "Ingrese un correo electrónico válido.",
+    errRequired: "Este campo es obligatorio.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Pasos Obligatorios Tras Finalizar la Instalación",
+    postInstallGuideSub: "Siga estos pasos esenciales después de la instalación para conectar el panel a PostgreSQL y habilitar las funciones de la API de Matrix:",
+    stepDbTitle: "1. Ingresar credenciales de BD en 'Conexiones del Servidor'",
+    stepDbDesc: "Copie la contraseña de la tarjeta 'Información de Conexión a la Base de Datos PostgreSQL'. Luego navegue a 'Conexiones del Servidor' en el menú lateral, edite su perfil activo e ingrese las credenciales (Host: 127.0.0.1, Puerto: 5432, BD: synapse, Usuario: synapse_user y Contraseña) para consultar usuarios y salas directamente desde PostgreSQL.",
+    stepAdminTitle: "2. Registrar Usuario Admin de Synapse y Guardar Credenciales",
+    stepAdminDesc: "Vaya a 'Gestión de Usuarios' (o Matrix Admin) en el menú del panel y use 'Registrar Nuevo Usuario' para crear una cuenta con privilegios de Administrador de Synapse. Luego, regrese a 'Conexiones del Servidor', edite el perfil activo, despliegue 'Mostrar Configuración de Token de Admin' y guarde las credenciales o token de este usuario."
+  },
+  ar: {
+    title: "تكوين حزمة ماتریکس لـ Enterprise",
+    subtitle: "أكمل المعالج خطوة بخطوة لتكوين ونشر مجموعة ماتریکس غير تفاعلية جاهزة للإنتاج بالكامل.",
+    step: "خطوة",
+    next: "التالي",
+    back: "السابق",
+    cancel: "إلغاء",
+    confirmInstall: "تأكيد وبدء التثبيت",
+    sourceTitle: "مصدر التثبيت",
+    sourceDesc: "حدد كيف تريد جلب الحزم المطلوبة للتثبيت.",
+    sourceOnline: "التثبيت عبر الإنترنت",
+    sourceOnlineDesc: "قم بتنزيل جميع المكونات ديناميكيًا من المستودعات الرسمية وGitHub أثناء عملية التثبيت.",
+    sourceOffline: "تثبيت محلي / دون اتصال بالإنترنت",
+    sourceOfflineDesc: "استخدم ملفات الحزم المحلية، وحزم Debian التي تم تنزيلها مسبقًا، والأصول الثابتة من الخادم.",
+    offlineConfigLabel: "مسار ملف التكوين دون اتصال بالإنترنت (اختياري)",
+    offlineConfigPlaceholder: "مثال: /etc/matrix-stack.conf",
+    offlineConfigHelp: "إذا تم تحديده، سيتم تحميل القيم من هذا الملف كافتراضية.",
+    offlineElementLabel: "مسار ملف Element Web دون اتصال (اختياري)",
+    offlineElementPlaceholder: "مثال: /tmp/element-web.tar.gz",
+    offlineSynapseDebLabel: "مجلد حزم Synapse .deb (اختياري)",
+    offlineSynapseDebPlaceholder: "مثال: /tmp/synapse_debs",
+    serverTitle: "الخادم والنطاقات",
+    serverDesc: "حدد الشبكة الأساسية، وتوجيه النطاقات، وإعدادات تسليم الشهادات.",
+    hsDomainLabel: "نطاق خادم ماتریکس",
+    hsDomainPlaceholder: "matrix.company.local",
+    elementDomainLabel: "نطاق واجهة Element Web",
+    elementDomainPlaceholder: "chat.company.local",
+    baseDomainLabel: "النطاق الأساسي (لمؤشرات Well-Known)",
+    baseDomainPlaceholder: "company.local",
+    publicIpLabel: "عنوان IP العام للخادم",
+    publicIpPlaceholder: "مثال: 198.51.100.42",
+    leEmailLabel: "البريد الإلكتروني لـ Let's Encrypt",
+    leEmailPlaceholder: "admin@company.local",
+    dbNotice: "ملاحظة قاعدة البيانات: يتم تكوين قاعدة بيانات PostgreSQL تلقائيًا بأسماء مخصصة وكلمات مرور عشوائية آمنة.",
+    sslTitle: "طبقة أمان SSL/TLS",
+    sslDesc: "حدد طريقة التشفير لاتصالات HTTPS الآمنة.",
+    sslAuto: "الحل التلقائي",
+    sslAutoDesc: "يكتشف النطاق تلقائيًا: النطاقات الداخلية (.local) تستخدم شهادة ذاتية التوقيع؛ النطاقات العامة تطلب Let's Encrypt.",
+    sslSelfSigned: "فرض الشهادات ذاتية التوقيع",
+    sslSelfSignedDesc: "إنشاء شهادة ذاتية التوقيع آمنة لمدة 10 سنوات. مثالية لشبكات VPN الخاصة أو التطوير.",
+    sslCustom: "شهادات PEM مخصصة",
+    sslCustomDesc: "حدد المسارات إلى ملفات شهادات SSL الموثوقة الخاصة بك.",
+    customCertLabel: "مسار ملف PEM لـ Fullchain",
+    customCertPlaceholder: "مثال: /etc/ssl/certs/matrix.crt",
+    customKeyLabel: "مسار ملف PEM للمفتاح الخاص",
+    customKeyPlaceholder: "مثال: /etc/ssl/private/matrix.key",
+    customChainLabel: "مسار ملف PEM لسلسلة CA (اختياري)",
+    customChainPlaceholder: "مثال: /etc/ssl/certs/ca-bundle.crt",
+    elementTitle: "واجهة Element Web",
+    elementDesc: "تكوين استراتيجية النشر لعميل دردشة Element Web.",
+    elementOnline: "توزيع GitHub عبر الإنترنت",
+    elementOnlineDesc: "قم بتنزيل ونشر حزم إصدار Element القياسية مباشرة من GitHub.",
+    elementVersionLabel: "إصدار Element مخصص (اختياري)",
+    elementVersionPlaceholder: "مثال: 1.11.55 (افتراضيًا أحدث مستقر)",
+    elementOffline: "ملف Tarball محلي",
+    elementOfflineDesc: "قم بفك ضغط واستضافة أرشيف ثابت لـ Element Web تم تحميله مسبقًا.",
+    elementOfflinePathLabel: "مسار ملف Tarball المحلي لـ Element",
+    elementOfflinePathPlaceholder: "مثال: /tmp/element-web.tar.gz",
+    elementOfflineLabelLabel: "علامة الإصدار دون اتصال بالإنترنت (اختياري)",
+    elementOfflineLabelPlaceholder: "مثال: v1.11.55",
+    ldapTitle: "دليل المؤسسة (LDAP)",
+    ldapDesc: "تمكين تكامل LDAP للسماح للمستخدمين بتسجيل الدخول باستخدام حسابات دليل المؤسسة الخاصة بهم.",
+    ldapCheckbox: "تكوين مصادقة LDAP مباشرة بعد اكتمال التثبيت؟",
+    ldapNotice: "إذا تم تحديده، سيرشدك النظام عبر معالج LDAP فور انتهاء التثبيت الأساسي بنجاح.",
+    ldapUriLabel: "عنوان URI لخادم LDAP",
+    ldapUriPlaceholder: "مثال: ldap://ldap.company.local:389",
+    ldapBindDnLabel: "DN لربط LDAP",
+    ldapBindDnPlaceholder: "مثال: cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "كلمة مرور ربط LDAP",
+    ldapBindPasswordPlaceholder: "أدخل كلمة المرور لحساب ربط LDAP",
+    ldapBaseDnLabel: "DN الأساسي للبحث عن المستخدمين",
+    ldapBaseDnPlaceholder: "مثال: ou=users,dc=company,dc=local",
+    summaryTitle: "ملخص التثبيت",
+    summaryDesc: "يرجى مراجعة جميع معلمات التثبيت بعناية. سيؤدي النقر فوق تأكيد إلى بدء نشر غير تفاعلي.",
+    confirmReady: "النظام جاهز للنشر غير التفاعلي",
+    confirmReadyDesc: "تمت التحقق من صحة جميع الحقول الإلزامية. سيقوم الخادم بتنفيذ نص التثبيت ونقل السجلات في الوقت الفعلي.",
+    source: "المصدر",
+    domains: "النطاقات",
+    ssl: "وضع SSL",
+    element: "Element Web",
+    ldap: "مصادقة LDAP",
+    yes: "نعم",
+    no: "لا",
+    online: "عبر الإنترنت",
+    offline: "دون اتصال بالإنترنت",
+    errDomain: "يرجى إدخال تنسيق نطاق صالح.",
+    errIp: "يرجى إدخال عنوان IPv4 صالح.",
+    errEmail: "يرجى إدخال عنوان بريد إلكتروني صالح.",
+    errRequired: "هذا الحقل مطلوب.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "خطوات إضافية وإلزامية بعد اكتمال التثبيت",
+    postInstallGuideSub: "اتبع هذه الخطوات الأساسية بعد التثبيت لربط اللوحة بـ PostgreSQL وتفعيل قدرات واجهة برمجة تطبيقات ماتركس:",
+    stepDbTitle: "1. إدخال بيانات اعتماد قاعدة البيانات في 'اتصالات الخادم'",
+    stepDbDesc: "انسخ كلمة المرور من بطاقة 'معلومات الاتصال بقاعدة بيانات PostgreSQL'. ثم انتقل إلى 'اتصالات الخادم' في القائمة الجانبية، وحرر ملف الخادم النشط، واملأ بيانات قاعدة البيانات (المضيف: 127.0.0.1، المنفذ: 5432، قاعدة البيانات: synapse، المستخدم: synapse_user وكلمة المرور) للاستعلام عن المستخدمين والغرف مباشرة من PostgreSQL.",
+    stepAdminTitle: "2. تسجيل مستخدم مسؤول Synapse وحفظ بيانات الاعتماد",
+    stepAdminDesc: "انتقل إلى 'إدارة المستخدمين' (أو مسؤول ماتركس) في قائمة اللوحة واستخدم 'تسجيل مستخدم جديد' لإنشاء حساب بتفعيل صلاحيات مسؤول Synapse. بعد ذلك، ارجع إلى 'اتصالات الخادم'، وحرر ملف الخادم النشط، ووسع 'عرض إعدادات توکن المسؤول'، واحفظ بيانات الاعتماد أو التوكن الخاص بهذا المستخدم المسؤول."
+  },
+  de: {
+    title: "Matrix Enterprise Stack konfigurieren",
+    subtitle: "Schließen Sie den Assistenten Schritt für Schritt ab, um einen produktionsbereiten, nicht interaktiven Matrix-Cluster zu konfigurieren.",
+    step: "Schritt",
+    next: "Weiter",
+    back: "Zurück",
+    cancel: "Abbrechen",
+    confirmInstall: "Bestätigen & Installation starten",
+    sourceTitle: "Installationsquelle",
+    sourceDesc: "Geben Sie an, wie die für die Installation erforderlichen Pakete abgerufen werden sollen.",
+    sourceOnline: "Online-Installation",
+    sourceOnlineDesc: "Laden Sie während der Installation alle Komponenten dynamisch aus den offiziellen Repositories und von GitHub herunter.",
+    sourceOffline: "Offline- / lokale Installation",
+    sourceOfflineDesc: "Verwenden Sie lokale Paketdateien, vorab heruntergeladene Debian-Pakete und statische Server-Ressourcen.",
+    offlineConfigLabel: "Offline-Konfigurationsdateipfad (Optional)",
+    offlineConfigPlaceholder: "z.B., /etc/matrix-stack.conf",
+    offlineConfigHelp: "Falls angegeben, werden Werte aus dieser Datei als Standardwerte geladen.",
+    offlineElementLabel: "Offline Element Web Tarball-Pfad (Optional)",
+    offlineElementPlaceholder: "z.B., /tmp/element-web.tar.gz",
+    offlineSynapseDebLabel: "Synapse .deb-Paketordner (Optional)",
+    offlineSynapseDebPlaceholder: "z.B., /tmp/synapse_debs",
+    serverTitle: "Server & Domains",
+    serverDesc: "Geben Sie Ihr Kernnetzwerk, das Domain-Routing und die Zertifikatseinstellungen an.",
+    hsDomainLabel: "Matrix Homeserver Domain",
+    hsDomainPlaceholder: "matrix.company.local",
+    elementDomainLabel: "Element Web Frontend Domain",
+    elementDomainPlaceholder: "chat.company.local",
+    baseDomainLabel: "Basis-Domain (für Well-Known-Pointer)",
+    baseDomainPlaceholder: "company.local",
+    publicIpLabel: "Öffentliche IP-Adresse des Servers",
+    publicIpPlaceholder: "z.B., 198.51.100.42",
+    leEmailLabel: "E-Mail für Let's Encrypt",
+    leEmailPlaceholder: "admin@company.local",
+    dbNotice: "Datenbank-Hinweis: Die PostgreSQL-Datenbank wird automatisch mit dedizierten Namen und sicheren Passwörtern konfiguriert.",
+    sslTitle: "SSL/TLS-Sicherheitsebene",
+    sslDesc: "Wählen Sie die Verschlüsselungsmethode für sichere HTTPS-Verbindungen.",
+    sslAuto: "Automatische Erkennung",
+    sslAutoDesc: "Erkennt die Domain automatisch: Interne Domains (.local) erhalten ein selbstsigniertes Zertifikat; öffentliche Domains beantragen Let's Encrypt.",
+    sslSelfSigned: "Selbstsignierte Zertifikate erzwingen",
+    sslSelfSignedDesc: "Erstellen Sie ein sicheres selbstsigniertes 10-Jahres-Zertifikat. Perfekt für private VPNs oder Entwicklung.",
+    sslCustom: "Eigene PEM-Zertifikate",
+    sslCustomDesc: "Geben Sie die Pfade zu Ihren eigenen vertrauenswürdigen SSL-Zertifikatsdateien an.",
+    customCertLabel: "Fullchain-PEM-Dateipfad",
+    customCertPlaceholder: "z.B., /etc/ssl/certs/matrix.crt",
+    customKeyLabel: "Privater Schlüssel PEM-Dateipfad",
+    customKeyPlaceholder: "z.B., /etc/ssl/private/matrix.key",
+    customChainLabel: "CA-Chain-Zertifikat PEM-Dateipfad (Optional)",
+    customChainPlaceholder: "z.B., /etc/ssl/certs/ca-bundle.crt",
+    elementTitle: "Element Web Frontend",
+    elementDesc: "Konfigurieren Sie die Bereitstellungsstrategie für den Element Web Chat-Client.",
+    elementOnline: "Online GitHub-Verteilung",
+    elementOnlineDesc: "Standard-Element-Release-Pakete direkt von GitHub herunterladen und bereitstellen.",
+    elementVersionLabel: "Benutzerdefinierte Element-Version (Optional)",
+    elementVersionPlaceholder: "z.B., 1.11.55 (Standard ist stabil)",
+    elementOffline: "Lokaler Tarball",
+    elementOfflineDesc: "Entpacken und Hosten eines vorab hochgeladenen statischen Element Web-Archivs.",
+    elementOfflinePathLabel: "Lokaler Element Tarball-Dateipfad",
+    elementOfflinePathPlaceholder: "z.B., /tmp/element-web.tar.gz",
+    elementOfflineLabelLabel: "Offline-Versions-Tag (Optional)",
+    elementOfflineLabelPlaceholder: "z.B., v1.11.55",
+    ldapTitle: "Unternehmensverzeichnis (LDAP)",
+    ldapDesc: "Aktivieren Sie die LDAP-Integration, um Benutzern die Anmeldung mit ihren Konten zu ermöglichen.",
+    ldapCheckbox: "LDAP-Authentifizierung direkt nach der Installation konfigurieren?",
+    ldapNotice: "Wenn aktiviert, führt Sie das System direkt nach erfolgreichem Abschluss der Kerninstallation durch den LDAP-Assistenten.",
+    ldapUriLabel: "LDAP-Server-URI",
+    ldapUriPlaceholder: "z.B., ldap://ldap.company.local:389",
+    ldapBindDnLabel: "LDAP Bind DN",
+    ldapBindDnPlaceholder: "z.B., cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "LDAP Bind-Passwort",
+    ldapBindPasswordPlaceholder: "Passwort für das LDAP Bind DN-Konto eingeben",
+    ldapBaseDnLabel: "Basis-DN für Benutzersuche",
+    ldapBaseDnPlaceholder: "z.B., ou=users,dc=company,dc=local",
+    summaryTitle: "Installationszusammenfassung",
+    summaryDesc: "Überprüfen Sie alle Parameter sorgfältig. Ein Klick auf Bestätigen startet die Bereitstellung.",
+    confirmReady: "Bereit für unbeaufsichtigte Bereitstellung",
+    confirmReadyDesc: "Alle Pflichtfelder wurden validiert. Der Server führt das Installationsskript aus und überträgt die Protokolle live.",
+    source: "Quelle",
+    domains: "Domains",
+    ssl: "SSL-Modus",
+    element: "Element Web",
+    ldap: "LDAP-Authentifizierung",
+    yes: "Ja",
+    no: "Nein",
+    online: "Online",
+    offline: "Offline",
+    errDomain: "Bitte geben Sie ein gültiges Domainformat ein.",
+    errIp: "Bitte geben Sie eine gültige IPv4-Adresse ein.",
+    errEmail: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+    errRequired: "Dieses Feld ist erforderlich.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Obligatorische Schritte nach Abschluss der Installation",
+    postInstallGuideSub: "Befolgen Sie diese wesentlichen Schritte nach der Installation, um das Panel mit PostgreSQL zu verbinden und Matrix-API-Funktionen zu aktivieren:",
+    stepDbTitle: "1. Datenbank Zugangsdaten unter 'Serververbindungen' eingeben",
+    stepDbDesc: "Kopieren Sie das Passwort aus der Karte 'PostgreSQL-Datenbankverbindungsinformationen'. Navigieren Sie dann im Seitenmenü zu 'Serververbindungen', bearbeiten Sie Ihr aktives Serverprofil und tragen Sie die Zugangsdaten ein (Host: 127.0.0.1, Port: 5432, DB: synapse, Benutzer: synapse_user und Passwort), um Benutzer und Räume aus PostgreSQL abzufragen.",
+    stepAdminTitle: "2. Synapse-Admin-Benutzer registrieren & Admin-Zugangsdaten speichern",
+    stepAdminDesc: "Gehen Sie im Panel-Menü zu 'Benutzerverwaltung' (oder Matrix Admin) und nutzen Sie 'Neuen Benutzer registrieren', um ein Konto mit Synapse-Admin-Rechten zu erstellen. Kehren Sie dann zu 'Serververbindungen' zurück, bearbeiten Sie das aktive Profil, klappen Sie 'Admin-Token-Einstellungen anzeigen' auf und speichern Sie die Zugangsdaten oder das Token."
+  },
+  ru: {
+    title: "Настройка пакета Matrix Enterprise",
+    subtitle: "Пройдите пошаговый мастер, чтобы настроить и развернуть полностью готовый к работе неинтерактивный кластер Matrix.",
+    step: "Шаг",
+    next: "Далее",
+    back: "Назад",
+    cancel: "Отмена",
+    confirmInstall: "Подтвердить и начать установку",
+    sourceTitle: "Источник установки",
+    sourceDesc: "Укажите, как вы хотите получить необходимые пакеты для установки.",
+    sourceOnline: "Онлайн-установка",
+    sourceOnlineDesc: "Динамически загружайте все компоненты из официальных репозиториев и GitHub во время установки.",
+    sourceOffline: "Локальная / офлайн-установка",
+    sourceOfflineDesc: "Используйте локальные файлы пакетов, предварительно загруженные пакеты Debian и статические ресурсы сервера.",
+    offlineConfigLabel: "Путь к файлу конфигурации офлайн (Необязательно)",
+    offlineConfigPlaceholder: "например, /etc/matrix-stack.conf",
+    offlineConfigHelp: "Если указано, значения из этого файла будут загружены по умолчанию.",
+    offlineElementLabel: "Путь к архиву Element Web офлайн (Необязательно)",
+    offlineElementPlaceholder: "например, /tmp/element-web.tar.gz",
+    offlineSynapseDebLabel: "Папка с пакетами .deb Synapse (Необязательно)",
+    offlineSynapseDebPlaceholder: "например, /tmp/synapse_debs",
+    serverTitle: "Сервер и домены",
+    serverDesc: "Укажите сетевые настройки, маршрутизацию доменов и конфигурацию сертификатов.",
+    hsDomainLabel: "Домен Matrix Homeserver",
+    hsDomainPlaceholder: "matrix.company.local",
+    elementDomainLabel: "Домен Element Web Frontend",
+    elementDomainPlaceholder: "chat.company.local",
+    baseDomainLabel: "Базовый домен (для Well-Known указателей)",
+    baseDomainPlaceholder: "company.local",
+    publicIpLabel: "Публичный IP-адрес сервера",
+    publicIpPlaceholder: "например, 198.51.100.42",
+    leEmailLabel: "Электронная почта Let's Encrypt",
+    leEmailPlaceholder: "admin@company.local",
+    dbNotice: "Уведомление о БД: база данных PostgreSQL настраивается автоматически с выделенными именами и безопасными случайными паролями.",
+    sslTitle: "Уровень безопасности SSL/TLS",
+    sslDesc: "Выберите метод шифрования для безопасных соединений HTTPS.",
+    sslAuto: "Автоматическое разрешение",
+    sslAutoDesc: "Автоматически определяет домен: локальные домены (.local) используют самоподписанные сертификаты; публичные запрашивают Let's Encrypt.",
+    sslSelfSigned: "Принудительные самоподписанные сертификаты",
+    sslSelfSignedDesc: "Создайте безопасный самоподписанный сертификат на 10 лет. Отлично подходит для частных VPN или разработки.",
+    sslCustom: "Пользовательские сертификаты PEM",
+    sslCustomDesc: "Укажите пути к собственным доверенным файлам SSL-сертификатов.",
+    customCertLabel: "Путь к файлу Fullchain PEM",
+    customCertPlaceholder: "например, /etc/ssl/certs/matrix.crt",
+    customKeyLabel: "Путь к файлу Private Key PEM",
+    customKeyPlaceholder: "например, /etc/ssl/private/matrix.key",
+    customChainLabel: "Путь к файлу CA Chain PEM (Необязательно)",
+    customChainPlaceholder: "например, /etc/ssl/certs/ca-bundle.crt",
+    elementTitle: "Element Web Frontend",
+    elementDesc: "Настройте стратегию развертывания чат-клиента Element Web.",
+    elementOnline: "Онлайн-дистрибуция GitHub",
+    elementOnlineDesc: "Загружайте и развертывайте стандартные пакеты релизов Element прямо из GitHub.",
+    elementVersionLabel: "Пользовательская версия Element (Необязательно)",
+    elementVersionPlaceholder: "например, 1.11.55 (по умолчанию стабильная)",
+    elementOffline: "Локальный архив Tarball",
+    elementOfflineDesc: "Распакуйте и разместите статический архив Element Web, предварительно загруженный на сервер.",
+    elementOfflinePathLabel: "Путь к локальному архиву Tarball Element",
+    elementOfflinePathPlaceholder: "например, /tmp/element-web.tar.gz",
+    elementOfflineLabelLabel: "Тег офлайн-версии (Необязательно)",
+    elementOfflineLabelPlaceholder: "например, v1.11.55",
+    ldapTitle: "Корпоративный каталог (LDAP)",
+    ldapDesc: "Включите интеграцию LDAP, чтобы пользователи могли входить со своими корпоративными учетными записями.",
+    ldapCheckbox: "Настроить авторизацию LDAP сразу после завершения установки?",
+    ldapNotice: "Если отмечено, система предложит вам мастер настройки LDAP сразу после успешного завершения основной установки.",
+    ldapUriLabel: "URI сервера LDAP",
+    ldapUriPlaceholder: "например, ldap://ldap.company.local:389",
+    ldapBindDnLabel: "LDAP Bind DN",
+    ldapBindDnPlaceholder: "например, cn=admin,dc=company,dc=local",
+    ldapBindPasswordLabel: "Пароль LDAP Bind",
+    ldapBindPasswordPlaceholder: "Введите пароль для учетной записи LDAP Bind DN",
+    ldapBaseDnLabel: "Базовый DN поиска пользователей",
+    ldapBaseDnPlaceholder: "например, ou=users,dc=company,dc=local",
+    summaryTitle: "Сводка установки",
+    summaryDesc: "Внимательно проверьте все параметры установки. Нажатие подтверждения запустит неинтерактивное развертывание.",
+    confirmReady: "Система готова к неинтерактивному развертыванию",
+    confirmReadyDesc: "Все обязательные поля проверены. Сервер выполнит сценарий установки и будет транслировать логи в реальном времени.",
+    source: "Источник",
+    domains: "Домены",
+    ssl: "Режим SSL",
+    element: "Element Web",
+    ldap: "Авторизация LDAP",
+    yes: "Да",
+    no: "Нет",
+    online: "Онлайн",
+    offline: "Офлайн",
+    errDomain: "Пожалуйста, введите корректный формат домена.",
+    errIp: "Пожалуйста, введите корректный IPv4-адрес.",
+    errEmail: "Пожалуйста, введите корректный адрес электронной почты.",
+    errRequired: "Это поле обязательно для заполнения.",
+
+    // Post-Install Guidance
+    postInstallGuideTitle: "Обязательные шаги после завершения установки",
+    postInstallGuideSub: "Выполните эти важные шаги после установки, чтобы подключить панель к PostgreSQL и включить возможности Matrix API:",
+    stepDbTitle: "1. Ввод учетных данных БД в 'Подключениях к серверу'",
+    stepDbDesc: "Скопируйте пароль из карточки 'Информация о подключении к БД PostgreSQL'. Затем перейдите в 'Подключения к серверу' в боковом меню, отредактируйте активный профиль сервера и заполните данные БД (Хост: 127.0.0.1, Порт: 5432, БД: synapse, Пользователь: synapse_user и Пароль) для запроса пользователей и комнат напрямую из PostgreSQL.",
+    stepAdminTitle: "2. Регистрация администратора Synapse и сохранение данных",
+    stepAdminDesc: "Перейдите в 'Управление пользователями' (или Администрирование Matrix) в меню панели и используйте 'Зарегистрировать нового пользователя', чтобы создать аккаунт с правами администратора Synapse. Затем вернитесь в 'Подключения к серверу', отредактируйте профиль сервера, раскройте 'Показать настройки токена администратора' и сохраните данные аккаунта."
+  }
+};
+
+export function InstallWizardModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  lang,
+  isLightMode,
+  defaultHost = "127.0.0.1",
+  defaultDomain = "company.local"
+}: InstallWizardModalProps) {
+  const isRtl = ['fa', 'ar'].includes(lang);
+  const t = (translations[lang as keyof typeof translations] || translations.en) as typeof translations.en;
+
+  const stepperContainerRef = useRef<HTMLDivElement>(null);
+  const [currentStep, setCurrentStep] = useState(1);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (stepperContainerRef.current) {
+        const activeEl = stepperContainerRef.current.querySelector('[data-active="true"]');
+        if (activeEl) {
+          activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [currentStep]);
+
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // Form states
+  const [installSource, setInstallSource] = useState<'online' | 'offline'>('online');
+  const [offlineConfigPath, setOfflineConfigPath] = useState('');
+  const [offlineElementPath, setOfflineElementPath] = useState('');
+  const [offlineSynapseDebDir, setOfflineSynapseDebDir] = useState('');
+
+  const [hsDomain, setHsDomain] = useState('');
+  const [elementDomain, setElementDomain] = useState('');
+  const [baseDomain, setBaseDomain] = useState('');
+  const [publicIp, setPublicIp] = useState('');
+  const [leEmail, setLeEmail] = useState('');
+
+  const [sslMode, setSslMode] = useState<'auto' | 'selfsigned' | 'custom'>('auto');
+  const [customCertPem, setCustomCertPem] = useState('');
+  const [customKeyPem, setCustomKeyPem] = useState('');
+  const [customChainPem, setCustomChainPem] = useState('');
+
+  const [elementInstallMode, setElementInstallMode] = useState<'online' | 'offline'>('online');
+  const [elementOnlineVersion, setElementOnlineVersion] = useState('');
+  const [elementOfflinePath, setElementOfflinePath] = useState('');
+  const [elementOfflineVersionLabel, setElementOfflineVersionLabel] = useState('');
+
+  const [ldapConfigureNow, setLdapConfigureNow] = useState(false);
+  const [ldapUri, setLdapUri] = useState('');
+  const [ldapBindDn, setLdapBindDn] = useState('');
+  const [ldapBindPassword, setLdapBindPassword] = useState('');
+  const [ldapBaseDn, setLdapBaseDn] = useState('');
+
+  if (!isOpen) return null;
+
+  const validateStep = (step: number): boolean => {
+    const errors: Record<string, string> = {};
+    const domainRegex = /^([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+\.[a-zA-Z]{2,}$/;
+    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (step === 2) {
+      if (hsDomain.trim() && !domainRegex.test(hsDomain.trim())) errors.hsDomain = t.errDomain;
+      if (elementDomain.trim() && !domainRegex.test(elementDomain.trim())) errors.elementDomain = t.errDomain;
+      if (baseDomain.trim() && !domainRegex.test(baseDomain.trim())) errors.baseDomain = t.errDomain;
+      if (publicIp.trim() && !ipRegex.test(publicIp.trim())) errors.publicIp = t.errIp;
+      if (leEmail.trim() && !emailRegex.test(leEmail.trim())) errors.leEmail = t.errEmail;
+    }
+
+    if (step === 3 && sslMode === 'custom') {
+      if (!customCertPem.trim()) errors.customCertPem = t.errRequired;
+      if (!customKeyPem.trim()) errors.customKeyPem = t.errRequired;
+    }
+
+    if (step === 4 && elementInstallMode === 'offline') {
+      if (!elementOfflinePath.trim()) errors.elementOfflinePath = t.errRequired;
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleNext = () => {
+    if (validateStep(currentStep)) {
+      setCurrentStep(prev => prev + 1);
+    }
+  };
+
+  const handleBack = () => {
+    setCurrentStep(prev => Math.max(1, prev - 1));
+  };
+
+  const handleFinalConfirm = () => {
+    if (!validateStep(2) || !validateStep(3) || !validateStep(4) || !validateStep(5)) {
+      return;
+    }
+
+    const effectiveHsDomain = hsDomain.trim() || (defaultDomain ? `matrix.${defaultDomain}` : 'matrix.company.local');
+    const effectiveElementDomain = elementDomain.trim() || (defaultDomain ? `chat.${defaultDomain}` : 'chat.company.local');
+    const effectiveBaseDomain = baseDomain.trim() || defaultDomain || 'company.local';
+    const effectivePublicIp = publicIp.trim() || defaultHost || '127.0.0.1';
+    const effectiveLeEmail = leEmail.trim() || `admin@${defaultDomain || 'company.local'}`;
+
+    const effectiveLdapUri = ldapUri.trim() || 'ldap://localhost:389';
+    const effectiveLdapBindDn = ldapBindDn.trim() || 'cn=admin,dc=company,dc=local';
+    const effectiveLdapBaseDn = ldapBaseDn.trim() || 'ou=users,dc=company,dc=local';
+
+    // Prepare config object for backend installation
+    const finalConfig: any = {
+      HS_DOMAIN: effectiveHsDomain,
+      ELEMENT_DOMAIN: effectiveElementDomain,
+      BASE_DOMAIN: effectiveBaseDomain,
+      PUBLIC_IP: effectivePublicIp,
+      LE_EMAIL: effectiveLeEmail,
+    };
+
+    // Mapping SSL Mode
+    if (sslMode === 'auto') {
+      const isLocal = effectiveHsDomain.includes('.local') || effectiveHsDomain.includes('.lan') || effectiveHsDomain.includes('.internal') || effectiveHsDomain.includes('localhost');
+      finalConfig.SSL_MODE = isLocal ? 'selfsigned' : 'letsencrypt';
+    } else if (sslMode === 'selfsigned') {
+      finalConfig.SSL_MODE = 'selfsigned';
+    } else if (sslMode === 'custom') {
+      finalConfig.SSL_MODE = 'custom';
+      finalConfig.CUSTOM_CERT_PEM = customCertPem.trim();
+      finalConfig.CUSTOM_KEY_PEM = customKeyPem.trim();
+      if (customChainPem.trim()) {
+        finalConfig.CUSTOM_CHAIN_PEM = customChainPem.trim();
+      }
+    }
+
+    // Mapping Installation Source and offline packages
+    if (installSource === 'offline') {
+      if (offlineConfigPath.trim()) {
+        finalConfig.OFFLINE_CONFIG_PATH = offlineConfigPath.trim();
+      }
+      if (offlineElementPath.trim()) {
+        finalConfig.OFFLINE_ELEMENT_PKG = offlineElementPath.trim();
+      }
+      if (offlineSynapseDebDir.trim()) {
+        finalConfig.OFFLINE_SYNAPSE_DEB_DIR = offlineSynapseDebDir.trim();
+      }
+    }
+
+    // Mapping Element Web Installation
+    if (elementInstallMode === 'offline') {
+      finalConfig.OFFLINE_ELEMENT_PKG = elementOfflinePath.trim();
+      if (elementOfflineVersionLabel.trim()) {
+        finalConfig.ELEMENT_VERSION = elementOfflineVersionLabel.trim();
+      }
+    } else {
+      if (elementOnlineVersion.trim()) {
+        finalConfig.ELEMENT_VERSION = elementOnlineVersion.trim();
+      }
+    }
+
+    // LDAP switch
+    if (ldapConfigureNow) {
+      finalConfig.LDAP_NOW = 'y';
+      finalConfig.LDAP_URI = effectiveLdapUri;
+      finalConfig.LDAP_BIND_DN = effectiveLdapBindDn;
+      finalConfig.LDAP_BIND_PASS = ldapBindPassword.trim();
+      finalConfig.LDAP_BIND_PASSWORD = ldapBindPassword.trim();
+      finalConfig.LDAP_BASE_DC = effectiveLdapBaseDn;
+      finalConfig.LDAP_BASE = effectiveLdapBaseDn;
+      finalConfig.LDAP_MODE = 'search';
+      finalConfig.LDAP_UID_ATTR = 'sAMAccountName';
+      finalConfig.LDAP_MAIL_ATTR = 'mail';
+      finalConfig.LDAP_NAME_ATTR = 'displayName';
+      finalConfig.LDAP_START_TLS = 'false';
+    } else {
+      finalConfig.LDAP_NOW = 'n';
+    }
+
+    onConfirm(finalConfig);
+  };
+
+  const stepsList = [
+    { id: 1, name: t.sourceTitle },
+    { id: 2, name: t.serverTitle },
+    { id: 3, name: t.sslTitle },
+    { id: 4, name: t.elementTitle },
+    { id: 5, name: t.ldapTitle },
+    { id: 6, name: t.summaryTitle }
+  ];
+
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md overflow-y-auto transition-colors duration-300 ${isLightMode ? 'bg-slate-900/40' : 'bg-slate-950/80'}`}>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ type: 'spring', duration: 0.5 }}
+        className={`relative w-full max-w-4xl border rounded-3xl flex flex-col max-h-[90vh] overflow-hidden transition-all duration-300 ${
+          isLightMode 
+            ? 'bg-white border-slate-200 shadow-2xl shadow-slate-300/60' 
+            : 'bg-slate-900 border-white/10 shadow-2xl shadow-rose-950/20'
+        }`}
+        dir={isRtl ? "rtl" : "ltr"}
+      >
+        {/* Header */}
+        <div className={`flex items-center justify-between p-6 border-b transition-colors duration-300 ${isLightMode ? 'border-slate-100 bg-slate-50' : 'border-white/5 bg-slate-950/40'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-xl border transition-all ${
+              isLightMode 
+                ? 'bg-gradient-to-br from-rose-50 to-amber-50 border-rose-200 text-rose-500' 
+                : 'bg-gradient-to-br from-rose-500/20 to-amber-500/20 border-rose-500/20 text-rose-400'
+            }`}>
+              <Activity className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h2 className={`text-xl font-display font-extrabold transition-colors duration-300 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{t.title}</h2>
+              <p className={`text-xs mt-0.5 transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.subtitle}</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className={`p-2 rounded-xl transition-all cursor-pointer ${
+              isLightMode 
+                ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-800' 
+                : 'hover:bg-white/5 text-slate-400 hover:text-white'
+            }`}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Stepper progress indicator */}
+        <div 
+          ref={stepperContainerRef}
+          className={`px-6 py-4 border-b flex items-center justify-between overflow-x-auto gap-4 scrollbar-none transition-colors duration-300 ${
+            isLightMode ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-slate-950/20'
+          }`}
+        >
+          {stepsList.map((step) => {
+            const isActive = step.id === currentStep;
+            const isCompleted = step.id < currentStep;
+            return (
+              <div 
+                key={step.id} 
+                data-active={isActive}
+                className="flex items-center gap-2 shrink-0"
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold font-mono border transition-all ${
+                  isActive 
+                    ? isLightMode 
+                      ? 'bg-rose-50 text-rose-600 border-rose-200 ring-4 ring-rose-100 shadow-sm shadow-rose-100' 
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/30 ring-4 ring-rose-500/5 shadow-md shadow-rose-500/10'
+                    : isCompleted
+                      ? isLightMode
+                        ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : isLightMode
+                        ? 'bg-slate-100 text-slate-400 border-slate-200'
+                        : 'bg-slate-950/40 text-slate-500 border-white/5'
+                }`}>
+                  {isCompleted ? <Check className="w-4 h-4" /> : step.id}
+                </div>
+                <span className={`text-xs font-semibold transition-all ${
+                  isActive 
+                    ? isLightMode ? 'text-slate-900 font-bold' : 'text-white font-bold' 
+                    : isCompleted 
+                      ? isLightMode ? 'text-slate-600' : 'text-slate-300' 
+                      : isLightMode ? 'text-slate-400' : 'text-slate-500'
+                }`}>
+                  {step.name}
+                </span>
+                {step.id < 6 && (
+                  <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${isRtl ? 'rotate-180' : ''} ${
+                    step.id < currentStep 
+                      ? 'text-emerald-500' 
+                      : isLightMode ? 'text-slate-300' : 'text-slate-700'
+                  }`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Body content */}
+        <div className={`flex-1 p-6 overflow-y-auto min-h-[350px] transition-colors duration-300 ${isLightMode ? 'bg-slate-50/20' : 'bg-slate-900/40'}`}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentStep}
+              initial={{ opacity: 0, x: isRtl ? -15 : 15 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: isRtl ? 15 : -15 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* STEP 1: Installation Source */}
+              {currentStep === 1 && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                      <Folder className="w-5 h-5 text-rose-400" />
+                      {t.sourceTitle}
+                    </h3>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sourceDesc}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Online Card */}
+                    <div 
+                      onClick={() => setInstallSource('online')}
+                      className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-44 ${
+                        installSource === 'online' 
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 ring-2 ring-rose-500/10 shadow-sm shadow-rose-100'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-rose-500' : 'bg-slate-900 border-white/10 text-rose-400'
+                        }`}>
+                          <CloudDownload className="w-6 h-6" />
+                        </div>
+                        {installSource === 'online' && (
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
+                            <Check className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-4">
+                        <h4 className={`font-bold text-md transition-colors ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sourceOnline}</h4>
+                        <p className={`text-xs mt-1 transition-colors ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sourceOnlineDesc}</p>
+                      </div>
+                    </div>
+
+                    {/* Offline Card */}
+                    <div 
+                      onClick={() => setInstallSource('offline')}
+                      className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-44 ${
+                        installSource === 'offline' 
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 ring-2 ring-rose-500/10 shadow-sm shadow-rose-100'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-amber-500' : 'bg-slate-900 border-white/10 text-amber-400'
+                        }`}>
+                          <FileText className="w-6 h-6" />
+                        </div>
+                        {installSource === 'offline' && (
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
+                            <Check className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-4">
+                        <h4 className={`font-bold text-md transition-colors ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sourceOffline}</h4>
+                        <p className={`text-xs mt-1 transition-colors ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sourceOfflineDesc}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Offline Extra Fields */}
+                  {installSource === 'offline' && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.offlineConfigLabel}</label>
+                          <input 
+                            type="text"
+                            value={offlineConfigPath}
+                            onChange={(e) => setOfflineConfigPath(e.target.value)}
+                            placeholder={t.offlineConfigPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode 
+                                ? 'bg-white border-slate-200 text-slate-800' 
+                                : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          <p className={`text-[10px] mt-1 transition-colors ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.offlineConfigHelp}</p>
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.offlineElementLabel}</label>
+                          <input 
+                            type="text"
+                            value={offlineElementPath}
+                            onChange={(e) => setOfflineElementPath(e.target.value)}
+                            placeholder={t.offlineElementPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode 
+                                ? 'bg-white border-slate-200 text-slate-800' 
+                                : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.offlineSynapseDebLabel}</label>
+                          <input 
+                            type="text"
+                            value={offlineSynapseDebDir}
+                            onChange={(e) => setOfflineSynapseDebDir(e.target.value)}
+                            placeholder={t.offlineSynapseDebPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode 
+                                ? 'bg-white border-slate-200 text-slate-800' 
+                                : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 2: Server Settings */}
+              {currentStep === 2 && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                      <Server className="w-5 h-5 text-rose-400" />
+                      {t.serverTitle}
+                    </h3>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.serverDesc}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.hsDomainLabel}</label>
+                      <input 
+                        type="text"
+                        value={hsDomain}
+                        onChange={(e) => setHsDomain(e.target.value)}
+                        placeholder={t.hsDomainPlaceholder}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.hsDomain 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
+                        }`}
+                      />
+                      {formErrors.hsDomain && <p className="text-xs text-red-500 mt-1">{formErrors.hsDomain}</p>}
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementDomainLabel}</label>
+                      <input 
+                        type="text"
+                        value={elementDomain}
+                        onChange={(e) => setElementDomain(e.target.value)}
+                        placeholder={t.elementDomainPlaceholder}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.elementDomain 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
+                        }`}
+                      />
+                      {formErrors.elementDomain && <p className="text-xs text-red-500 mt-1">{formErrors.elementDomain}</p>}
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.baseDomainLabel}</label>
+                      <input 
+                        type="text"
+                        value={baseDomain}
+                        onChange={(e) => setBaseDomain(e.target.value)}
+                        placeholder={t.baseDomainPlaceholder}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.baseDomain 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
+                        }`}
+                      />
+                      {formErrors.baseDomain && <p className="text-xs text-red-500 mt-1">{formErrors.baseDomain}</p>}
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.publicIpLabel}</label>
+                      <input 
+                        type="text"
+                        value={publicIp}
+                        onChange={(e) => setPublicIp(e.target.value)}
+                        placeholder={t.publicIpPlaceholder}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.publicIp 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
+                        }`}
+                      />
+                      {formErrors.publicIp && <p className="text-xs text-red-500 mt-1">{formErrors.publicIp}</p>}
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.leEmailLabel}</label>
+                      <input 
+                        type="text"
+                        value={leEmail}
+                        onChange={(e) => setLeEmail(e.target.value)}
+                        placeholder={t.leEmailPlaceholder}
+                        className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none transition-all font-mono ${
+                          formErrors.leEmail 
+                            ? isLightMode ? 'border-red-400 bg-red-50/15 text-slate-800 focus:border-red-500' : 'border-red-500/50 focus:border-red-500 text-white'
+                            : isLightMode ? 'bg-slate-50 border-slate-200 focus:border-rose-500 text-slate-800 focus:bg-white' : 'bg-slate-950/40 border-white/10 focus:border-rose-500/50 text-white'
+                        }`}
+                      />
+                      {formErrors.leEmail && <p className="text-xs text-red-500 mt-1">{formErrors.leEmail}</p>}
+                    </div>
+                  </div>
+
+                  {/* Database Notice Box */}
+                  <div className={`p-4 rounded-2xl border flex gap-3 transition-colors ${
+                    isLightMode 
+                      ? 'bg-indigo-50/50 border-indigo-100 text-slate-600 shadow-sm' 
+                      : 'bg-indigo-500/5 border-indigo-500/10 text-slate-400'
+                  }`}>
+                    <AlertCircle className={`w-5 h-5 shrink-0 mt-0.5 ${isLightMode ? 'text-indigo-500' : 'text-indigo-400'}`} />
+                    <p className="text-xs leading-relaxed">{t.dbNotice}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: SSL Certificate */}
+              {currentStep === 3 && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                      <Globe className="w-5 h-5 text-rose-400" />
+                      {t.sslTitle}
+                    </h3>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslDesc}</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Auto */}
+                    <div 
+                      onClick={() => setSslMode('auto')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${
+                        sslMode === 'auto' 
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                        sslMode === 'auto' ? 'border-rose-500 text-rose-500' : 'border-slate-400'
+                      }`}>
+                        {sslMode === 'auto' && <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />}
+                      </span>
+                      <div>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sslAuto}</h4>
+                        <p className={`text-xs mt-0.5 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslAutoDesc}</p>
+                      </div>
+                    </div>
+
+                    {/* Self-Signed */}
+                    <div 
+                      onClick={() => setSslMode('selfsigned')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${
+                        sslMode === 'selfsigned' 
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                        sslMode === 'selfsigned' ? 'border-rose-500 text-rose-500' : 'border-slate-400'
+                      }`}>
+                        {sslMode === 'selfsigned' && <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />}
+                      </span>
+                      <div>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sslSelfSigned}</h4>
+                        <p className={`text-xs mt-0.5 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslSelfSignedDesc}</p>
+                      </div>
+                    </div>
+
+                    {/* Custom */}
+                    <div 
+                      onClick={() => setSslMode('custom')}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-4 items-center ${
+                        sslMode === 'custom' 
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                        sslMode === 'custom' ? 'border-rose-500 text-rose-500' : 'border-slate-400'
+                      }`}>
+                        {sslMode === 'custom' && <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />}
+                      </span>
+                      <div>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.sslCustom}</h4>
+                        <p className={`text-xs mt-0.5 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.sslCustomDesc}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Custom PEM extra fields */}
+                  {sslMode === 'custom' && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
+                    >
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.customCertLabel}</label>
+                          <input 
+                            type="text"
+                            value={customCertPem}
+                            onChange={(e) => setCustomCertPem(e.target.value)}
+                            placeholder={t.customCertPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.customCertPem 
+                                ? 'border-red-500 bg-red-50/15' 
+                                : isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.customCertPem && <p className="text-xs text-red-500 mt-1">{formErrors.customCertPem}</p>}
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.customKeyLabel}</label>
+                          <input 
+                            type="text"
+                            value={customKeyPem}
+                            onChange={(e) => setCustomKeyPem(e.target.value)}
+                            placeholder={t.customKeyPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.customKeyPem 
+                                ? 'border-red-500 bg-red-50/15' 
+                                : isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.customKeyPem && <p className="text-xs text-red-500 mt-1">{formErrors.customKeyPem}</p>}
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.customChainLabel}</label>
+                          <input 
+                            type="text"
+                            value={customChainPem}
+                            onChange={(e) => setCustomChainPem(e.target.value)}
+                            placeholder={t.customChainPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 4: Element Web */}
+              {currentStep === 4 && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                      <Settings className="w-5 h-5 text-rose-400" />
+                      {t.elementTitle}
+                    </h3>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.elementDesc}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Online GitHub */}
+                    <div 
+                      onClick={() => setElementInstallMode('online')}
+                      className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-40 ${
+                        elementInstallMode === 'online' 
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-rose-500' : 'bg-slate-900 border-white/10 text-rose-400'
+                        }`}>
+                          <CloudDownload className="w-5 h-5" />
+                        </div>
+                        {elementInstallMode === 'online' && (
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
+                            <Check className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.elementOnline}</h4>
+                        <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.elementOnlineDesc}</p>
+                      </div>
+                    </div>
+
+                    {/* Offline Tarball */}
+                    <div 
+                      onClick={() => setElementInstallMode('offline')}
+                      className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between h-40 ${
+                        elementInstallMode === 'offline' 
+                          ? isLightMode
+                            ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 shadow-sm shadow-rose-100 ring-2 ring-rose-500/10'
+                            : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10' 
+                          : isLightMode
+                            ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className={`p-3 rounded-xl border transition-colors ${
+                          isLightMode ? 'bg-slate-50 border-slate-200 text-amber-500' : 'bg-slate-900 border-white/10 text-amber-400'
+                        }`}>
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        {elementInstallMode === 'offline' && (
+                          <span className={`p-1 rounded-full border ${isLightMode ? 'bg-rose-100 text-rose-600 border-rose-200' : 'bg-rose-500/20 text-rose-400 border-rose-500/20'}`}>
+                            <Check className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.elementOffline}</h4>
+                        <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.elementOfflineDesc}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Online custom version input */}
+                  {elementInstallMode === 'online' && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
+                    >
+                      <div>
+                        <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementVersionLabel}</label>
+                        <input 
+                          type="text"
+                          value={elementOnlineVersion}
+                          onChange={(e) => setElementOnlineVersion(e.target.value)}
+                          placeholder={t.elementVersionPlaceholder}
+                          className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                            isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                          }`}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Offline elements paths */}
+                  {elementInstallMode === 'offline' && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-5 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2">
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementOfflinePathLabel}</label>
+                          <input 
+                            type="text"
+                            value={elementOfflinePath}
+                            onChange={(e) => setElementOfflinePath(e.target.value)}
+                            placeholder={t.elementOfflinePathPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.elementOfflinePath 
+                                ? 'border-red-500 bg-red-50/15' 
+                                : isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.elementOfflinePath && <p className="text-xs text-red-500 mt-1">{formErrors.elementOfflinePath}</p>}
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.elementOfflineLabelLabel}</label>
+                          <input 
+                            type="text"
+                            value={elementOfflineVersionLabel}
+                            onChange={(e) => setElementOfflineVersionLabel(e.target.value)}
+                            placeholder={t.elementOfflineLabelPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 5: LDAP Configuration */}
+              {currentStep === 5 && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                      <Key className="w-5 h-5 text-rose-400" />
+                      {t.ldapTitle}
+                    </h3>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.ldapDesc}</p>
+                  </div>
+
+                  <div 
+                    onClick={() => setLdapConfigureNow(prev => !prev)}
+                    className={`p-6 rounded-2xl border transition-all cursor-pointer flex gap-4 items-start ${
+                      ldapConfigureNow 
+                        ? isLightMode
+                          ? 'bg-rose-50/50 border-rose-500/40 text-slate-800 ring-2 ring-rose-500/10 shadow-sm shadow-rose-100'
+                          : 'bg-rose-500/5 border-rose-500/40 text-white ring-2 ring-rose-500/10'
+                        : isLightMode
+                          ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                          : 'bg-slate-950/40 border-white/5 text-slate-400 hover:border-white/10 hover:bg-slate-950/60'
+                    }`}
+                  >
+                    <div className="pt-0.5">
+                      <span className={`w-5.5 h-5.5 rounded border flex items-center justify-center shrink-0 transition-all ${
+                        ldapConfigureNow 
+                          ? 'bg-rose-500 border-rose-500 text-white' 
+                          : isLightMode ? 'border-slate-300 bg-white' : 'border-slate-600 bg-transparent'
+                      }`}>
+                        {ldapConfigureNow && <Check className="w-4 h-4 stroke-[3px]" />}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className={`font-bold text-md ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.ldapCheckbox}</h4>
+                      <p className={`text-xs mt-1.5 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.ldapNotice}</p>
+                    </div>
+                  </div>
+
+                  {ldapConfigureNow && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <div className={`p-6 rounded-2xl border grid grid-cols-1 md:grid-cols-2 gap-4 ${
+                        isLightMode ? 'bg-slate-50/50 border-slate-200' : 'bg-slate-950/20 border-white/5'
+                      }`}>
+                        <div className="md:col-span-2">
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapUriLabel}</label>
+                          <input 
+                            type="text"
+                            value={ldapUri}
+                            onChange={(e) => setLdapUri(e.target.value)}
+                            placeholder={t.ldapUriPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapUri 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapUri && <p className="text-xs text-red-500 mt-1">{formErrors.ldapUri}</p>}
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapBindDnLabel}</label>
+                          <input 
+                            type="text"
+                            value={ldapBindDn}
+                            onChange={(e) => setLdapBindDn(e.target.value)}
+                            placeholder={t.ldapBindDnPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapBindDn 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapBindDn && <p className="text-xs text-red-500 mt-1">{formErrors.ldapBindDn}</p>}
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapBindPasswordLabel}</label>
+                          <input 
+                            type="password"
+                            value={ldapBindPassword}
+                            onChange={(e) => setLdapBindPassword(e.target.value)}
+                            placeholder={t.ldapBindPasswordPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapBindPassword 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapBindPassword && <p className="text-xs text-red-500 mt-1">{formErrors.ldapBindPassword}</p>}
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className={`block text-xs font-bold mb-2 uppercase tracking-wider transition-colors ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{t.ldapBaseDnLabel}</label>
+                          <input 
+                            type="text"
+                            value={ldapBaseDn}
+                            onChange={(e) => setLdapBaseDn(e.target.value)}
+                            placeholder={t.ldapBaseDnPlaceholder}
+                            className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-rose-500/50 transition-all font-mono ${
+                              formErrors.ldapBaseDn 
+                                ? 'border-red-500 bg-red-50/10' 
+                                : isLightMode 
+                                  ? 'bg-white border-slate-200 text-slate-800' 
+                                  : 'bg-slate-950/60 border-white/10 text-white'
+                            }`}
+                          />
+                          {formErrors.ldapBaseDn && <p className="text-xs text-red-500 mt-1">{formErrors.ldapBaseDn}</p>}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 6: Summary & Confirm */}
+              {currentStep === 6 && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 transition-colors duration-300 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                      <CheckCircle className="w-5 h-5 text-emerald-500" />
+                      {t.summaryTitle}
+                    </h3>
+                    <p className={`text-sm transition-colors duration-300 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.summaryDesc}</p>
+                  </div>
+
+                  {/* Summary Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Source Info */}
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.source}</span>
+                      <div className={`flex items-center gap-2 text-sm ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
+                        <span className={`w-2 h-2 rounded-full ${installSource === 'online' ? 'bg-rose-500' : 'bg-amber-500'}`} />
+                        <span className="font-semibold">{installSource === 'online' ? t.online : t.offline}</span>
+                      </div>
+                      {installSource === 'offline' && (
+                        <div className={`mt-2 text-xs font-mono space-y-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {offlineConfigPath && <div>Config: {offlineConfigPath}</div>}
+                          {offlineElementPath && <div>Element: {offlineElementPath}</div>}
+                          {offlineSynapseDebDir && <div>Synapse deb: {offlineSynapseDebDir}</div>}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SSL Info */}
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.ssl}</span>
+                      <div className={`flex items-center gap-2 text-sm ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
+                        <span className="font-semibold text-rose-500 uppercase">{sslMode}</span>
+                      </div>
+                      {sslMode === 'custom' && (
+                        <div className={`mt-2 text-xs font-mono space-y-1 ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <div className="truncate">Cert: {customCertPem}</div>
+                          <div className="truncate">Key: {customKeyPem}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Domain Matrix Details */}
+                    <div className={`p-4 rounded-2xl border transition-colors md:col-span-2 space-y-2 ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-1 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.domains}</span>
+                      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Homeserver:</span>
+                          <span className={`${isLightMode ? 'text-indigo-600' : 'text-indigo-400'} font-bold`}>https://{hsDomain || (defaultDomain ? `matrix.${defaultDomain}` : 'matrix.company.local')}</span>
+                        </div>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Element:</span>
+                          <span className={`${isLightMode ? 'text-purple-600' : 'text-purple-400'} font-bold`}>https://{elementDomain || (defaultDomain ? `chat.${defaultDomain}` : 'chat.company.local')}</span>
+                        </div>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Base Domain:</span>
+                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{baseDomain || defaultDomain || 'company.local'}</span>
+                        </div>
+                        <div className={`flex justify-between border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Public IP:</span>
+                          <span className={`${isLightMode ? 'text-emerald-600' : 'text-emerald-400'} font-bold`}>{publicIp || defaultHost || '127.0.0.1'}</span>
+                        </div>
+                        <div className={`flex justify-between sm:col-span-2 border-b pb-1 ${isLightMode ? 'border-slate-100' : 'border-white/5'}`}>
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Email:</span>
+                          <span className={isLightMode ? 'text-slate-700' : 'text-slate-400'}>{leEmail || `admin@${defaultDomain || 'company.local'}`}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Element App Deployment Info */}
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.element}</span>
+                      <div className={`text-xs font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                        <div className="flex justify-between">
+                          <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Source:</span>
+                          <span className={`font-semibold capitalize ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>{elementInstallMode}</span>
+                        </div>
+                        {elementInstallMode === 'online' && elementOnlineVersion && (
+                          <div className="flex justify-between mt-1">
+                            <span className={isLightMode ? 'text-slate-400' : 'text-slate-500'}>Version:</span>
+                            <span className="text-rose-500">{elementOnlineVersion}</span>
+                          </div>
+                        )}
+                        {elementInstallMode === 'offline' && (
+                          <div className={`mt-1 text-[11px] truncate ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Path: {elementOfflinePath}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* LDAP Info */}
+                    <div className={`p-4 rounded-2xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-white/5'}`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider block mb-2 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{t.ldap}</span>
+                      <div className={`flex items-center gap-2 text-sm ${isLightMode ? 'text-slate-800' : 'text-slate-200'}`}>
+                        <span className={`w-2 h-2 rounded-full ${ldapConfigureNow ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                        <span className="font-semibold">{ldapConfigureNow ? t.yes : t.no}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Post-Installation Guidance Box */}
+                  <div className={`p-4 rounded-2xl border space-y-3 transition-colors ${
+                    isLightMode 
+                      ? 'bg-indigo-50/80 border-indigo-200 text-slate-800' 
+                      : 'bg-gradient-to-br from-indigo-950/50 via-slate-900/90 to-purple-950/40 border-indigo-500/30 text-slate-100 shadow-xl'
+                  }`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-xl border shrink-0 ${
+                        isLightMode 
+                          ? 'bg-indigo-100 border-indigo-300 text-indigo-700' 
+                          : 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400'
+                      }`}>
+                        <ShieldCheck className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-indigo-950' : 'text-indigo-300'}`}>
+                          {t.postInstallGuideTitle}
+                        </h4>
+                        <p className={`text-xs mt-0.5 leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                          {t.postInstallGuideSub}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      {/* Step 1: DB connection */}
+                      <div className={`p-3 rounded-xl border space-y-1.5 ${
+                        isLightMode ? 'bg-white border-indigo-200/80 shadow-sm' : 'bg-slate-950/60 border-indigo-500/20'
+                      }`}>
+                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-emerald-700' : 'text-emerald-400'}`}>
+                          <Database className="w-4 h-4 shrink-0" />
+                          <span>{t.stepDbTitle}</span>
+                        </div>
+                        <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                          {t.stepDbDesc}
+                        </p>
+                      </div>
+
+                      {/* Step 2: Admin creation */}
+                      <div className={`p-3 rounded-xl border space-y-1.5 ${
+                        isLightMode ? 'bg-white border-indigo-200/80 shadow-sm' : 'bg-slate-950/60 border-indigo-500/20'
+                      }`}>
+                        <div className={`flex items-center gap-2 font-bold text-xs ${isLightMode ? 'text-indigo-700' : 'text-indigo-400'}`}>
+                          <UserCheck className="w-4 h-4 shrink-0" />
+                          <span>{t.stepAdminTitle}</span>
+                        </div>
+                        <p className={`text-[11px] leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                          {t.stepAdminDesc}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ready Message */}
+                  <div className={`p-4 rounded-2xl border flex gap-3 transition-colors ${
+                    isLightMode 
+                      ? 'bg-emerald-50/50 border-emerald-100 text-slate-600 shadow-sm' 
+                      : 'bg-emerald-500/5 border-emerald-500/10 text-slate-400'
+                  }`}>
+                    <CheckCircle className={`w-5 h-5 shrink-0 mt-0.5 ${isLightMode ? 'text-emerald-500' : 'text-emerald-400'}`} />
+                    <div>
+                      <h4 className={`text-xs font-bold uppercase tracking-wider ${isLightMode ? 'text-slate-800' : 'text-white'}`}>{t.confirmReady}</h4>
+                      <p className={`text-xs mt-1 leading-relaxed ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{t.confirmReadyDesc}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Footer controls */}
+        <div className={`p-6 border-t flex items-center justify-between gap-4 transition-colors duration-300 ${
+          isLightMode ? 'border-slate-100 bg-slate-50' : 'border-white/5 bg-slate-950/40'
+        }`}>
+          <button 
+            onClick={currentStep === 1 ? onClose : handleBack}
+            className={`px-5 py-2.5 rounded-xl border text-sm font-semibold transition-all cursor-pointer flex items-center gap-2 ${
+              isLightMode 
+                ? 'border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-800' 
+                : 'border-white/10 hover:bg-white/5 text-slate-300 hover:text-white'
+            }`}
+          >
+            {currentStep > 1 && <ChevronLeft className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />}
+            {currentStep === 1 ? t.cancel : t.back}
+          </button>
+
+          {currentStep < 6 ? (
+            <button 
+              onClick={handleNext}
+              className={`px-6 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer flex items-center gap-2 shadow-lg ${
+                isLightMode 
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-200/50 hover:scale-[1.01]' 
+                  : 'bg-rose-500 hover:bg-rose-400 text-white shadow-rose-950/30 hover:scale-[1.01]'
+              }`}
+            >
+              {t.next}
+              <ChevronRight className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />
+            </button>
+          ) : (
+            <button 
+              onClick={handleFinalConfirm}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white text-sm font-bold transition-all cursor-pointer flex items-center gap-2 shadow-lg shadow-rose-950/30 ring-2 ring-rose-500/10 hover:scale-[1.02]"
+            >
+              {t.confirmInstall}
+              <ArrowRight className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
