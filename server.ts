@@ -6280,9 +6280,22 @@ async function handleRoomKickOrBan(
       reason: reasonStr,
       timestamp: new Date().toISOString(),
       userIp,
-      userAgent
+      userAgent,
+      status: "banned"
     });
     writeDb(db);
+  } else if (action === 'unban') {
+    if (db.bannedUsersLogs && db.bannedUsersLogs.length > 0) {
+      db.bannedUsersLogs.forEach((item: any) => {
+        if (item.roomId === normRoomId && item.userMxid?.toLowerCase() === normTargetMxid.toLowerCase()) {
+          item.unbanned = true;
+          item.unbannedAt = new Date().toISOString();
+          item.unbannedBy = requesterUsername;
+          item.status = "unbanned";
+        }
+      });
+      writeDb(db);
+    }
   }
 
   db.auditLogs.unshift({
@@ -8008,8 +8021,9 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
 
   const joinedMembers = Array.from(joinedMembersMap.values());
   const bannedMembers = Array.from(bannedMembersSet);
+  const bannedHistory = (db.bannedUsersLogs || []).filter((b: any) => b.roomId === roomId);
 
-  res.json({ joinedMembers, bannedMembers });
+  res.json({ joinedMembers, bannedMembers, bannedHistory });
 });
 
 app.post("/api/matrix/rooms/create", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
@@ -8285,6 +8299,44 @@ app.delete("/api/matrix/kicked-users/:id", authenticateToken, checkPermission(["
     res.json({ success: true, kickedUsers: db.kickedUsersLogs });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to delete kicked user record" });
+  }
+});
+
+app.get("/api/matrix/banned-users", authenticateToken, async (req, res) => {
+  try {
+    const db = readDb();
+    if (!db.bannedUsersLogs) {
+      db.bannedUsersLogs = [];
+    }
+    // Enrich with currently banned status from rooms
+    const enrichedLogs = db.bannedUsersLogs.map((log: any) => {
+      const room = (db.matrixRooms || []).find((r: any) => r.id === log.roomId);
+      const isCurrentlyBanned = room?.bannedMembers?.some((bm: string) => bm.toLowerCase() === log.userMxid?.toLowerCase()) ?? false;
+      return {
+        ...log,
+        isCurrentlyBanned
+      };
+    });
+    res.json({ bannedUsers: enrichedLogs });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch banned users history" });
+  }
+});
+
+app.delete("/api/matrix/banned-users/:id", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = readDb();
+    if (!db.bannedUsersLogs) db.bannedUsersLogs = [];
+    if (id === "all") {
+      db.bannedUsersLogs = [];
+    } else {
+      db.bannedUsersLogs = db.bannedUsersLogs.filter((item: any) => item.id !== id);
+    }
+    writeDb(db);
+    res.json({ success: true, bannedUsers: db.bannedUsersLogs });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to delete banned user record" });
   }
 });
 

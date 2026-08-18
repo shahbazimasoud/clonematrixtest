@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.17.12** (Released: 2026-08-18)
+## Current Panel Version: **v2.18.0** (Released: 2026-08-18)
 
 ### Changelog History
+
+#### **v2.18.0** - 2026-08-18
+- **Banned Members Management Split: Users BAN & History BAN with Frequency Tracking**:
+  - **Banned Members Two-Section Division**: Segmented Banned Members into 'Users BAN' (active bans currently enforced on room/server) and 'History BAN' (full historical archive of ban events with multi-ban frequency tracking).
+  - **Dedicated Global Banned Members Modal**: Added a top toolbar action in Room Management opening a comprehensive management modal supporting quick searching, filtering, and real-time unbanning.
+  - **Room-Specific Banned Tabs**: Updated the View Members modal to feature two dedicated sub-tabs: 'Users BAN (Active)' and 'History BAN', displaying past reasons, dates, moderator details, and ban counts.
+  - **Synapse-Authoritative Unban & Immediate State Sync**: Integrated real-time unban handling that removes users from Synapse room ban state, updates local ban lists, and syncs history logs instantly.
 
 #### **v2.17.12** - 2026-08-18
 - **Deterministic Non-Speculative Matrix Room Ban & Unban Architecture**:

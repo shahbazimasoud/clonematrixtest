@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.17.12";
+export const PANEL_VERSION = "2.18.0";
 export const PANEL_BUILD_DATE = "2026-08-18";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.18.0",
+    date: "2026-08-18",
+    title: "Banned Members Management Split: Users BAN & History BAN with Frequency Tracking",
+    changes: [
+      "Banned Members Two-Section Division: Segmented Banned Members into 'Users BAN' (active bans currently enforced on room/server) and 'History BAN' (full historical archive of ban events with multi-ban frequency tracking).",
+      "Dedicated Global Banned Members Modal: Added a top toolbar action in Room Management opening a comprehensive management modal supporting quick searching, filtering, and real-time unbanning.",
+      "Room-Specific Banned Tabs: Updated the View Members modal to feature two dedicated sub-tabs: 'Users BAN (Active)' and 'History BAN', displaying past reasons, dates, and moderator details.",
+      "Synapse-Authoritative Unban & Immediate State Sync: Integrated real-time unban handling that removes users from Synapse room ban state, updates local ban lists, and syncs history logs instantly."
+    ]
+  },
   {
     version: "2.17.12",
     date: "2026-08-18",
