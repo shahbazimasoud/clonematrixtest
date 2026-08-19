@@ -20894,6 +20894,7 @@ async function syncElementBrandingDom(
     showCreateAccount?: boolean;
     logoClickUrl?: string;
     loginFields?: { allowMxid?: boolean; allowEmail?: boolean; allowPhone?: boolean };
+    disable3pidLogin?: boolean;
   },
   logoClickUrlOrConn?: any,
   loginFieldsOrConn?: any,
@@ -20905,6 +20906,7 @@ async function syncElementBrandingDom(
     let showCreateAccount = true;
     let logoClickUrl = "";
     let loginFields: { allowMxid?: boolean; allowEmail?: boolean; allowPhone?: boolean } = { allowMxid: true, allowEmail: true, allowPhone: true };
+    let disable3pidLogin = false;
     let activeConn = maybeConn;
 
     if (typeof optionsOrFooter === 'object' && optionsOrFooter !== null) {
@@ -20913,6 +20915,7 @@ async function syncElementBrandingDom(
       if (optionsOrFooter.showCreateAccount !== undefined) showCreateAccount = optionsOrFooter.showCreateAccount !== false;
       if (optionsOrFooter.logoClickUrl !== undefined) logoClickUrl = optionsOrFooter.logoClickUrl || "";
       if (optionsOrFooter.loginFields) loginFields = { ...loginFields, ...optionsOrFooter.loginFields };
+      if (optionsOrFooter.disable3pidLogin !== undefined) disable3pidLogin = optionsOrFooter.disable3pidLogin === true;
       if (logoClickUrlOrConn && typeof logoClickUrlOrConn === 'object') activeConn = logoClickUrlOrConn;
     } else {
       showAuthFooter = optionsOrFooter !== false;
@@ -20926,6 +20929,7 @@ async function syncElementBrandingDom(
           if (loginFieldsOrConn.showForgotPassword !== undefined) showForgotPassword = loginFieldsOrConn.showForgotPassword !== false;
           if (loginFieldsOrConn.showCreateAccount !== undefined) showCreateAccount = loginFieldsOrConn.showCreateAccount !== false;
           if (loginFieldsOrConn.loginFields) loginFields = { ...loginFields, ...loginFieldsOrConn.loginFields };
+          if (loginFieldsOrConn.disable3pidLogin !== undefined) disable3pidLogin = loginFieldsOrConn.disable3pidLogin === true;
         } else if (!activeConn && typeof loginFieldsOrConn === 'object') {
           activeConn = loginFieldsOrConn;
         }
@@ -20934,8 +20938,8 @@ async function syncElementBrandingDom(
 
     const cleanClickUrl = (logoClickUrl || "").trim();
     const allowMxid = loginFields.allowMxid !== false;
-    const allowEmail = loginFields.allowEmail !== false;
-    const allowPhone = loginFields.allowPhone !== false;
+    const allowEmail = !disable3pidLogin && loginFields.allowEmail !== false;
+    const allowPhone = !disable3pidLogin && loginFields.allowPhone !== false;
 
     // 1. Generate clean CSS override snippet (footer display, forgot password, create account, logo cursor, and login dropdown filters)
     const cssRules: string[] = [];
@@ -20959,14 +20963,18 @@ async function syncElementBrandingDom(
     }
 
     // Login Dropdown Option Filtering Rules via CSS
-    if (!allowMxid) {
-      cssRules.push("/* Raven Custom Branding: Hide Username (MXID) Option */\nselect[id*=\"mx_Field_\"] option[value=\"login_field_mxid\"], select[id*=\"mx_Field_\"] option[value=\"mxid\"], select.mx_Field_select option[value=\"login_field_mxid\"], select option[value=\"login_field_mxid\"], select option[value=\"mxid\"] { display: none !important; }");
-    }
-    if (!allowEmail) {
-      cssRules.push("/* Raven Custom Branding: Hide Email Option */\nselect[id*=\"mx_Field_\"] option[value=\"login_field_email\"], select[id*=\"mx_Field_\"] option[value=\"email\"], select.mx_Field_select option[value=\"login_field_email\"], select option[value=\"login_field_email\"], select option[value=\"email\"] { display: none !important; }");
-    }
-    if (!allowPhone) {
-      cssRules.push("/* Raven Custom Branding: Hide Phone Option */\nselect[id*=\"mx_Field_\"] option[value=\"login_field_password\"], select[id*=\"mx_Field_\"] option[value=\"login_field_phone\"], select[id*=\"mx_Field_\"] option[value=\"login_field_msisdn\"], select[id*=\"mx_Field_\"] option[value=\"phone\"], select.mx_Field_select option[value=\"login_field_password\"], select option[value=\"login_field_password\"], select option[value=\"login_field_phone\"], select option[value=\"login_field_msisdn\"], select option[value=\"phone\"] { display: none !important; }");
+    if (disable3pidLogin) {
+      cssRules.push("/* Raven Custom Branding: Disable 3PID Login Dropdown Completely */\nselect[id*=\"mx_Field_1\"], select.mx_Field_select { display: none !important; }");
+    } else {
+      if (!allowMxid) {
+        cssRules.push("/* Raven Custom Branding: Hide Username (MXID) Option */\nselect[id*=\"mx_Field_\"] option[value=\"login_field_mxid\"], select[id*=\"mx_Field_\"] option[value=\"mxid\"], select.mx_Field_select option[value=\"login_field_mxid\"], select option[value=\"login_field_mxid\"], select option[value=\"mxid\"] { display: none !important; }");
+      }
+      if (!allowEmail) {
+        cssRules.push("/* Raven Custom Branding: Hide Email Option */\nselect[id*=\"mx_Field_\"] option[value=\"login_field_email\"], select[id*=\"mx_Field_\"] option[value=\"email\"], select.mx_Field_select option[value=\"login_field_email\"], select option[value=\"login_field_email\"], select option[value=\"email\"] { display: none !important; }");
+      }
+      if (!allowPhone) {
+        cssRules.push("/* Raven Custom Branding: Hide Phone Option */\nselect[id*=\"mx_Field_\"] option[value=\"login_field_password\"], select[id*=\"mx_Field_\"] option[value=\"login_field_phone\"], select[id*=\"mx_Field_\"] option[value=\"login_field_msisdn\"], select[id*=\"mx_Field_\"] option[value=\"phone\"], select.mx_Field_select option[value=\"login_field_password\"], select option[value=\"login_field_password\"], select option[value=\"login_field_phone\"], select option[value=\"login_field_msisdn\"], select option[value=\"phone\"] { display: none !important; }");
+      }
     }
 
     const cssContent = cssRules.filter(Boolean).join("\n\n");
@@ -20978,6 +20986,7 @@ async function syncElementBrandingDom(
   var ALLOW_MXID = ${allowMxid};
   var ALLOW_EMAIL = ${allowEmail};
   var ALLOW_PHONE = ${allowPhone};
+  var DISABLE_3PID = ${disable3pidLogin};
   var ALLOW_FORGOT_PW = ${showForgotPassword};
   var ALLOW_CREATE_ACC = ${showCreateAccount};
 
@@ -20985,6 +20994,12 @@ async function syncElementBrandingDom(
     try {
       var selects = document.querySelectorAll('select[id*="mx_Field_"], select.mx_Field_select, select#mx_Field_1');
       selects.forEach(function(sel) {
+        if (DISABLE_3PID) {
+          sel.style.display = 'none';
+          try { sel.hidden = true; } catch(e){}
+          return;
+        }
+
         var opts = sel.querySelectorAll('option');
         opts.forEach(function(opt) {
           var val = (opt.value || '').toLowerCase();
@@ -21257,6 +21272,15 @@ app.get("/api/matrix/wallpaper/list", authenticateToken, async (req, res) => {
     const loginFieldMxid = branding.login_field_mxid !== false;
     const loginFieldEmail = branding.login_field_email !== false;
     const loginFieldPhone = branding.login_field_phone !== false;
+    const defaultTheme = elConfig.default_theme || elConfig.setting_defaults?.theme || elConfig.settingDefaults?.theme || "light";
+    const defaultWidgetContainerHeight = typeof elConfig.default_widget_container_height === "number" ? elConfig.default_widget_container_height : (parseInt(elConfig.default_widget_container_height, 10) || 280);
+    const disable3pidLogin = elConfig.disable_3pid_login === true;
+    const defaultCountryCode = elConfig.default_country_code || "GB";
+    const elementCall = {
+      brand: elConfig.element_call?.brand || "",
+      disable: elConfig.element_call?.disable === true,
+      use_exclusively: elConfig.element_call?.use_exclusively === true
+    };
 
     const DEFAULT_WALLPAPER_PRESETS: { [filename: string]: string } = {
       "deep_space_mesh.svg": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
@@ -21377,6 +21401,11 @@ app.get("/api/matrix/wallpaper/list", authenticateToken, async (req, res) => {
       loginFieldPhone,
       showForgotPassword,
       showCreateAccount,
+      defaultTheme,
+      defaultWidgetContainerHeight,
+      disable3pidLogin,
+      defaultCountryCode,
+      elementCall,
       branding: {
         activeWallpaper,
         activeLogo,
@@ -21390,7 +21419,12 @@ app.get("/api/matrix/wallpaper/list", authenticateToken, async (req, res) => {
         brandName,
         loginFieldMxid,
         loginFieldEmail,
-        loginFieldPhone
+        loginFieldPhone,
+        defaultTheme,
+        defaultWidgetContainerHeight,
+        disable3pidLogin,
+        defaultCountryCode,
+        elementCall
       }
     });
   } catch (err: any) {
@@ -22011,6 +22045,15 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
     const loginFieldMxid = branding.login_field_mxid !== false;
     const loginFieldEmail = branding.login_field_email !== false;
     const loginFieldPhone = branding.login_field_phone !== false;
+    const defaultTheme = elConfig.default_theme || elConfig.setting_defaults?.theme || elConfig.settingDefaults?.theme || "light";
+    const defaultWidgetContainerHeight = typeof elConfig.default_widget_container_height === "number" ? elConfig.default_widget_container_height : (parseInt(elConfig.default_widget_container_height, 10) || 280);
+    const disable3pidLogin = elConfig.disable_3pid_login === true;
+    const defaultCountryCode = elConfig.default_country_code || "GB";
+    const elementCall = {
+      brand: elConfig.element_call?.brand || "",
+      disable: elConfig.element_call?.disable === true,
+      use_exclusively: elConfig.element_call?.use_exclusively === true
+    };
     const showForgotPassword = (
       branding.hide_forgot_password === true ||
       branding.show_forgot_password === false ||
@@ -22037,7 +22080,12 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
       logoClickUrl,
       loginFieldMxid,
       loginFieldEmail,
-      loginFieldPhone
+      loginFieldPhone,
+      defaultTheme,
+      defaultWidgetContainerHeight,
+      disable3pidLogin,
+      defaultCountryCode,
+      elementCall
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -22060,7 +22108,17 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       logoClickUrl,
       loginFieldMxid,
       loginFieldEmail,
-      loginFieldPhone
+      loginFieldPhone,
+      defaultTheme,
+      default_theme,
+      defaultWidgetContainerHeight,
+      default_widget_container_height,
+      disable3pidLogin,
+      disable_3pid_login,
+      defaultCountryCode,
+      default_country_code,
+      elementCall,
+      element_call
     } = req.body;
 
     const activeConn = getActiveConnection();
@@ -22335,11 +22393,57 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       elConfig.branding.login_field_phone = loginFieldPhone !== false;
     }
 
+    // 7.1 Handle Default Theme (light / dark)
+    const finalTheme = (defaultTheme !== undefined ? defaultTheme : default_theme);
+    if (finalTheme !== undefined) {
+      const cleanTheme = (finalTheme === "dark") ? "dark" : "light";
+      elConfig.default_theme = cleanTheme;
+      if (!elConfig.setting_defaults) elConfig.setting_defaults = {};
+      elConfig.setting_defaults.theme = cleanTheme;
+      if (!elConfig.settingDefaults) elConfig.settingDefaults = {};
+      elConfig.settingDefaults.theme = cleanTheme;
+    }
+
+    // 7.2 Handle Default Widget Container Height
+    const finalWidgetHeight = (defaultWidgetContainerHeight !== undefined ? defaultWidgetContainerHeight : default_widget_container_height);
+    if (finalWidgetHeight !== undefined) {
+      const parsedH = parseInt(finalWidgetHeight, 10);
+      elConfig.default_widget_container_height = (!isNaN(parsedH) && parsedH > 0) ? parsedH : 280;
+    }
+
+    // 7.3 Handle Disable 3PID Login
+    const finalDisable3pid = (disable3pidLogin !== undefined ? disable3pidLogin : disable_3pid_login);
+    if (finalDisable3pid !== undefined) {
+      elConfig.disable_3pid_login = finalDisable3pid === true;
+    }
+
+    // 7.4 Handle Default Country Code
+    const finalCountryCode = (defaultCountryCode !== undefined ? defaultCountryCode : default_country_code);
+    if (finalCountryCode !== undefined) {
+      const cleanCode = String(finalCountryCode).trim().toUpperCase();
+      elConfig.default_country_code = cleanCode || "GB";
+    }
+
+    // 7.5 Handle Element Call Configuration
+    const finalElementCall = (elementCall !== undefined ? elementCall : element_call);
+    if (finalElementCall !== undefined && typeof finalElementCall === 'object' && finalElementCall !== null) {
+      if (!elConfig.element_call) elConfig.element_call = {};
+      if (finalElementCall.brand !== undefined) {
+        elConfig.element_call.brand = String(finalElementCall.brand).trim();
+      }
+      if (finalElementCall.disable !== undefined) {
+        elConfig.element_call.disable = finalElementCall.disable === true;
+      }
+      if (finalElementCall.use_exclusively !== undefined) {
+        elConfig.element_call.use_exclusively = finalElementCall.use_exclusively === true;
+      }
+    }
+
     // 8. Write updated config.json to server
     await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2), {
       username: req.user.username,
       component: "Element Branding & Customization",
-      diffSummary: `Updated Element branding: Footer=${showAuthFooter}, ForgotPassword=${showForgotPassword}, CreateAccount=${showCreateAccount}, Logo URL=${logoClickUrl || 'default'}, Wallpaper=${activeWallpaper || 'default'}, Login fields: mxid=${elConfig.branding.login_field_mxid !== false}, email=${elConfig.branding.login_field_email !== false}, phone=${elConfig.branding.login_field_phone !== false}`
+      diffSummary: `Updated Element branding & config: Theme=${elConfig.default_theme || 'light'}, WidgetHeight=${elConfig.default_widget_container_height || 280}, Disable3PID=${elConfig.disable_3pid_login === true}, CountryCode=${elConfig.default_country_code || 'GB'}, Footer=${showAuthFooter}, ForgotPassword=${showForgotPassword}, CreateAccount=${showCreateAccount}, Logo URL=${logoClickUrl || 'default'}, Wallpaper=${activeWallpaper || 'default'}, Login fields: mxid=${elConfig.branding.login_field_mxid !== false}, email=${elConfig.branding.login_field_email !== false}, phone=${elConfig.branding.login_field_phone !== false}`
     });
 
     // 9. Synchronize CSS and DOM overrides (Footer hiding, Forgot password, Create account, Logo click redirect, Login dropdown options)
@@ -22376,7 +22480,8 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       showForgotPassword: effectiveForgotPassword,
       showCreateAccount: effectiveCreateAccount,
       logoClickUrl: effectiveLogoClick,
-      loginFields: loginFieldOptions
+      loginFields: loginFieldOptions,
+      disable3pidLogin: elConfig.disable_3pid_login === true
     }, activeConn);
 
     const db = readDb();
@@ -22387,7 +22492,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       action: "Update Element Branding",
       target: "Element Web",
       status: "success",
-      details: `Saved Element login page customization, wallpaper, favicon, header logo, forgot-password/create-account visibility, and login dropdown identifier settings.`
+      details: `Saved Element login page customization, theme (${elConfig.default_theme || 'light'}), widget container height (${elConfig.default_widget_container_height || 280}), disable 3PID login (${elConfig.disable_3pid_login === true}), country code (${elConfig.default_country_code || 'GB'}), element call (${JSON.stringify(elConfig.element_call || {})}), wallpaper, favicon, header logo, and login options.`
     });
     writeDb(db);
 
@@ -22409,7 +22514,16 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
         logoClickUrl: savedLogoClick,
         loginFieldMxid: elConfig.branding.login_field_mxid !== false,
         loginFieldEmail: elConfig.branding.login_field_email !== false,
-        loginFieldPhone: elConfig.branding.login_field_phone !== false
+        loginFieldPhone: elConfig.branding.login_field_phone !== false,
+        defaultTheme: elConfig.default_theme || "light",
+        defaultWidgetContainerHeight: elConfig.default_widget_container_height || 280,
+        disable3pidLogin: elConfig.disable_3pid_login === true,
+        defaultCountryCode: elConfig.default_country_code || "GB",
+        elementCall: {
+          brand: elConfig.element_call?.brand || "",
+          disable: elConfig.element_call?.disable === true,
+          use_exclusively: elConfig.element_call?.use_exclusively === true
+        }
       }
     });
   } catch (err: any) {

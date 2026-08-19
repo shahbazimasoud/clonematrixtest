@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.20.0";
+export const PANEL_VERSION = "2.21.0";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.21.0",
+    date: "2026-08-19",
+    title: "Element Config Expansion: Default Theme, 3PID Disable, Widget Height, Country Code & Element Call",
+    changes: [
+      "Default Theme Configuration: Added UI and backend synchronization for default_theme ('light' or 'dark') in /var/www/element/config.json.",
+      "3PID Login Control & Dropdown Suppression: Added disable_3pid_login support grouped with login identifier options to suppress 3PID logins and hide the dropdown in Element login page.",
+      "Default Widget Container Height: Added configurable default_widget_container_height setting with 280px default and quick-preset adjustments.",
+      "Default Country Code: Added default_country_code selector supporting GB (+44), IR (+98), ES (+34), SA (+966), DE (+49), and RU (+7).",
+      "Element Call Settings: Added element_call object configuration including custom brand title, disable toggle, and exclusive mode."
+    ]
+  },
   {
     version: "2.20.0",
     date: "2026-08-19",

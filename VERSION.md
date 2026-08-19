@@ -16,9 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.20.0** (Released: 2026-08-19)
+## Current Panel Version: **v2.21.0** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.21.0** - 2026-08-19
+- **Element Config Expansion: Default Theme, 3PID Disable, Widget Height, Country Code & Element Call**:
+  - **Default Theme Configuration**: Added UI and backend synchronization for `default_theme` ('light' or 'dark') in `/var/www/element/config.json`.
+  - **3PID Login Control & Dropdown Suppression**: Added `disable_3pid_login` support grouped with login identifier options to suppress 3PID logins and hide the dropdown in Element login page.
+  - **Default Widget Container Height**: Added configurable `default_widget_container_height` setting with 280px default and quick-preset adjustments.
+  - **Default Country Code**: Added `default_country_code` selector supporting `GB` (+44), `IR` (+98), `ES` (+34), `SA` (+966), `DE` (+49), and `RU` (+7).
+  - **Element Call Settings**: Added `element_call` object configuration including custom brand title, disable toggle, and exclusive mode.
 
 #### **v2.20.0** - 2026-08-19
 - **Element Login & Branding Asset Unified Storage Migration to `/var/www/element/img/`**:

@@ -46,7 +46,16 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Sun,
+  Moon,
+  Flag,
+  Video,
+  SlidersHorizontal,
+  Hash,
+  Lock,
+  Shield,
+  Settings2
 } from 'lucide-react';
 
 export interface WallpaperItem {
@@ -75,6 +84,15 @@ export interface BrandingConfig {
   loginFieldMxid?: boolean;
   loginFieldEmail?: boolean;
   loginFieldPhone?: boolean;
+  defaultTheme?: 'light' | 'dark';
+  defaultWidgetContainerHeight?: number;
+  disable3pidLogin?: boolean;
+  defaultCountryCode?: string;
+  elementCall?: {
+    brand?: string;
+    disable?: boolean;
+    use_exclusively?: boolean;
+  };
 }
 
 interface WallpaperThumbnailProps {
@@ -177,7 +195,16 @@ export default function WallpaperTab({
     logoClickUrl: '',
     loginFieldMxid: true,
     loginFieldEmail: true,
-    loginFieldPhone: true
+    loginFieldPhone: true,
+    defaultTheme: 'light',
+    defaultWidgetContainerHeight: 280,
+    disable3pidLogin: false,
+    defaultCountryCode: 'GB',
+    elementCall: {
+      brand: '',
+      disable: false,
+      use_exclusively: false
+    }
   });
 
   // Server-confirmed state (used to detect unsaved changes)
@@ -193,7 +220,16 @@ export default function WallpaperTab({
     logoClickUrl: '',
     loginFieldMxid: true,
     loginFieldEmail: true,
-    loginFieldPhone: true
+    loginFieldPhone: true,
+    defaultTheme: 'light',
+    defaultWidgetContainerHeight: 280,
+    disable3pidLogin: false,
+    defaultCountryCode: 'GB',
+    elementCall: {
+      brand: '',
+      disable: false,
+      use_exclusively: false
+    }
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -255,6 +291,13 @@ export default function WallpaperTab({
     if ((branding.loginFieldMxid !== false) !== (serverBranding.loginFieldMxid !== false)) return true;
     if ((branding.loginFieldEmail !== false) !== (serverBranding.loginFieldEmail !== false)) return true;
     if ((branding.loginFieldPhone !== false) !== (serverBranding.loginFieldPhone !== false)) return true;
+    if ((branding.defaultTheme || 'light') !== (serverBranding.defaultTheme || 'light')) return true;
+    if ((branding.defaultWidgetContainerHeight || 280) !== (serverBranding.defaultWidgetContainerHeight || 280)) return true;
+    if ((branding.disable3pidLogin === true) !== (serverBranding.disable3pidLogin === true)) return true;
+    if ((branding.defaultCountryCode || 'GB') !== (serverBranding.defaultCountryCode || 'GB')) return true;
+    if ((branding.elementCall?.brand || '') !== (serverBranding.elementCall?.brand || '')) return true;
+    if ((branding.elementCall?.disable === true) !== (serverBranding.elementCall?.disable === true)) return true;
+    if ((branding.elementCall?.use_exclusively === true) !== (serverBranding.elementCall?.use_exclusively === true)) return true;
     return false;
   }, [activeWallpaper, serverActiveWallpaper, activeLogo, serverActiveLogo, customFaviconFile, customLogoFile, branding, serverBranding]);
 
@@ -295,7 +338,16 @@ export default function WallpaperTab({
           logoClickUrl: b.logoClickUrl || '',
           loginFieldMxid: b.loginFieldMxid !== false && data.loginFieldMxid !== false,
           loginFieldEmail: b.loginFieldEmail !== false && data.loginFieldEmail !== false,
-          loginFieldPhone: b.loginFieldPhone !== false && data.loginFieldPhone !== false
+          loginFieldPhone: b.loginFieldPhone !== false && data.loginFieldPhone !== false,
+          defaultTheme: b.defaultTheme || data.defaultTheme || 'light',
+          defaultWidgetContainerHeight: typeof b.defaultWidgetContainerHeight === 'number' ? b.defaultWidgetContainerHeight : (typeof data.defaultWidgetContainerHeight === 'number' ? data.defaultWidgetContainerHeight : 280),
+          disable3pidLogin: b.disable3pidLogin === true || data.disable3pidLogin === true,
+          defaultCountryCode: b.defaultCountryCode || data.defaultCountryCode || 'GB',
+          elementCall: {
+            brand: b.elementCall?.brand || data.elementCall?.brand || '',
+            disable: b.elementCall?.disable === true || data.elementCall?.disable === true,
+            use_exclusively: b.elementCall?.use_exclusively === true || data.elementCall?.use_exclusively === true
+          }
         };
 
         setWallpapers(data.wallpapers || []);
@@ -334,7 +386,7 @@ export default function WallpaperTab({
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
+    if (e.target.files && e.target.files[0]) {
       processSelectedFiles(Array.from(e.target.files));
       e.target.value = '';
     }
@@ -496,10 +548,10 @@ export default function WallpaperTab({
     }
   };
 
-  // Save all branding settings (Wallpaper, Logo, Footer visibility, Favicon, Click URL, Login Options) to server
+  // Save all branding settings (Wallpaper, Logo, Footer visibility, Favicon, Click URL, Login Options, Theme, Widget Height, 3PID, Country Code, Element Call) to server
   const handleSaveBranding = async () => {
-    // Validate at least one login field is active
-    if (branding.loginFieldMxid === false && branding.loginFieldEmail === false && branding.loginFieldPhone === false) {
+    // Validate at least one login field is active if 3pid login is not fully disabled
+    if (!branding.disable3pidLogin && branding.loginFieldMxid === false && branding.loginFieldEmail === false && branding.loginFieldPhone === false) {
       if (showToast) {
         showToast('error', loc('حداقل یکی از گزینه‌های ورود (نام کاربری، ایمیل یا تلفن) باید فعال باشد.', 'At least one login identifier option (Username, Email, or Phone) must be enabled.'));
       }
@@ -538,7 +590,16 @@ export default function WallpaperTab({
         headerLogoFileName,
         loginFieldMxid: branding.loginFieldMxid !== false,
         loginFieldEmail: branding.loginFieldEmail !== false,
-        loginFieldPhone: branding.loginFieldPhone !== false
+        loginFieldPhone: branding.loginFieldPhone !== false,
+        defaultTheme: branding.defaultTheme || 'light',
+        defaultWidgetContainerHeight: typeof branding.defaultWidgetContainerHeight === 'number' ? branding.defaultWidgetContainerHeight : 280,
+        disable3pidLogin: branding.disable3pidLogin === true,
+        defaultCountryCode: branding.defaultCountryCode || 'GB',
+        elementCall: {
+          brand: branding.elementCall?.brand || '',
+          disable: branding.elementCall?.disable === true,
+          use_exclusively: branding.elementCall?.use_exclusively === true
+        }
       };
 
       const res = await fetch('/api/matrix/branding/save', {
@@ -553,8 +614,8 @@ export default function WallpaperTab({
       if (res.ok) {
         if (showToast) {
           showToast('success', loc(
-            'تمامی تنظیمات والپیپر، لوگو، فوتر صفحه لاگین و برندینگ با موفقیت در سرور المنت ذخیره و اعمال شد.',
-            'All Element wallpaper, logo, login footer, and branding settings successfully saved and applied to server.'
+            'تمامی تنظیمات والپیپر، لوگو، تم، ارتفاع کانتینر ویجت، ۳PID، کد کشور، Element Call و برندینگ با موفقیت در سرور المنت اعمال شد.',
+            'All Element wallpaper, logo, theme, widget height, 3PID, country code, Element Call, and branding settings successfully saved and applied to server.'
           ));
         }
         setCustomFaviconFile(null);
@@ -583,7 +644,16 @@ export default function WallpaperTab({
       logoClickUrl: '',
       loginFieldMxid: true,
       loginFieldEmail: true,
-      loginFieldPhone: true
+      loginFieldPhone: true,
+      defaultTheme: 'light',
+      defaultWidgetContainerHeight: 280,
+      disable3pidLogin: false,
+      defaultCountryCode: 'GB',
+      elementCall: {
+        brand: '',
+        disable: false,
+        use_exclusively: false
+      }
     });
     setCustomFaviconFile(null);
     setCustomLogoFile(null);
@@ -1972,7 +2042,7 @@ export default function WallpaperTab({
             </div>
           </div>
 
-          {/* 6. Allowed Login Identifier Dropdown Options (<select id="mx_Field_1">) */}
+          {/* 6. Allowed Login Identifier Dropdown Options (<select id="mx_Field_1">) & 3PID Disabling */}
           <div className="md:col-span-2 spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
@@ -1981,25 +2051,71 @@ export default function WallpaperTab({
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                    {loc('فیلدهای مجاز در دراپ‌دان ورود (شناسه ورود کاربر)', 'Allowed Login Identifier Options in Dropdown')}
+                    {loc('فیلدهای مجاز در دراپ‌دان ورود و تنظیمات ۳PID', 'Allowed Login Identifier Options & 3PID Config')}
                   </h4>
                   <p className="text-[11px] text-slate-400">
                     {loc(
-                      'مشخص کنید در صفحه ورود کلاینت المنت (فرم نام کاربری/رمز عبور)، کدام گزینه‌ها در دراپ‌دان شناسه ورود نمایش داده شوند.',
-                      'Choose which login identifier options (Username, Email, Phone) appear in the <select id="mx_Field_1"> dropdown on Element login page.'
+                      'مشخص کنید در صفحه ورود کلاینت المنت، کدام شناسه‌ها مجاز باشند یا دراپ‌دان ۳PID کلاً غیرفعال و مخفی شود.',
+                      'Choose which login identifiers appear in Element login page, or completely suppress the 3PID dropdown.'
                     )}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-pink-500/15 text-pink-300 border border-pink-500/30">
-                  {((branding.loginFieldMxid !== false ? 1 : 0) + (branding.loginFieldEmail !== false ? 1 : 0) + (branding.loginFieldPhone !== false ? 1 : 0))} / 3 {loc('گزینه فعال', 'Active')}
-                </span>
+                {branding.disable3pidLogin ? (
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    {loc('دراپ‌دان مخفی (ورود ۳PID غیرفعال)', 'Dropdown Hidden (3PID Disabled)')}
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-pink-500/15 text-pink-300 border border-pink-500/30">
+                    {((branding.loginFieldMxid !== false ? 1 : 0) + (branding.loginFieldEmail !== false ? 1 : 0) + (branding.loginFieldPhone !== false ? 1 : 0))} / 3 {loc('گزینه فعال', 'Active')}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Master Toggle: disable_3pid_login */}
+            <div className={`p-4 rounded-xl border transition-all ${
+              branding.disable3pidLogin
+                ? 'bg-amber-500/10 border-amber-500/30'
+                : 'bg-white/5 border-white/10 hover:border-white/20'
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Shield className={`w-3.5 h-3.5 ${branding.disable3pidLogin ? 'text-amber-400' : 'text-slate-400'}`} />
+                      {loc('غیرفعال‌سازی کامل ورود با ۳PID و مخفی‌سازی دراپ‌دان (disable_3pid_login)', 'Disable 3PID Login & Hide Identifier Dropdown')}
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/5 text-slate-400">
+                      disable_3pid_login: {branding.disable3pidLogin ? 'true' : 'false'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {loc(
+                      'با فعال‌سازی این گزینه، امکان ورود با ایمیل و تلفن غیرفعال شده و دراپ‌دان انتخاب شناسه در صفحه لاگین المنت به کلی مخفی می‌شود (فقط نام کاربری/Matrix ID پذیرفته می‌شود).',
+                      'When enabled, 3PID (Email & Phone) logins are disabled and the identifier selection dropdown is hidden on the login page (only Matrix ID allowed).'
+                    )}
+                  </p>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={branding.disable3pidLogin === true}
+                    onChange={(e) => setBranding({ ...branding, disable3pidLogin: e.target.checked })}
+                    disabled={isReadOnly}
+                    className="sr-only peer"
+                    id="toggle-disable-3pid-login"
+                  />
+                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                </label>
               </div>
             </div>
 
             {/* 3 Toggleable Identifier Options */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3 transition-opacity ${branding.disable3pidLogin ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
               {/* 1. Username (login_field_mxid) */}
               <label
                 className={`relative flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer select-none ${
@@ -2012,7 +2128,7 @@ export default function WallpaperTab({
                   type="checkbox"
                   checked={branding.loginFieldMxid !== false}
                   onChange={(e) => setBranding({ ...branding, loginFieldMxid: e.target.checked })}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || branding.disable3pidLogin}
                   className="sr-only"
                   id="checkbox-login-field-mxid"
                 />
@@ -2051,7 +2167,7 @@ export default function WallpaperTab({
                   type="checkbox"
                   checked={branding.loginFieldEmail !== false}
                   onChange={(e) => setBranding({ ...branding, loginFieldEmail: e.target.checked })}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || branding.disable3pidLogin}
                   className="sr-only"
                   id="checkbox-login-field-email"
                 />
@@ -2090,7 +2206,7 @@ export default function WallpaperTab({
                   type="checkbox"
                   checked={branding.loginFieldPhone !== false}
                   onChange={(e) => setBranding({ ...branding, loginFieldPhone: e.target.checked })}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || branding.disable3pidLogin}
                   className="sr-only"
                   id="checkbox-login-field-phone"
                 />
@@ -2126,39 +2242,347 @@ export default function WallpaperTab({
                   {loc('پیش‌نمایش زنده دراپ‌دان در صفحه لاگین المنت:', 'Live Preview of Dropdown on Element Login Page:')}
                 </span>
                 <span className="text-[10px] font-mono text-slate-500">
-                  &lt;select type="text" id="mx_Field_1"&gt;
+                  {branding.disable3pidLogin ? loc('دراپ‌دان مخفی است (display: none)', 'Dropdown is hidden (display: none)') : '<select type="text" id="mx_Field_1">'}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="relative min-w-[200px]">
-                  <select
-                    className="w-full bg-[#1b2234] border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none"
-                    disabled
-                    value={
-                      branding.loginFieldMxid !== false
-                        ? 'login_field_mxid'
-                        : branding.loginFieldEmail !== false
-                        ? 'login_field_email'
-                        : 'login_field_password'
-                    }
-                  >
-                    {branding.loginFieldMxid !== false && (
-                      <option value="login_field_mxid">Username</option>
+                {branding.disable3pidLogin ? (
+                  <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-medium flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{loc('فقط ورودی مستقیم نام کاربری (Username / MXID)', 'Direct Username / MXID Input Only')}</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative min-w-[200px]">
+                      <select
+                        className="w-full bg-[#1b2234] border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none"
+                        disabled
+                        value={
+                          branding.loginFieldMxid !== false
+                            ? 'login_field_mxid'
+                            : branding.loginFieldEmail !== false
+                            ? 'login_field_email'
+                            : 'login_field_password'
+                        }
+                      >
+                        {branding.loginFieldMxid !== false && (
+                          <option value="login_field_mxid">Username</option>
+                        )}
+                        {branding.loginFieldEmail !== false && (
+                          <option value="login_field_email">Email address</option>
+                        )}
+                        {branding.loginFieldPhone !== false && (
+                          <option value="login_field_password">Phone</option>
+                        )}
+                      </select>
+                    </div>
+                    {((branding.loginFieldMxid !== false ? 1 : 0) + (branding.loginFieldEmail !== false ? 1 : 0) + (branding.loginFieldPhone !== false ? 1 : 0)) === 1 && (
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-md font-medium">
+                        {loc('تک‌گزینه‌ای (قفل مستقیم)', 'Single field (Auto-locked)')}
+                      </span>
                     )}
-                    {branding.loginFieldEmail !== false && (
-                      <option value="login_field_email">Email address</option>
-                    )}
-                    {branding.loginFieldPhone !== false && (
-                      <option value="login_field_password">Phone</option>
-                    )}
-                  </select>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 7. Default Theme (default_theme: light / dark) */}
+          <div className="spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-3">
+            <div>
+              <label className="text-xs font-bold text-white uppercase tracking-wider block">
+                {loc('تم پیش‌فرض المنت (Default Theme)', 'Element Default Theme')}
+              </label>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {loc('تنظیم تم پیش‌فرض کلاینت المنت در فایل config.json ("default_theme": "light" | "dark")', 'Default theme loaded by Element Web in config.json')}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setBranding({ ...branding, defaultTheme: 'light' })}
+                disabled={isReadOnly}
+                className={`p-3.5 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${
+                  branding.defaultTheme === 'light'
+                    ? 'bg-amber-500/15 border-amber-500/50 text-white shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10'
+                }`}
+                id="btn-theme-light"
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${branding.defaultTheme === 'light' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-white/10 text-amber-400'}`}>
+                  <Sun className="w-4 h-4" />
                 </div>
-                {((branding.loginFieldMxid !== false ? 1 : 0) + (branding.loginFieldEmail !== false ? 1 : 0) + (branding.loginFieldPhone !== false ? 1 : 0)) === 1 && (
-                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-md font-medium">
-                    {loc('تک‌گزینه‌ای (قفل مستقیم)', 'Single field (Auto-locked)')}
+                <div className="text-center">
+                  <div className="text-xs font-bold">{loc('روشن (Light)', 'Light Theme')}</div>
+                  <div className="text-[10px] font-mono text-slate-400">default_theme: "light"</div>
+                </div>
+                {branding.defaultTheme === 'light' && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {loc('فعال', 'Active')}
                   </span>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBranding({ ...branding, defaultTheme: 'dark' })}
+                disabled={isReadOnly}
+                className={`p-3.5 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${
+                  branding.defaultTheme === 'dark'
+                    ? 'bg-indigo-500/15 border-indigo-500/50 text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10'
+                }`}
+                id="btn-theme-dark"
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${branding.defaultTheme === 'dark' ? 'bg-indigo-500 text-white font-bold' : 'bg-white/10 text-indigo-400'}`}>
+                  <Moon className="w-4 h-4" />
+                </div>
+                <div className="text-center">
+                  <div className="text-xs font-bold">{loc('تاریک (Dark)', 'Dark Theme')}</div>
+                  <div className="text-[10px] font-mono text-slate-400">default_theme: "dark"</div>
+                </div>
+                {branding.defaultTheme === 'dark' && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {loc('فعال', 'Active')}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* 8. Default Country Code (default_country_code: GB, IR, ES, SA, DE, RU) */}
+          <div className="spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-3">
+            <div>
+              <label className="text-xs font-bold text-white uppercase tracking-wider block">
+                {loc('کد کشور پیش‌فرض شماره تلفن (Default Country Code)', 'Default Country Code')}
+              </label>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {loc('پیش‌شماره و کشور پیش‌فرض برای ورود/ثبت‌نام با شماره تلفن (default_country_code)', 'Default country code for international phone inputs in Element')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="relative">
+                <select
+                  value={branding.defaultCountryCode || 'GB'}
+                  onChange={(e) => setBranding({ ...branding, defaultCountryCode: e.target.value })}
+                  disabled={isReadOnly}
+                  className="w-full bg-[#171d2b] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-200 focus:outline-none focus:border-pink-500/50 appearance-none cursor-pointer"
+                  id="select-default-country-code"
+                >
+                  <option value="GB">🇬🇧 GB - United Kingdom (+44)</option>
+                  <option value="IR">🇮🇷 IR - Iran (+98)</option>
+                  <option value="ES">🇪🇸 ES - Spain (+34)</option>
+                  <option value="SA">🇸🇦 SA - Saudi Arabia (+966)</option>
+                  <option value="DE">🇩🇪 DE - Germany (+49)</option>
+                  <option value="RU">🇷🇺 RU - Russia (+7)</option>
+                </select>
+                <Flag className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {['GB', 'IR', 'ES', 'SA', 'DE', 'RU'].map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => setBranding({ ...branding, defaultCountryCode: code })}
+                    disabled={isReadOnly}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                      branding.defaultCountryCode === code
+                        ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm'
+                        : 'bg-white/5 border border-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {code === 'GB' && '🇬🇧 GB'}
+                    {code === 'IR' && '🇮🇷 IR'}
+                    {code === 'ES' && '🇪🇸 ES'}
+                    {code === 'SA' && '🇸🇦 SA'}
+                    {code === 'DE' && '🇩🇪 DE'}
+                    {code === 'RU' && '🇷🇺 RU'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 9. Default Widget Container Height (default_widget_container_height: default 280) */}
+          <div className="spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-3">
+            <div>
+              <label className="text-xs font-bold text-white uppercase tracking-wider block">
+                {loc('ارتفاع کانتینر ویجت (default_widget_container_height)', 'Default Widget Container Height')}
+              </label>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {loc('ارتفاع پیش‌فرض برای نمایش ابزارک‌ها و ویجت‌های تعبیه‌شده در چت (پیش‌فرض: 280px).', 'Default height in pixels for widget container embeds in Element (Default: 280).')}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    min="100"
+                    max="1200"
+                    step="10"
+                    value={branding.defaultWidgetContainerHeight !== undefined ? branding.defaultWidgetContainerHeight : 280}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setBranding({ ...branding, defaultWidgetContainerHeight: isNaN(val) ? 280 : val });
+                    }}
+                    disabled={isReadOnly}
+                    className="w-full bg-[#171d2b] border border-white/10 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-pink-500/50 pl-14"
+                    id="input-widget-container-height"
+                  />
+                  <span className="text-[11px] font-bold text-slate-400 absolute left-3 top-2">px</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setBranding({ ...branding, defaultWidgetContainerHeight: 280 })}
+                  disabled={isReadOnly}
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-300 hover:text-white transition-all cursor-pointer"
+                  title={loc('تنظیم به پیش‌فرض (280px)', 'Reset to default (280px)')}
+                >
+                  {loc('۲۸۰ (پیش‌فرض)', '280 (Default)')}
+                </button>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-500">{loc('مقادیر سریع:', 'Presets:')}</span>
+                {[200, 280, 350, 420, 500].map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setBranding({ ...branding, defaultWidgetContainerHeight: h })}
+                    disabled={isReadOnly}
+                    className={`px-2 py-0.5 rounded text-[11px] font-mono transition-all cursor-pointer ${
+                      branding.defaultWidgetContainerHeight === h
+                        ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
+                        : 'bg-white/5 text-slate-400 hover:text-slate-200 border border-white/5'
+                    }`}
+                  >
+                    {h}px
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 10. Element Call Configuration (element_call: brand, disable, use_exclusively) */}
+          <div className="spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    {loc('تنظیمات تماس المنت (Element Call)', 'Element Call Settings')}
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    {loc('پیکربندی سرویس تماس صوتی و تصویری در فایل config.json المنت', 'Configure Element Call voice and video settings in config.json')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {/* Brand Name for Element Call */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  {loc('نام برند تماس (element_call.brand)', 'Element Call Brand Title')}
+                </label>
+                <input
+                  type="text"
+                  value={branding.elementCall?.brand || ''}
+                  onChange={(e) => setBranding({
+                    ...branding,
+                    elementCall: {
+                      ...branding.elementCall,
+                      brand: e.target.value
+                    }
+                  })}
+                  disabled={isReadOnly}
+                  placeholder="Element Call / Company Video"
+                  className="w-full bg-[#171d2b] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500/50"
+                  id="input-element-call-brand"
+                />
+              </div>
+
+              {/* Toggles for disable and use_exclusively */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {/* Disable Element Call Toggle */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                    branding.elementCall?.disable === true
+                      ? 'bg-rose-500/10 border-rose-500/40 text-white'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={branding.elementCall?.disable === true}
+                    onChange={(e) => setBranding({
+                      ...branding,
+                      elementCall: {
+                        ...branding.elementCall,
+                        disable: e.target.checked
+                      }
+                    })}
+                    disabled={isReadOnly}
+                    className="sr-only"
+                    id="checkbox-element-call-disable"
+                  />
+                  <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                    branding.elementCall?.disable === true
+                      ? 'bg-rose-500 border-rose-400 text-white'
+                      : 'border-white/20 bg-white/5 text-transparent'
+                  }`}>
+                    <Check className="w-3 h-3 stroke-[3]" />
+                  </div>
+                  <div className="space-y-0.5 flex-1">
+                    <span className="text-xs font-bold block">{loc('غیرفعال‌سازی تماس (disable)', 'Disable Element Call')}</span>
+                    <span className="text-[10px] text-slate-400 block font-mono">"disable": {branding.elementCall?.disable ? 'true' : 'false'}</span>
+                  </div>
+                </label>
+
+                {/* Use Exclusively Toggle */}
+                <label
+                  className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                    branding.elementCall?.use_exclusively === true
+                      ? 'bg-indigo-500/10 border-indigo-500/40 text-white'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={branding.elementCall?.use_exclusively === true}
+                    onChange={(e) => setBranding({
+                      ...branding,
+                      elementCall: {
+                        ...branding.elementCall,
+                        use_exclusively: e.target.checked
+                      }
+                    })}
+                    disabled={isReadOnly}
+                    className="sr-only"
+                    id="checkbox-element-call-exclusive"
+                  />
+                  <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                    branding.elementCall?.use_exclusively === true
+                      ? 'bg-indigo-500 border-indigo-400 text-white'
+                      : 'border-white/20 bg-white/5 text-transparent'
+                  }`}>
+                    <Check className="w-3 h-3 stroke-[3]" />
+                  </div>
+                  <div className="space-y-0.5 flex-1">
+                    <span className="text-xs font-bold block">{loc('استفاده اختصاصی (use_exclusively)', 'Use Exclusively')}</span>
+                    <span className="text-[10px] text-slate-400 block font-mono">"use_exclusively": {branding.elementCall?.use_exclusively ? 'true' : 'false'}</span>
+                  </div>
+                </label>
               </div>
             </div>
           </div>
