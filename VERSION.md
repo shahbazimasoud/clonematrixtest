@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.18.0** (Released: 2026-08-18)
+## Current Panel Version: **v2.19.0** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.19.0** - 2026-08-19
+- **Complete Removal of Room Ban Functionality and BAN Subsystems (Frontend & Backend)**:
+  - **Room Members Moderation Streamlining**: Completely removed the Ban action button from Room Members list, keeping pure Kick moderation.
+  - **Removed Users BAN & History BAN Sections**: Removed all Active Banned and History Banned UI sections, tabs, counters, and management modals from the Room Members modal and global Room Management toolbar.
+  - **Backend API Cleanup**: Purged all legacy room ban/unban routes and endpoints (`/api/matrix/rooms/members/ban`, `/api/matrix/rooms/members/unban`, `/api/matrix/banned-users`, and `/api/matrix/banned-users/:id`).
+  - **Type Definition & Member Model Refactor**: Cleaned up `MatrixRoom` interfaces and server room member responses to eliminate banned members arrays and obsolete state trackers.
 
 #### **v2.18.0** - 2026-08-18
 - **Banned Members Management Split: Users BAN & History BAN with Frequency Tracking**:

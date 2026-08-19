@@ -1085,52 +1085,6 @@ export default function KetesaAdmin({
   const [isLoadingKickedUsers, setIsLoadingKickedUsers] = useState(false);
   const [isDeletingKickedLog, setIsDeletingKickedLog] = useState<string | null>(null);
 
-  const [bannedUsersLogs, setBannedUsersLogs] = useState<any[]>([]);
-  const [showBannedUsersModal, setShowBannedUsersModal] = useState(false);
-  const [bannedUsersSearch, setBannedUsersSearch] = useState('');
-  const [bannedModalTab, setBannedModalTab] = useState<'active' | 'history'>('active');
-  const [roomMemberBannedTab, setRoomMemberBannedTab] = useState<'active' | 'history'>('active');
-  const [isLoadingBannedUsers, setIsLoadingBannedUsers] = useState(false);
-  const [isDeletingBannedLog, setIsDeletingBannedLog] = useState<string | null>(null);
-
-  const fetchBannedUsers = async () => {
-    setIsLoadingBannedUsers(true);
-    try {
-      const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
-      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch('/api/matrix/banned-users', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setBannedUsersLogs(data.bannedUsers || []);
-      }
-    } catch (e) {
-      console.error('Failed to fetch banned users history:', e);
-    } finally {
-      setIsLoadingBannedUsers(false);
-    }
-  };
-
-  const handleDeleteBannedUserLog = async (id: string) => {
-    setIsDeletingBannedLog(id);
-    try {
-      const token = authToken || localStorage.getItem('token') || localStorage.getItem('matrix_auth_token') || '';
-      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch(`/api/matrix/banned-users/${id}`, {
-        method: 'DELETE',
-        headers
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBannedUsersLogs(data.bannedUsers || []);
-        showToast('success', isRtl ? 'رکورد با موفقیت حذف گردید' : 'Record deleted successfully');
-      }
-    } catch (e) {
-      showToast('error', t.errorAction);
-    } finally {
-      setIsDeletingBannedLog(null);
-    }
-  };
-
   const fetchKickedUsers = async () => {
     setIsLoadingKickedUsers(true);
     try {
@@ -1738,8 +1692,7 @@ export default function KetesaAdmin({
           setRooms((prevRooms: MatrixRoom[]) => {
             return prevRooms.map(r => r.id === activeModalRoom.id ? {
               ...r,
-              joinedMembers: membersData.joinedMembers || [],
-              bannedMembers: membersData.bannedMembers || []
+              joinedMembers: membersData.joinedMembers || []
             } : r);
           });
 
@@ -1748,9 +1701,7 @@ export default function KetesaAdmin({
             if (prev && prev.id === activeModalRoom.id) {
               return {
                 ...prev,
-                joinedMembers: membersData.joinedMembers || [],
-                bannedMembers: membersData.bannedMembers || [],
-                bannedHistory: membersData.bannedHistory || prev.bannedHistory || []
+                joinedMembers: membersData.joinedMembers || []
               };
             }
             return prev;
@@ -1759,8 +1710,7 @@ export default function KetesaAdmin({
             if (prev && prev.id === activeModalRoom.id) {
               return {
                 ...prev,
-                joinedMembers: membersData.joinedMembers || [],
-                bannedMembers: membersData.bannedMembers || []
+                joinedMembers: membersData.joinedMembers || []
               };
             }
             return prev;
@@ -1769,13 +1719,11 @@ export default function KetesaAdmin({
             if (prev && prev.id === activeModalRoom.id) {
               return {
                 ...prev,
-                joinedMembers: membersData.joinedMembers || [],
-                bannedMembers: membersData.bannedMembers || []
+                joinedMembers: membersData.joinedMembers || []
               };
             }
             return prev;
           });
-          fetchBannedUsers();
         }
       } catch (err) {
         console.error("Failed to load room members:", err);
@@ -3744,7 +3692,7 @@ export default function KetesaAdmin({
     }
   };
 
-  const handleRoomMemberAction = async (roomId: string, mxid: string, action: 'kick' | 'ban' | 'unban') => {
+  const handleRoomMemberAction = async (roomId: string, mxid: string, action: 'kick' = 'kick') => {
     if (!hasWriteAccess) return showToast('error', t.unauthorizedMsg);
 
     const targetMember = showRoomMembersModal?.joinedMembers?.find((m: any) => (m.mxid || m)?.toLowerCase() === mxid.toLowerCase());
@@ -3752,35 +3700,18 @@ export default function KetesaAdmin({
 
     let reason: string | undefined = undefined;
 
-    // Requirement 8: Add a confirmation dialog before Ban specifically, showing target's display name & MXID
-    if (action === 'ban') {
-      const confirmMsg = isRtl
-        ? `آیا از مسدود کردن (Ban) کاربر زیر اطمینان دارید؟\n\nنام کاربر: ${displayName}\nشناسه کاربر (MXID): ${mxid}`
-        : `Are you sure you want to BAN the following user?\n\nDisplay Name: ${displayName}\nMXID: ${mxid}`;
-      if (!safeConfirm(confirmMsg)) return;
+    const confirmMsg = isRtl
+      ? `آیا از اخراج کاربر ${displayName} (${mxid}) از روم اطمینان دارید؟`
+      : `Are you sure you want to kick ${displayName} (${mxid}) from this room?`;
+    if (!safeConfirm(confirmMsg)) return;
 
-      const inputReason = prompt(isRtl ? 'علت مسدودسازی (اختیاری):' : 'Reason for ban (optional):');
-      if (inputReason === null) return; // Prompt cancelled
-      reason = inputReason.trim() || undefined;
-    } else if (action === 'kick') {
-      const confirmMsg = isRtl
-        ? `آیا از اخراج کاربر ${displayName} (${mxid}) از روم اطمینان دارید؟`
-        : `Are you sure you want to kick ${displayName} (${mxid}) from this room?`;
-      if (!safeConfirm(confirmMsg)) return;
-
-      const inputReason = prompt(isRtl ? 'علت اخراج (اختیاری):' : 'Reason for kick (optional):');
-      if (inputReason === null) return; // Prompt cancelled
-      reason = inputReason.trim() || undefined;
-    } else if (action === 'unban') {
-      const confirmMsg = isRtl
-        ? `آیا از رفع مسدودیت کاربر ${mxid} اطمینان دارید؟`
-        : `Are you sure you want to unban ${mxid}?`;
-      if (!safeConfirm(confirmMsg)) return;
-    }
+    const inputReason = prompt(isRtl ? 'علت اخراج (اختیاری):' : 'Reason for kick (optional):');
+    if (inputReason === null) return; // Prompt cancelled
+    reason = inputReason.trim() || undefined;
 
     setMemberActionLoading(`${mxid}-${action}`);
     try {
-      const res = await fetch(`/api/matrix/users/rooms/${action}`, {
+      const res = await fetch(`/api/matrix/users/rooms/kick`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3793,11 +3724,7 @@ export default function KetesaAdmin({
 
       if (res.ok && data.success && data.synapseConfirmed !== false) {
         showToast('success', data.message || t.successAction);
-        if (action === 'kick') {
-          fetchKickedUsers();
-        } else if (action === 'ban' || action === 'unban') {
-          fetchBannedUsers();
-        }
+        fetchKickedUsers();
 
         // Only after confirmed success, update room members modal state
         setShowRoomMembersModal(prev => {
@@ -3806,13 +3733,9 @@ export default function KetesaAdmin({
             const id = typeof m === 'string' ? m : m.mxid;
             return id.toLowerCase() !== mxid.toLowerCase();
           });
-          const newBanned = action === 'ban'
-            ? [...(prev.bannedMembers || []).filter(b => b.toLowerCase() !== mxid.toLowerCase()), mxid]
-            : (action === 'unban' ? (prev.bannedMembers || []).filter(b => b.toLowerCase() !== mxid.toLowerCase()) : (prev.bannedMembers || []));
           return {
             ...prev,
             joinedMembers: newJoined,
-            bannedMembers: newBanned,
             membersCount: newJoined.length
           };
         });
@@ -3821,9 +3744,6 @@ export default function KetesaAdmin({
         setRooms((prevRooms: MatrixRoom[]) => prevRooms.map(r => r.id === roomId ? {
           ...r,
           joinedMembers: (r.joinedMembers || []).filter(m => ((typeof m === 'string' ? m : m.mxid) || '').toLowerCase() !== mxid.toLowerCase()),
-          bannedMembers: action === 'ban' 
-            ? [...(r.bannedMembers || []).filter(b => b.toLowerCase() !== mxid.toLowerCase()), mxid] 
-            : (action === 'unban' ? (r.bannedMembers || []).filter(b => b.toLowerCase() !== mxid.toLowerCase()) : (r.bannedMembers || [])),
           membersCount: Math.max(0, (r.joinedMembers || []).filter(m => ((typeof m === 'string' ? m : m.mxid) || '').toLowerCase() !== mxid.toLowerCase()).length)
         } : r));
 
@@ -3835,16 +3755,12 @@ export default function KetesaAdmin({
           if (membersRes.ok) {
             const freshMembersData = await membersRes.json();
             const freshJoined = freshMembersData.joinedMembers || [];
-            const freshBanned = freshMembersData.bannedMembers || [];
-            const freshBannedHistory = freshMembersData.bannedHistory || [];
 
             setShowRoomMembersModal(prev => {
               if (prev && prev.id === roomId) {
                 return {
                   ...prev,
                   joinedMembers: freshJoined,
-                  bannedMembers: freshBanned,
-                  bannedHistory: freshBannedHistory,
                   membersCount: freshJoined.length
                 };
               }
@@ -3854,8 +3770,6 @@ export default function KetesaAdmin({
             setRooms((prevRooms: MatrixRoom[]) => prevRooms.map(r => r.id === roomId ? {
               ...r,
               joinedMembers: freshJoined,
-              bannedMembers: freshBanned,
-              bannedHistory: freshBannedHistory,
               membersCount: freshJoined.length
             } : r));
           }
@@ -4963,28 +4877,6 @@ export default function KetesaAdmin({
                     {kickedUsers.length > 0 && (
                       <span className="px-1.5 py-0.5 text-xs font-bold rounded-full bg-amber-600 text-white">
                         {kickedUsers.length}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      fetchBannedUsers();
-                      setShowBannedUsersModal(true);
-                    }}
-                    className={`flex items-center justify-center gap-2 px-3.5 py-2 font-medium text-sm rounded-lg transition-all duration-300 shadow-sm border cursor-pointer ${
-                      isLightMode
-                        ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-800'
-                        : 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300'
-                    }`}
-                    title={isRtl ? 'مشاهده و مدیریت کاربران مسدود شده و تاریخچه مسدودسازی' : 'View & Manage Banned Members & History'}
-                    id="banned-users-history-btn"
-                  >
-                    <Ban className="h-4 w-4 text-rose-500" />
-                    <span>{isRtl ? 'کاربران مسدود (Banned)' : 'Banned Members'}</span>
-                    {bannedUsersLogs.length > 0 && (
-                      <span className="px-1.5 py-0.5 text-xs font-bold rounded-full bg-rose-600 text-white">
-                        {bannedUsersLogs.length}
                       </span>
                     )}
                   </button>
@@ -6857,323 +6749,24 @@ export default function KetesaAdmin({
                               Creator
                             </span>
                           ) : hasWriteAccess ? (
-                            <>
-                              <button
-                                onClick={() => handleRoomMemberAction(showRoomMembersModal.id, m.mxid, 'kick')}
-                                disabled={memberActionLoading !== null}
-                                className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-amber-600/15 hover:bg-amber-600/25 text-amber-500 hover:text-amber-400 border border-amber-500/20 hover:border-amber-500/40 rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
-                                title={isRtl ? 'اخراج از روم' : 'Kick from room'}
-                              >
-                                {memberActionLoading === `${m.mxid}-kick` ? (
-                                  <RefreshCw className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <UserMinus className="h-3 w-3" />
-                                )}
-                                <span>{isRtl ? 'اخراج' : 'Kick'}</span>
-                              </button>
-                              <button
-                                onClick={() => handleRoomMemberAction(showRoomMembersModal.id, m.mxid, 'ban')}
-                                disabled={memberActionLoading !== null}
-                                className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-red-600/15 hover:bg-red-600/25 text-red-500 hover:text-red-400 border border-red-500/20 hover:border-red-500/40 rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
-                                title={isRtl ? 'مسدودسازی کاربر در این روم' : 'Ban member from room'}
-                              >
-                                {memberActionLoading === `${m.mxid}-ban` ? (
-                                  <RefreshCw className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Ban className="h-3 w-3" />
-                                )}
-                                <span>{isRtl ? 'مسدودسازی' : 'Ban'}</span>
-                              </button>
-                            </>
+                            <button
+                              onClick={() => handleRoomMemberAction(showRoomMembersModal.id, m.mxid, 'kick')}
+                              disabled={memberActionLoading !== null}
+                              className="flex items-center gap-1 px-2.5 py-1 text-[11px] bg-amber-600/15 hover:bg-amber-600/25 text-amber-500 hover:text-amber-400 border border-amber-500/20 hover:border-amber-500/40 rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
+                              title={isRtl ? 'اخراج از روم' : 'Kick from room'}
+                            >
+                              {memberActionLoading === `${m.mxid}-kick` ? (
+                                <RefreshCw className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <UserMinus className="h-3 w-3" />
+                              )}
+                              <span>{isRtl ? 'اخراج' : 'Kick'}</span>
+                            </button>
                           ) : null}
                         </div>
                       </div>
                     ));
                   })()}
-                </div>
-
-                {/* Banned Members Section: Divided into Users BAN & History BAN */}
-                <div className={`space-y-3 pt-3 border-t ${isLightMode ? 'border-slate-200' : 'border-white/10'}`}>
-                  {/* Tab Selector for Banned Section */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 p-1 rounded-lg border bg-black/20 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setRoomMemberBannedTab('active')}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
-                          roomMemberBannedTab === 'active'
-                            ? (isLightMode ? 'bg-white text-red-600 shadow-sm' : 'bg-red-600 text-white shadow-sm')
-                            : (isLightMode ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200')
-                        }`}
-                      >
-                        <Ban className="h-3.5 w-3.5 text-red-500" />
-                        <span>{isRtl ? 'کاربران مسدود فعلی (Users BAN)' : 'Users BAN (Active)'}</span>
-                        {(showRoomMembersModal.bannedMembers || []).length > 0 && (
-                          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                            roomMemberBannedTab === 'active' ? (isLightMode ? 'bg-red-100 text-red-700' : 'bg-white text-red-600') : 'bg-red-500/20 text-red-400'
-                          }`}>
-                            {(showRoomMembersModal.bannedMembers || []).length}
-                          </span>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setRoomMemberBannedTab('history')}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
-                          roomMemberBannedTab === 'history'
-                            ? (isLightMode ? 'bg-white text-amber-600 shadow-sm' : 'bg-amber-600 text-white shadow-sm')
-                            : (isLightMode ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200')
-                        }`}
-                      >
-                        <History className="h-3.5 w-3.5 text-amber-500" />
-                        <span>{isRtl ? 'تاریخچه مسدودیت (History BAN)' : 'History BAN'}</span>
-                        {(() => {
-                          const roomLogs = (bannedUsersLogs || []).filter(b => b.roomId === showRoomMembersModal.id || (showRoomMembersModal.bannedHistory || []).some((h: any) => h.id === b.id));
-                          const count = Math.max(roomLogs.length, (showRoomMembersModal.bannedHistory || []).length);
-                          return count > 0 ? (
-                            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                              roomMemberBannedTab === 'history' ? (isLightMode ? 'bg-amber-100 text-amber-700' : 'bg-white text-amber-600') : 'bg-amber-500/20 text-amber-400'
-                            }`}>
-                              {count}
-                            </span>
-                          ) : null;
-                        })()}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Tab 1: Active Banned Members (Users BAN) */}
-                  {roomMemberBannedTab === 'active' && (
-                    <div className="space-y-2">
-                      {(() => {
-                        const activeBans = (showRoomMembersModal.bannedMembers || []).filter(mxid =>
-                          mxid.toLowerCase().includes(memberSearch.toLowerCase())
-                        );
-
-                        if (activeBans.length === 0) {
-                          return (
-                            <div className={`p-4 text-center rounded-xl border text-xs ${
-                              isLightMode ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-black/20 border-white/5 text-gray-400'
-                            }`}>
-                              <ShieldCheck className="h-6 w-6 text-emerald-500 mx-auto mb-1.5 opacity-80" />
-                              <p className="font-semibold">{isRtl ? 'هیچ کاربر مسدود فعلی در این اتاق وجود ندارد' : 'No active banned users in this room'}</p>
-                              <p className="text-[10px] text-gray-400 mt-0.5">{isRtl ? 'تمامی اعضای اخراج نشده به روم دسترسی دارند.' : 'All authorized members have active access.'}</p>
-                            </div>
-                          );
-                        }
-
-                        return activeBans.map((mxid) => (
-                          <div
-                            key={mxid}
-                            className={`flex justify-between items-center p-3 border rounded-lg text-sm ${
-                              isLightMode ? 'bg-rose-50/40 border-rose-200 shadow-sm' : 'bg-rose-500/10 border-rose-500/20'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-mono bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold">
-                                <Ban className="h-4 w-4 text-rose-500" />
-                              </span>
-                              <div>
-                                <span className="block font-mono text-xs font-bold truncate max-w-[150px] md:max-w-[200px] text-rose-500 dark:text-rose-400" title={mxid}>
-                                  {mxid}
-                                </span>
-                                <span className="inline-block mt-0.5 px-1.5 py-0.2 text-[9px] font-bold rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                  {isRtl ? 'مسدود فعلی در این روم' : 'Currently Banned'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {hasWriteAccess && (
-                              <button
-                                onClick={() => handleRoomMemberAction(showRoomMembersModal.id, mxid, 'unban')}
-                                disabled={memberActionLoading !== null}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-500 hover:text-emerald-400 border border-emerald-500/20 hover:border-emerald-500/40 rounded-lg transition-all duration-200 disabled:opacity-50 cursor-pointer shadow-sm"
-                                title={isRtl ? 'رفع مسدودیت (Unban)' : 'Unban from room'}
-                              >
-                                {memberActionLoading === `${mxid}-unban` ? (
-                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Check className="h-3.5 w-3.5" />
-                                )}
-                                <span>{isRtl ? 'رفع مسدودیت' : 'Unban'}</span>
-                              </button>
-                            )}
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  )}
-
-                  {/* Tab 2: History BAN */}
-                  {roomMemberBannedTab === 'history' && (
-                    <div className="space-y-2.5">
-                      {(() => {
-                        // Merge logs for this room from bannedUsersLogs and showRoomMembersModal.bannedHistory
-                        const allRoomLogsMap = new Map();
-                        (showRoomMembersModal.bannedHistory || []).forEach((h: any) => {
-                          if (h && h.id) allRoomLogsMap.set(h.id, h);
-                        });
-                        (bannedUsersLogs || []).forEach((b: any) => {
-                          if (b.roomId === showRoomMembersModal.id) {
-                            allRoomLogsMap.set(b.id, b);
-                          }
-                        });
-
-                        const roomLogsList = Array.from(allRoomLogsMap.values());
-
-                        // Calculate ban count per user in this room
-                        const userBanCountInRoom: Record<string, number> = {};
-                        roomLogsList.forEach((log: any) => {
-                          const u = (log.userMxid || '').toLowerCase();
-                          if (u) {
-                            userBanCountInRoom[u] = (userBanCountInRoom[u] || 0) + 1;
-                          }
-                        });
-
-                        const filteredLogs = roomLogsList.filter((item: any) => {
-                          const q = memberSearch.toLowerCase();
-                          return (
-                            (item.userMxid && item.userMxid.toLowerCase().includes(q)) ||
-                            (item.userDisplayName && item.userDisplayName.toLowerCase().includes(q)) ||
-                            (item.bannedBy && item.bannedBy.toLowerCase().includes(q)) ||
-                            (item.reason && item.reason.toLowerCase().includes(q)) ||
-                            (item.userIp && item.userIp.toLowerCase().includes(q))
-                          );
-                        });
-
-                        if (filteredLogs.length === 0) {
-                          return (
-                            <div className={`p-4 text-center rounded-xl border text-xs ${
-                              isLightMode ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-black/20 border-white/5 text-gray-400'
-                            }`}>
-                              <History className="h-6 w-6 text-amber-500 mx-auto mb-1.5 opacity-80" />
-                              <p className="font-semibold">{isRtl ? 'هیچ سابقه مسدودیتی برای این اتاق ثبت نشده است' : 'No ban history recorded for this room'}</p>
-                              <p className="text-[10px] text-gray-400 mt-0.5">{isRtl ? 'سابقه مسدودیت کاربران در این بخش بایگانی می‌شود.' : 'Historical ban logs will appear here.'}</p>
-                            </div>
-                          );
-                        }
-
-                        return filteredLogs.map((item: any) => {
-                          const dateObj = new Date(item.timestamp);
-                          const formattedDate = dateObj.toLocaleDateString(isRtl ? 'fa-IR' : undefined, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                          });
-                          const formattedTime = dateObj.toLocaleTimeString(isRtl ? 'fa-IR' : undefined, {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          });
-                          const isCurrentlyBanned = (showRoomMembersModal.bannedMembers || []).some(
-                            (bm: string) => bm.toLowerCase() === (item.userMxid || '').toLowerCase()
-                          );
-                          const banCount = userBanCountInRoom[(item.userMxid || '').toLowerCase()] || 1;
-
-                          return (
-                            <div
-                              key={item.id}
-                              className={`p-3 rounded-xl border transition-all text-xs space-y-2 ${
-                                isLightMode
-                                  ? 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 shadow-sm'
-                                  : 'bg-black/30 hover:bg-black/50 border-white/5'
-                              }`}
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1.5 border-slate-200/50 dark:border-white/5">
-                                <div className="flex items-center gap-2">
-                                  <span className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                                    isCurrentlyBanned ? 'bg-rose-500/15 text-rose-500 border border-rose-500/30' : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
-                                  }`}>
-                                    <Ban className="h-3.5 w-3.5" />
-                                  </span>
-                                  <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className={`font-bold text-xs ${isLightMode ? 'text-slate-800' : 'text-gray-100'}`}>
-                                        {item.userDisplayName || item.userMxid}
-                                      </span>
-                                      {item.userDisplayName && item.userDisplayName !== item.userMxid && (
-                                        <span className="font-mono text-[10px] text-gray-500">
-                                          ({item.userMxid})
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-1.5">
-                                  {/* Ban count badge */}
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                    banCount > 1
-                                      ? 'bg-red-500/15 text-red-500 border-red-500/30'
-                                      : 'bg-amber-500/15 text-amber-500 border-amber-500/30'
-                                  }`}>
-                                    {banCount > 1 
-                                      ? (isRtl ? `${banCount} بار مسدود شده` : `${banCount}x Banned`) 
-                                      : (isRtl ? '۱ بار مسدود' : '1x Banned')}
-                                  </span>
-
-                                  {/* Status badge */}
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                    isCurrentlyBanned
-                                      ? 'bg-rose-600 text-white border-rose-700'
-                                      : 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-                                  }`}>
-                                    {isCurrentlyBanned ? (isRtl ? 'هم‌اکنون مسدود' : 'Active Ban') : (isRtl ? 'رفع مسدودیت شده' : 'Unbanned')}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Details Grid */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px]">
-                                <div className="flex items-center gap-1 text-gray-500">
-                                  <Calendar className="h-3 w-3 text-amber-500" />
-                                  <span>{formattedDate} - {formattedTime}</span>
-                                </div>
-
-                                <div className="flex items-center gap-1 text-gray-500 truncate">
-                                  <Shield className="h-3 w-3 text-indigo-500 flex-shrink-0" />
-                                  <span className="truncate">{isRtl ? 'توسط:' : 'By:'} <span className="font-mono text-indigo-400">@{item.bannedBy}</span></span>
-                                </div>
-
-                                {item.reason && (
-                                  <div className="col-span-full flex items-center gap-1 text-gray-400 italic">
-                                    <AlertCircle className="h-3 w-3 text-amber-500 flex-shrink-0" />
-                                    <span className="truncate">"{item.reason}"</span>
-                                  </div>
-                                )}
-
-                                {item.userIp && item.userIp !== 'N/A' && (
-                                  <div className="col-span-full flex items-center gap-1 text-gray-500 font-mono text-[9px]">
-                                    <Globe className="h-3 w-3 text-cyan-500" />
-                                    <span>IP: {item.userIp}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Action if currently banned in this room */}
-                              {isCurrentlyBanned && hasWriteAccess && (
-                                <div className="pt-1 flex justify-end">
-                                  <button
-                                    onClick={() => handleRoomMemberAction(showRoomMembersModal.id, item.userMxid, 'unban')}
-                                    disabled={memberActionLoading !== null}
-                                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-500 hover:text-emerald-400 border border-emerald-500/20 rounded-lg transition-all cursor-pointer"
-                                    title={isRtl ? 'رفع مسدودیت' : 'Unban'}
-                                  >
-                                    {memberActionLoading === `${item.userMxid}-unban` ? (
-                                      <RefreshCw className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Check className="h-3 w-3" />
-                                    )}
-                                    <span>{isRtl ? 'رفع مسدودیت کاربر' : 'Unban Member'}</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -7430,488 +7023,6 @@ export default function KetesaAdmin({
                     );
                   });
                 })()}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ========================================== */}
-      {/* MODAL: BANNED USERS & BAN HISTORY (Users BAN & History BAN) */}
-      {/* ========================================== */}
-      <AnimatePresence>
-        {showBannedUsersModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-4xl p-6 rounded-2xl relative space-y-4 max-h-[90vh] flex flex-col spatial-glass"
-              id="banned-users-modal"
-            >
-              {/* Close Button */}
-              <button
-                onClick={() => {
-                  setShowBannedUsersModal(false);
-                  setBannedUsersSearch('');
-                }}
-                className={`absolute top-5 ${isRtl ? 'left-5' : 'right-5'} p-2 rounded-lg transition-colors duration-200 cursor-pointer ${
-                  isLightMode 
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-600' 
-                    : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white'
-                }`}
-                title={t.cancel}
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              {/* Header */}
-              <div>
-                <h3 className={`text-xl font-bold flex items-center gap-2.5 ${
-                  isLightMode ? 'text-slate-800' : 'text-gray-100'
-                }`}>
-                  <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
-                    <Ban className="h-5 w-5" />
-                  </div>
-                  <span>{isRtl ? 'مدیریت و سوابق کاربران مسدود شده' : 'Banned Members Management & History'}</span>
-                </h3>
-                <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-500' : 'text-gray-400'}`}>
-                  {isRtl 
-                    ? 'مشاهده کاربران مسدود شده در روم‌ها، تفکیک بر اساس وضعیت مسدودیت فعلی و تاریخچه دفعات مسدودسازی' 
-                    : 'View banned users across rooms, separated into active bans and full ban history with frequency'}
-                </p>
-              </div>
-
-              {/* Top Bar: Tabs & Search */}
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b pb-3 border-slate-200/50 dark:border-white/5">
-                {/* Tabs */}
-                <div className="flex items-center gap-1.5 p-1 rounded-xl border bg-black/20 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setBannedModalTab('active')}
-                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                      bannedModalTab === 'active'
-                        ? (isLightMode ? 'bg-white text-rose-600 shadow-sm' : 'bg-rose-600 text-white shadow-sm')
-                        : (isLightMode ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200')
-                    }`}
-                  >
-                    <Ban className="h-4 w-4 text-rose-500" />
-                    <span>{isRtl ? 'کاربران مسدود فعلی (Users BAN)' : 'Users BAN (Active)'}</span>
-                    {(() => {
-                      const allActiveBansCount = rooms.reduce((acc, r) => acc + (r.bannedMembers?.length || 0), 0);
-                      return allActiveBansCount > 0 ? (
-                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                          bannedModalTab === 'active' ? (isLightMode ? 'bg-rose-100 text-rose-700' : 'bg-white text-rose-600') : 'bg-rose-500/20 text-rose-400'
-                        }`}>
-                          {allActiveBansCount}
-                        </span>
-                      ) : null;
-                    })()}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setBannedModalTab('history')}
-                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                      bannedModalTab === 'history'
-                        ? (isLightMode ? 'bg-white text-amber-600 shadow-sm' : 'bg-amber-600 text-white shadow-sm')
-                        : (isLightMode ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-gray-200')
-                    }`}
-                  >
-                    <History className="h-4 w-4 text-amber-500" />
-                    <span>{isRtl ? 'تاریخچه مسدودیت‌ها (History BAN)' : 'History BAN'}</span>
-                    {bannedUsersLogs.length > 0 && (
-                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                        bannedModalTab === 'history' ? (isLightMode ? 'bg-amber-100 text-amber-700' : 'bg-white text-amber-600') : 'bg-amber-500/20 text-amber-400'
-                      }`}>
-                        {bannedUsersLogs.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Search & Refresh */}
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 md:w-64">
-                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder={isRtl ? 'جستجو بر اساس نام، MXID، اتاق...' : 'Search by name, MXID, room...'}
-                      value={bannedUsersSearch}
-                      onChange={(e) => setBannedUsersSearch(e.target.value)}
-                      className={`w-full pl-8 pr-3 py-1.5 border rounded-lg text-xs outline-none transition-colors ${
-                        isLightMode
-                          ? 'bg-white border-slate-300 text-slate-800 focus:border-rose-500'
-                          : 'bg-black/40 border-white/10 text-gray-200 focus:border-rose-500'
-                      }`}
-                    />
-                  </div>
-
-                  <button
-                    onClick={fetchBannedUsers}
-                    disabled={isLoadingBannedUsers}
-                    className={`p-2 rounded-lg border text-xs transition-colors cursor-pointer ${
-                      isLightMode
-                        ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
-                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-300'
-                    }`}
-                    title={isRtl ? 'به‌روزرسانی لیست' : 'Refresh list'}
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isLoadingBannedUsers ? 'animate-spin text-rose-500' : ''}`} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Body Content */}
-              <div className="flex-1 overflow-y-auto pr-1 space-y-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                {/* TAB 1: ACTIVE BANNED USERS ACROSS ROOMS */}
-                {bannedModalTab === 'active' && (
-                  <div className="space-y-3">
-                    {(() => {
-                      // Collect all active banned members across all rooms
-                      const activeBansList: Array<{ mxid: string; roomId: string; roomName: string }> = [];
-                      rooms.forEach((r) => {
-                        (r.bannedMembers || []).forEach((mxid) => {
-                          activeBansList.push({
-                            mxid,
-                            roomId: r.id,
-                            roomName: r.name || r.id
-                          });
-                        });
-                      });
-
-                      // Calculate server-wide ban frequency for each user
-                      const userBanCountAll: Record<string, number> = {};
-                      bannedUsersLogs.forEach((b) => {
-                        const u = (b.userMxid || '').toLowerCase();
-                        if (u) {
-                          userBanCountAll[u] = (userBanCountAll[u] || 0) + 1;
-                        }
-                      });
-
-                      const filtered = activeBansList.filter((item) => {
-                        const q = bannedUsersSearch.toLowerCase();
-                        return (
-                          item.mxid.toLowerCase().includes(q) ||
-                          item.roomId.toLowerCase().includes(q) ||
-                          item.roomName.toLowerCase().includes(q)
-                        );
-                      });
-
-                      if (filtered.length === 0) {
-                        return (
-                          <div className={`p-8 text-center rounded-2xl border text-xs ${
-                            isLightMode ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-black/20 border-white/5 text-gray-400'
-                          }`}>
-                            <ShieldCheck className="h-10 w-10 text-emerald-500 mx-auto mb-2 opacity-80" />
-                            <p className="font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                              {isRtl ? 'هیچ کاربر مسدودی در هیچ اتاقی وجود ندارد' : 'No active banned users found'}
-                            </p>
-                            <p className="text-[11px] text-gray-400 mt-1">
-                              {isRtl ? 'تمام کاربران آزاد بوده و دسترسی‌های مجاز دارند.' : 'All users are in good standing.'}
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      return filtered.map((item, idx) => {
-                        const frequency = userBanCountAll[item.mxid.toLowerCase()] || 1;
-                        return (
-                          <div
-                            key={`${item.roomId}-${item.mxid}-${idx}`}
-                            className={`p-4 rounded-xl border transition-all text-xs space-y-2.5 ${
-                              isLightMode
-                                ? 'bg-rose-50/30 hover:bg-rose-50/60 border-rose-200 shadow-sm'
-                                : 'bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/20'
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 border-rose-200/50 dark:border-rose-500/10">
-                              {/* User Info */}
-                              <div className="flex items-center gap-2.5">
-                                <span className="h-9 w-9 rounded-full bg-rose-500/15 text-rose-500 border border-rose-500/30 flex items-center justify-center font-bold">
-                                  <Ban className="h-4 w-4" />
-                                </span>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400">
-                                      {item.mxid}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-600 text-white">
-                                      {isRtl ? 'مسدود فعلی' : 'Active Ban'}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Ban count & Actions */}
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  frequency > 1
-                                    ? 'bg-red-500/20 text-red-500 border-red-500/30'
-                                    : 'bg-amber-500/20 text-amber-500 border-amber-500/30'
-                                }`}>
-                                  {frequency > 1
-                                    ? (isRtl ? `${frequency} بار مسدود شده` : `${frequency}x Banned`)
-                                    : (isRtl ? '۱ بار مسدود' : '1x Banned')}
-                                </span>
-
-                                {hasWriteAccess && (
-                                  <button
-                                    onClick={() => handleRoomMemberAction(item.roomId, item.mxid, 'unban')}
-                                    disabled={memberActionLoading !== null}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-500 hover:text-emerald-400 border border-emerald-500/20 hover:border-emerald-500/40 rounded-lg transition-all duration-200 disabled:opacity-50 cursor-pointer shadow-sm"
-                                    title={isRtl ? 'رفع مسدودیت از این روم' : 'Unban from this room'}
-                                  >
-                                    {memberActionLoading === `${item.mxid}-unban` ? (
-                                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <Check className="h-3.5 w-3.5" />
-                                    )}
-                                    <span>{isRtl ? 'رفع مسدودیت' : 'Unban'}</span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Room Info */}
-                            <div className="flex items-center gap-2 text-[11px] text-gray-500 font-mono">
-                              <Hash className="h-3.5 w-3.5 text-purple-500" />
-                              <span className="font-semibold text-purple-400">{item.roomName}</span>
-                              <span className="text-gray-400">({item.roomId})</span>
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                )}
-
-                {/* TAB 2: HISTORY BAN WITH FREQUENCY */}
-                {bannedModalTab === 'history' && (
-                  <div className="space-y-3">
-                    {(() => {
-                      // Calculate ban count per user across all logs
-                      const userBanCountMap: Record<string, number> = {};
-                      bannedUsersLogs.forEach((b) => {
-                        const u = (b.userMxid || '').toLowerCase();
-                        if (u) {
-                          userBanCountMap[u] = (userBanCountMap[u] || 0) + 1;
-                        }
-                      });
-
-                      const filtered = bannedUsersLogs.filter((item) => {
-                        const q = bannedUsersSearch.toLowerCase();
-                        return (
-                          (item.userMxid && item.userMxid.toLowerCase().includes(q)) ||
-                          (item.userDisplayName && item.userDisplayName.toLowerCase().includes(q)) ||
-                          (item.roomId && item.roomId.toLowerCase().includes(q)) ||
-                          (item.roomName && item.roomName.toLowerCase().includes(q)) ||
-                          (item.bannedBy && item.bannedBy.toLowerCase().includes(q)) ||
-                          (item.reason && item.reason.toLowerCase().includes(q)) ||
-                          (item.userIp && item.userIp.toLowerCase().includes(q))
-                        );
-                      });
-
-                      if (filtered.length === 0) {
-                        return (
-                          <div className={`p-8 text-center rounded-2xl border text-xs ${
-                            isLightMode ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-black/20 border-white/5 text-gray-400'
-                          }`}>
-                            <History className="h-10 w-10 text-amber-500 mx-auto mb-2 opacity-80" />
-                            <p className="font-bold text-sm text-gray-300">
-                              {isRtl ? 'هیچ تاریخچه‌ای از مسدودسازی کاربران ثبت نشده است' : 'No ban history records found'}
-                            </p>
-                            <p className="text-[11px] text-gray-500 mt-1">
-                              {isRtl ? 'هر زمان کاربری مسدود شود، لاگ کامل و تعداد دفعات مسدودسازی در اینجا نمایش داده خواهد شد.' : 'When users are banned, records will be archived here.'}
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      return filtered.map((item) => {
-                        const dateObj = new Date(item.timestamp);
-                        const formattedDate = dateObj.toLocaleDateString(isRtl ? 'fa-IR' : undefined, {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        });
-                        const formattedTime = dateObj.toLocaleTimeString(isRtl ? 'fa-IR' : undefined, {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        });
-                        const count = userBanCountMap[(item.userMxid || '').toLowerCase()] || 1;
-                        
-                        // Check if currently banned in this room
-                        const roomObj = rooms.find(r => r.id === item.roomId);
-                        const isCurrentlyBanned = (roomObj?.bannedMembers || []).some(
-                          bm => bm.toLowerCase() === (item.userMxid || '').toLowerCase()
-                        );
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={`p-4 rounded-xl border transition-all text-xs space-y-2.5 ${
-                              isLightMode
-                                ? 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 shadow-sm'
-                                : 'bg-black/30 hover:bg-black/50 border-white/5'
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 border-slate-200/50 dark:border-white/5">
-                              {/* User Info */}
-                              <div className="flex items-center gap-2">
-                                <span className={`h-8 w-8 rounded-full border flex items-center justify-center font-bold ${
-                                  isCurrentlyBanned
-                                    ? 'bg-rose-500/15 text-rose-500 border-rose-500/30'
-                                    : 'bg-amber-500/15 text-amber-500 border-amber-500/30'
-                                }`}>
-                                  <Ban className="h-4 w-4" />
-                                </span>
-                                <div>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className={`font-bold text-sm ${isLightMode ? 'text-slate-800' : 'text-gray-100'}`}>
-                                      {item.userDisplayName || item.userMxid}
-                                    </span>
-                                    {item.userDisplayName && item.userDisplayName !== item.userMxid && (
-                                      <span className="font-mono text-[10px] text-gray-500">
-                                        ({item.userMxid})
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Badges & Actions */}
-                              <div className="flex items-center gap-2">
-                                {/* Ban frequency badge */}
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  count > 1
-                                    ? 'bg-red-500/15 text-red-500 border-red-500/30'
-                                    : 'bg-amber-500/15 text-amber-500 border-amber-500/30'
-                                }`}>
-                                  {count > 1 
-                                    ? (isRtl ? `${count} بار مسدود شده` : `${count}x Banned`) 
-                                    : (isRtl ? '۱ بار مسدود' : '1x Banned')}
-                                </span>
-
-                                {/* Status badge */}
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isCurrentlyBanned
-                                    ? 'bg-rose-600 text-white border-rose-700'
-                                    : 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-                                }`}>
-                                  {isCurrentlyBanned ? (isRtl ? 'هم‌اکنون مسدود' : 'Active Ban') : (isRtl ? 'رفع مسدودیت شده' : 'Unbanned')}
-                                </span>
-
-                                {/* Date */}
-                                <div className="flex items-center gap-1.5 font-mono text-[11px] text-gray-500">
-                                  <Calendar className="h-3.5 w-3.5 text-amber-500/80" />
-                                  <span>{formattedDate} - {formattedTime}</span>
-                                </div>
-
-                                {hasWriteAccess && (
-                                  <button
-                                    onClick={() => handleDeleteBannedUserLog(item.id)}
-                                    disabled={isDeletingBannedLog === item.id}
-                                    className="p-1 hover:text-red-500 text-gray-400 transition-colors cursor-pointer"
-                                    title={isRtl ? 'حذف این گزارش از تاریخچه' : 'Delete log entry'}
-                                  >
-                                    {isDeletingBannedLog === item.id ? (
-                                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Details Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
-                              {/* Room */}
-                              <div className={`p-2 rounded-lg border flex items-center gap-2 ${
-                                isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/40 border-white/5'
-                              }`}>
-                                <Hash className="h-4 w-4 text-purple-500 flex-shrink-0" />
-                                <div className="truncate">
-                                  <span className="text-[10px] text-gray-400 block">{isRtl ? 'اتاق / روم:' : 'Room:'}</span>
-                                  <span className={`font-semibold truncate block ${isLightMode ? 'text-slate-700' : 'text-gray-200'}`}>
-                                    {item.roomName} <span className="font-mono text-[10px] text-gray-500">({item.roomId})</span>
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Banned By */}
-                              <div className={`p-2 rounded-lg border flex items-center gap-2 ${
-                                isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/40 border-white/5'
-                              }`}>
-                                <Shield className="h-4 w-4 text-indigo-500 flex-shrink-0" />
-                                <div className="truncate">
-                                  <span className="text-[10px] text-gray-400 block">{isRtl ? 'مسدود شده توسط:' : 'Banned By:'}</span>
-                                  <span className="font-semibold text-indigo-400 font-mono">
-                                    @{item.bannedBy}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Reason */}
-                              <div className={`p-2 rounded-lg border flex items-center gap-2 md:col-span-2 ${
-                                isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/40 border-white/5'
-                              }`}>
-                                <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                                <div className="flex-1">
-                                  <span className="text-[10px] text-gray-400 block">{isRtl ? 'دلیل مسدودسازی:' : 'Reason:'}</span>
-                                  <span className={`italic ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>
-                                    "{item.reason || (isRtl ? 'دلیلی ذکر نشده است' : 'No reason provided')}"
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* IP Address & User Agent */}
-                              <div className={`p-2 rounded-lg border flex items-center gap-2 md:col-span-2 ${
-                                isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900/40 border-white/5'
-                              }`}>
-                                <Globe className="h-4 w-4 text-cyan-500 flex-shrink-0" />
-                                <div className="flex-1 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px]">
-                                  <div>
-                                    <span className="text-gray-400">{isRtl ? 'آدرس IP کاربر:' : 'User IP:'} </span>
-                                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20">
-                                      {item.userIp || 'N/A'}
-                                    </span>
-                                  </div>
-                                  {item.userAgent && item.userAgent !== 'N/A' && (
-                                    <div className="text-gray-400 truncate max-w-[280px]" title={item.userAgent}>
-                                      <Laptop className="h-3 w-3 inline mr-1 text-gray-500" />
-                                      <span>{item.userAgent}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Direct Unban button if currently banned in this room */}
-                            {isCurrentlyBanned && hasWriteAccess && (
-                              <div className="pt-1 flex justify-end">
-                                <button
-                                  onClick={() => handleRoomMemberAction(item.roomId, item.userMxid, 'unban')}
-                                  disabled={memberActionLoading !== null}
-                                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-500 hover:text-emerald-400 border border-emerald-500/20 rounded-lg transition-all cursor-pointer shadow-sm"
-                                  title={isRtl ? 'رفع مسدودیت از این روم' : 'Unban from room'}
-                                >
-                                  {memberActionLoading === `${item.userMxid}-unban` ? (
-                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <Check className="h-3.5 w-3.5" />
-                                  )}
-                                  <span>{isRtl ? 'رفع مسدودیت کاربر از این روم' : 'Unban from Room'}</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                )}
               </div>
             </motion.div>
           </div>

@@ -16,8 +16,8 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.18.0";
-export const PANEL_BUILD_DATE = "2026-08-18";
+export const PANEL_VERSION = "2.19.0";
+export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
 
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.19.0",
+    date: "2026-08-19",
+    title: "Complete Removal of Room Ban Functionality and BAN Subsystems (Frontend & Backend)",
+    changes: [
+      "Room Members Moderation Streamlining: Completely removed the Ban action button from Room Members list, keeping pure Kick moderation.",
+      "Removed Users BAN & History BAN Sections: Removed all Active Banned and History Banned UI sections, tabs, counters, and management modals from the Room Members modal and global Room Management toolbar.",
+      "Backend API Cleanup: Purged all legacy room ban/unban routes and endpoints (/api/matrix/rooms/members/ban, /api/matrix/rooms/members/unban, /api/matrix/banned-users, and /api/matrix/banned-users/:id).",
+      "Type Definition & Member Model Refactor: Cleaned up MatrixRoom interfaces and server room member responses to eliminate banned members arrays and obsolete state trackers."
+    ]
+  },
   {
     version: "2.18.0",
     date: "2026-08-18",

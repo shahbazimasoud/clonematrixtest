@@ -6123,10 +6123,9 @@ async function ensureAdminHasRoomPower(roomId: string, action: 'kick' | 'ban' | 
   };
 }
 
-async function handleRoomKickOrBan(
+async function handleRoomKick(
   roomId: string,
   targetMxid: string,
-  action: 'kick' | 'ban' | 'unban',
   reason: string | undefined,
   requesterUsername: string
 ): Promise<{ success: boolean; synapseConfirmed: boolean; message: string }> {
@@ -6138,24 +6137,16 @@ async function handleRoomKickOrBan(
   }
 
   // 1. Ensure the acting admin has the required moderation power levels in the room
-  const adminInfo = await ensureAdminHasRoomPower(normRoomId, action === 'unban' ? 'ban' : action);
+  const adminInfo = await ensureAdminHasRoomPower(normRoomId, 'kick');
   const adminMxid = adminInfo?.adminMxid || (await getAdminMxidForRoom(normRoomId));
 
   const encodedRoomId = encodeURIComponent(normRoomId);
   const reasonStr = (reason && reason.trim())
     ? reason.trim()
-    : (action === 'kick'
-        ? `Kicked via Admin Panel by ${requesterUsername}`
-        : (action === 'ban' ? `Banned via Admin Panel by ${requesterUsername}` : `Unbanned via Admin Panel by ${requesterUsername}`));
+    : `Kicked via Admin Panel by ${requesterUsername}`;
 
-  // 2. Execute the single canonical Matrix CS API endpoint for the action
-  const endpointMap = {
-    kick: `/_matrix/client/v3/rooms/${encodedRoomId}/kick`,
-    ban: `/_matrix/client/v3/rooms/${encodedRoomId}/ban`,
-    unban: `/_matrix/client/v3/rooms/${encodedRoomId}/unban`
-  };
-
-  const targetEndpoint = endpointMap[action];
+  // 2. Execute the single canonical Matrix CS API endpoint for kick
+  const targetEndpoint = `/_matrix/client/v3/rooms/${encodedRoomId}/kick`;
   const payload = {
     user_id: normTargetMxid,
     reason: reasonStr
@@ -6174,19 +6165,9 @@ async function handleRoomKickOrBan(
   // 3. Strict Verification of Synapse State: query Synapse for target's actual membership state
   const verifiedState = await getRoomMemberState(normRoomId, normTargetMxid, adminMxid);
 
-  if (action === 'kick') {
-    const isStillJoined = verifiedState && verifiedState.membership === "join";
-    if (isStillJoined) {
-      throw new Error(apiErrorMsg || `Synapse kick verification failed: user ${normTargetMxid} is still joined to room ${normRoomId}`);
-    }
-  } else if (action === 'ban') {
-    if (!verifiedState || verifiedState.membership !== "ban") {
-      throw new Error(apiErrorMsg || `Synapse ban verification failed: user ${normTargetMxid} membership is not 'ban' on homeserver`);
-    }
-  } else if (action === 'unban') {
-    if (verifiedState && verifiedState.membership === "ban") {
-      throw new Error(apiErrorMsg || `Synapse unban verification failed: user ${normTargetMxid} is still banned on homeserver`);
-    }
+  const isStillJoined = verifiedState && verifiedState.membership === "join";
+  if (isStillJoined) {
+    throw new Error(apiErrorMsg || `Synapse kick verification failed: user ${normTargetMxid} is still joined to room ${normRoomId}`);
   }
 
   // 4. Update local database only after Synapse confirmed success
@@ -6198,16 +6179,6 @@ async function handleRoomKickOrBan(
       const id = typeof m === 'string' ? m : m.mxid;
       return id.toLowerCase() !== normTargetMxid.toLowerCase();
     });
-    if (action === 'ban') {
-      if (!room.bannedMembers) room.bannedMembers = [];
-      if (!room.bannedMembers.some((bm: string) => bm.toLowerCase() === normTargetMxid.toLowerCase())) {
-        room.bannedMembers.push(normTargetMxid);
-      }
-    } else if (action === 'unban') {
-      if (room.bannedMembers) {
-        room.bannedMembers = room.bannedMembers.filter((bm: string) => bm.toLowerCase() !== normTargetMxid.toLowerCase());
-      }
-    }
     room.membersCount = room.joinedMembers.length;
     writeDb(db);
   }
@@ -6218,9 +6189,9 @@ async function handleRoomKickOrBan(
     user.memberships.unshift({
       roomId: normRoomId,
       roomName: room ? room.name : normRoomId,
-      state: action === 'ban' ? "ban" : "leave",
+      state: "leave",
       timestamp: new Date().toISOString(),
-      handler: `${action}_by_${requesterUsername}`
+      handler: `kick_by_${requesterUsername}`
     });
     writeDb(db);
   }
@@ -6253,106 +6224,51 @@ async function handleRoomKickOrBan(
   const roomNameVal = room?.name || room?.canonicalAlias || normRoomId;
   const userDisplayNameVal = user?.displayName || normTargetMxid.split(":")[0].replace("@", "");
 
-  if (action === 'kick') {
-    if (!db.kickedUsersLogs) db.kickedUsersLogs = [];
-    db.kickedUsersLogs.unshift({
-      id: `kick_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      roomId: normRoomId,
-      roomName: roomNameVal,
-      userMxid: normTargetMxid,
-      userDisplayName: userDisplayNameVal,
-      kickedBy: requesterUsername,
-      reason: reasonStr,
-      timestamp: new Date().toISOString(),
-      userIp,
-      userAgent
-    });
-    writeDb(db);
-  } else if (action === 'ban') {
-    if (!db.bannedUsersLogs) db.bannedUsersLogs = [];
-    db.bannedUsersLogs.unshift({
-      id: `ban_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      roomId: normRoomId,
-      roomName: roomNameVal,
-      userMxid: normTargetMxid,
-      userDisplayName: userDisplayNameVal,
-      bannedBy: requesterUsername,
-      reason: reasonStr,
-      timestamp: new Date().toISOString(),
-      userIp,
-      userAgent,
-      status: "banned"
-    });
-    writeDb(db);
-  } else if (action === 'unban') {
-    if (db.bannedUsersLogs && db.bannedUsersLogs.length > 0) {
-      db.bannedUsersLogs.forEach((item: any) => {
-        if (item.roomId === normRoomId && item.userMxid?.toLowerCase() === normTargetMxid.toLowerCase()) {
-          item.unbanned = true;
-          item.unbannedAt = new Date().toISOString();
-          item.unbannedBy = requesterUsername;
-          item.status = "unbanned";
-        }
-      });
-      writeDb(db);
-    }
-  }
+  if (!db.kickedUsersLogs) db.kickedUsersLogs = [];
+  db.kickedUsersLogs.unshift({
+    id: `kick_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    roomId: normRoomId,
+    roomName: roomNameVal,
+    userMxid: normTargetMxid,
+    userDisplayName: userDisplayNameVal,
+    kickedBy: requesterUsername,
+    reason: reasonStr,
+    timestamp: new Date().toISOString(),
+    userIp,
+    userAgent
+  });
+  writeDb(db);
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
     timestamp: new Date().toISOString(),
     username: requesterUsername,
-    action: action === 'kick' ? "Kick User from Room" : (action === 'ban' ? "Ban User from Room" : "Unban User from Room"),
+    action: "Kick User from Room",
     target: normTargetMxid,
     status: "success",
-    details: `${action === 'kick' ? 'Kicked' : (action === 'ban' ? 'Banned' : 'Unbanned')} ${normTargetMxid} from room: ${room ? room.name : normRoomId}`
+    details: `Kicked ${normTargetMxid} from room: ${room ? room.name : normRoomId}`
   });
   writeDb(db);
 
   adminRoomPowerCache.delete(normRoomId);
 
-  const actionText = action === 'kick' ? 'اخراج' : (action === 'ban' ? 'مسدود' : 'رفع مسدودیت');
   return {
     success: true,
     synapseConfirmed: true,
-    message: `کاربر با موفقیت ${actionText} گردید.`
+    message: `کاربر با موفقیت اخراج گردید.`
   };
 }
 
-// Kick / Ban / Unban user from room
+// Kick user from room
 app.post("/api/matrix/users/rooms/kick", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
   const { mxid, roomId, reason } = req.body;
   if (!mxid || !roomId) return res.status(400).json({ error: "MXID and roomId are required" });
 
   try {
-    const result = await handleRoomKickOrBan(roomId, mxid, 'kick', reason, req.user.username);
+    const result = await handleRoomKick(roomId, mxid, reason, req.user.username);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ success: false, synapseConfirmed: false, error: err.message || "Failed to kick user" });
-  }
-});
-
-app.post("/api/matrix/users/rooms/ban", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
-  const { mxid, roomId, reason } = req.body;
-  if (!mxid || !roomId) return res.status(400).json({ error: "MXID and roomId are required" });
-
-  try {
-    const result = await handleRoomKickOrBan(roomId, mxid, 'ban', reason, req.user.username);
-    res.json(result);
-  } catch (err: any) {
-    res.status(400).json({ success: false, synapseConfirmed: false, error: err.message || "Failed to ban user" });
-  }
-});
-
-app.post("/api/matrix/users/rooms/unban", authenticateToken, checkPermission(["Owner", "Super Admin", "Moderator"]), async (req, res) => {
-  const { mxid, roomId, reason } = req.body;
-  if (!mxid || !roomId) return res.status(400).json({ error: "MXID and roomId are required" });
-
-  try {
-    const result = await handleRoomKickOrBan(roomId, mxid, 'unban', reason, req.user.username);
-    res.json(result);
-  } catch (err: any) {
-    res.status(400).json({ success: false, synapseConfirmed: false, error: err.message || "Failed to unban user" });
   }
 });
 
@@ -7824,10 +7740,9 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
   const localUsers = db.matrixUsers || [];
 
   const joinedMembersMap = new Map<string, any>();
-  const bannedMembersSet = new Set<string>();
   let fetched = false;
 
-  // 1. Primary Method: Synapse Admin API Room State (returns complete state: members, power levels, display names, avatars & bans for ANY room)
+  // 1. Primary Method: Synapse Admin API Room State (returns complete state: members, power levels, display names, avatars)
   try {
     const stateRes = await callSynapseAdminAPI("GET", `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/state`);
     if (stateRes && Array.isArray(stateRes.state) && stateRes.state.length > 0) {
@@ -7851,10 +7766,7 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
           const content = ev.content || {};
           const membership = content.membership;
 
-          if (membership === "ban") {
-            bannedMembersSet.add(mxid);
-            joinedMembersMap.delete(mxid);
-          } else if (membership === "join") {
+          if (membership === "join") {
             const pLevel = userPowerLevels[mxid] !== undefined ? userPowerLevels[mxid] : defaultPowerLevel;
             const roleStr = pLevel >= 100 ? "Admin" : (pLevel >= 50 ? "Moderator" : "Member");
 
@@ -7869,12 +7781,12 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
               role: roleStr,
               powerLevel: pLevel
             });
-          } else if (membership === "leave" || membership === "invite") {
+          } else if (membership === "leave" || membership === "invite" || membership === "ban") {
             joinedMembersMap.delete(mxid);
           }
         }
       }
-      if (joinedMembersMap.size > 0 || bannedMembersSet.size > 0) fetched = true;
+      if (joinedMembersMap.size > 0) fetched = true;
     }
   } catch (stateErr: any) {
     console.warn(`Synapse Admin /state API failed for room ${roomId}:`, stateErr.message);
@@ -7951,27 +7863,23 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
       const dbMembers = await queryPostgres(`
         SELECT rm.user_id as mxid, rm.membership, rm.display_name, rm.avatar_url
         FROM room_memberships rm
-        WHERE rm.room_id = $1 AND rm.membership IN ('join', 'ban')
+        WHERE rm.room_id = $1 AND rm.membership = 'join'
       `, [roomId]);
       if (dbMembers && dbMembers.length > 0) {
         for (const m of dbMembers) {
           const mxid = m.mxid;
           if (!mxid) continue;
-          if (m.membership === 'ban') {
-            bannedMembersSet.add(mxid);
-          } else if (m.membership === 'join') {
-            const localUser = localUsers.find((u: any) => u.mxid?.toLowerCase() === mxid.toLowerCase());
-            const dName = m.display_name || localUser?.displayName || null;
+          const localUser = localUsers.find((u: any) => u.mxid?.toLowerCase() === mxid.toLowerCase());
+          const dName = m.display_name || localUser?.displayName || null;
 
-            joinedMembersMap.set(mxid, {
-              mxid,
-              displayName: dName,
-              avatar: m.avatar_url || "",
-              membership: "join",
-              role: "Member",
-              powerLevel: 0
-            });
-          }
+          joinedMembersMap.set(mxid, {
+            mxid,
+            displayName: dName,
+            avatar: m.avatar_url || "",
+            membership: "join",
+            role: "Member",
+            powerLevel: 0
+          });
         }
         if (joinedMembersMap.size > 0) fetched = true;
       }
@@ -7998,32 +7906,11 @@ app.get("/api/matrix/rooms/:roomId/members", authenticateToken, async (req, res)
           powerLevel: pLevel
         });
       }
-      (localRoom.bannedMembers || []).forEach((b: string) => bannedMembersSet.add(b));
     }
-  }
-
-  // Check for banned members in Postgres if not retrieved yet
-  try {
-    const dbBanned = await queryPostgres(`
-      SELECT user_id FROM room_memberships WHERE room_id = $1 AND membership = 'ban'
-    `, [roomId]);
-    if (dbBanned && dbBanned.length > 0) {
-      for (const b of dbBanned) {
-        if (b.user_id) bannedMembersSet.add(b.user_id);
-      }
-    }
-  } catch (pgErr) {}
-
-  // Purge any banned users from joined members
-  for (const bannedMxid of bannedMembersSet) {
-    joinedMembersMap.delete(bannedMxid);
   }
 
   const joinedMembers = Array.from(joinedMembersMap.values());
-  const bannedMembers = Array.from(bannedMembersSet);
-  const bannedHistory = (db.bannedUsersLogs || []).filter((b: any) => b.roomId === roomId);
-
-  res.json({ joinedMembers, bannedMembers, bannedHistory });
+  res.json({ joinedMembers });
 });
 
 app.post("/api/matrix/rooms/create", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
@@ -8221,56 +8108,11 @@ app.post("/api/matrix/rooms/members/kick", authenticateToken, checkPermission(["
   if (!roomId || !mxid) return res.status(400).json({ error: "Room ID and MXID are required" });
 
   try {
-    const result = await handleRoomKickOrBan(roomId, mxid, 'kick', reason, req.user.username);
+    const result = await handleRoomKick(roomId, mxid, reason, req.user.username);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message || "Failed to kick user" });
   }
-});
-
-app.post("/api/matrix/rooms/members/ban", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator", "Moderator"]), async (req, res) => {
-  const { roomId, mxid, reason } = req.body;
-  if (!roomId || !mxid) return res.status(400).json({ error: "Room ID and MXID are required" });
-
-  try {
-    const result = await handleRoomKickOrBan(roomId, mxid, 'ban', reason, req.user.username);
-    res.json(result);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message || "Failed to ban user" });
-  }
-});
-
-app.post("/api/matrix/rooms/members/unban", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator", "Moderator"]), async (req, res) => {
-  const { roomId, mxid } = req.body;
-  if (!roomId || !mxid) return res.status(400).json({ error: "Room ID and MXID are required" });
-
-  try {
-    await callSynapseAdminAPI("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/unban`, {
-      user_id: mxid
-    });
-  } catch (err: any) {
-    console.warn("Synapse unban API call failed:", err.message);
-  }
-
-  const db = readDb();
-  const room = (db.matrixRooms || []).find((r: any) => r.id === roomId);
-  if (room && room.bannedMembers) {
-    const idx = room.bannedMembers.indexOf(mxid);
-    if (idx !== -1) room.bannedMembers.splice(idx, 1);
-  }
-
-  db.auditLogs.unshift({
-    id: `log-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    username: req.user.username,
-    action: "Unban Room Member",
-    target: mxid,
-    status: "success",
-    details: `Unbanned user ${mxid} in room: ${roomId}`
-  });
-  writeDb(db);
-
-  res.json({ success: true, message: "دسترسی کاربر رفع مسدودیت گردید." });
 });
 
 app.get("/api/matrix/kicked-users", authenticateToken, async (req, res) => {
@@ -8299,44 +8141,6 @@ app.delete("/api/matrix/kicked-users/:id", authenticateToken, checkPermission(["
     res.json({ success: true, kickedUsers: db.kickedUsersLogs });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to delete kicked user record" });
-  }
-});
-
-app.get("/api/matrix/banned-users", authenticateToken, async (req, res) => {
-  try {
-    const db = readDb();
-    if (!db.bannedUsersLogs) {
-      db.bannedUsersLogs = [];
-    }
-    // Enrich with currently banned status from rooms
-    const enrichedLogs = db.bannedUsersLogs.map((log: any) => {
-      const room = (db.matrixRooms || []).find((r: any) => r.id === log.roomId);
-      const isCurrentlyBanned = room?.bannedMembers?.some((bm: string) => bm.toLowerCase() === log.userMxid?.toLowerCase()) ?? false;
-      return {
-        ...log,
-        isCurrentlyBanned
-      };
-    });
-    res.json({ bannedUsers: enrichedLogs });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || "Failed to fetch banned users history" });
-  }
-});
-
-app.delete("/api/matrix/banned-users/:id", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin", "Operator"]), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const db = readDb();
-    if (!db.bannedUsersLogs) db.bannedUsersLogs = [];
-    if (id === "all") {
-      db.bannedUsersLogs = [];
-    } else {
-      db.bannedUsersLogs = db.bannedUsersLogs.filter((item: any) => item.id !== id);
-    }
-    writeDb(db);
-    res.json({ success: true, bannedUsers: db.bannedUsersLogs });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || "Failed to delete banned user record" });
   }
 });
 
