@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.24.2";
+export const PANEL_VERSION = "2.24.3";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.24.3",
+    date: "2026-08-19",
+    title: "Eliminate Double Scrollbars & Unified Natural Page Scroll in Wallpaper & Config Views",
+    changes: [
+      "Scroll Architecture Overhaul: Resolved double scrolling and jumpy viewport behavior across Element Login Config & Wallpaper and Homeserver Settings tabs by removing conflicting nested overflow wrappers.",
+      "Sticky Subtab Navigation: Implemented sticky positioning (lg:sticky lg:top-24) on the sidebar navigation for smooth desktop tab switching while allowing full natural page scrolling."
+    ]
+  },
   {
     version: "2.24.2",
     date: "2026-08-19",

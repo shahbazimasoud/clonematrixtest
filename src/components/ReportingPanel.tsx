@@ -1921,9 +1921,9 @@ export default function ReportingPanel({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-180px)] overflow-hidden" dir={isRtl ? "rtl" : "ltr"}>
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start" dir={isRtl ? "rtl" : "ltr"}>
       {/* Side selection */}
-      <div className="spatial-glass rounded-3xl p-5 border border-white/5 flex flex-col gap-2 h-full overflow-y-auto">
+      <div className="spatial-glass rounded-3xl p-5 border border-white/5 flex flex-col gap-2 lg:sticky lg:top-24 max-h-[calc(100vh-120px)] overflow-y-auto">
         <h3 className={`text-sm font-display font-semibold text-slate-400 mb-3 px-3 uppercase tracking-wider ${isRtl ? 'text-right' : 'text-left'}`}>{t.titleReports}</h3>
 
         <button
@@ -2007,7 +2007,7 @@ export default function ReportingPanel({
       </div>
 
       {/* Main Tab View */}
-      <div className="lg:col-span-3 spatial-glass rounded-3xl p-6 border border-white/5 flex flex-col h-full overflow-y-auto">
+      <div className="lg:col-span-3 spatial-glass rounded-3xl p-6 border border-white/5 flex flex-col min-h-[500px]">
         
         {/* VIEW 1: PERFORMANCE ANALYTICS */}
         {activeSubTab === 'analytics' && (

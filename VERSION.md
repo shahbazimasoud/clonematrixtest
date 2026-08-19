@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.24.2** (Released: 2026-08-19)
+## Current Panel Version: **v2.24.3** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.24.3** - 2026-08-19
+- **Eliminate Double Scrollbars & Unified Natural Page Scroll in Wallpaper & Config Views**:
+  - **Scroll Architecture Overhaul**: Resolved double scrolling and jumpy viewport behavior across Element Login Config & Wallpaper and Homeserver Settings tabs by removing conflicting nested overflow wrappers.
+  - **Sticky Subtab Navigation**: Implemented sticky positioning (`lg:sticky lg:top-24`) on the sidebar navigation for smooth desktop tab switching while allowing full natural page scrolling.
 
 #### **v2.24.2** - 2026-08-19
 - **Active Client Devices Dropdown Menu Z-Index & Table Overflow Fix**:
