@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.19.0** (Released: 2026-08-19)
+## Current Panel Version: **v2.20.0** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.20.0** - 2026-08-19
+- **Element Login & Branding Asset Unified Storage Migration to `/var/www/element/img/`**:
+  - **Branding Directory Standardization**: Migrated wallpaper uploads, header logo uploads, and favicon assets to `/var/www/element/img/` with automatic directory creation.
+  - **Unified Discovery & Gallery Scanning**: Updated wallpaper gallery scanning and image listings to scan `/var/www/element/img/` and its subdirectories dynamically.
+  - **Config Sync & Asset Serving**: Seamlessly serve and link Element login branding assets (wallpaper, headerLogo, and favicon) directly from `/var/www/element/img/` in Element `config.json`.
 
 #### **v2.19.0** - 2026-08-19
 - **Complete Removal of Room Ban Functionality and BAN Subsystems (Frontend & Backend)**:

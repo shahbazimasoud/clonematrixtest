@@ -237,7 +237,7 @@ export default function WallpaperTab({
     setActiveLogoError(false);
   }, [branding.headerLogoUrl, activeLogo, customLogoFile]);
 
-  const DESTINATION_DIR = '/opt/matrix-synapse/wallpaper';
+  const DESTINATION_DIR = '/var/www/element/img';
 
   // Detect unsaved changes compared to server state
   const hasUnsavedChanges = useMemo(() => {
@@ -439,7 +439,7 @@ export default function WallpaperTab({
   // Select image as active header / login logo (in draft state only)
   const handleSelectLogo = (fileName: string) => {
     setActiveLogo(fileName);
-    setBranding(prev => ({ ...prev, headerLogoUrl: fileName ? `/img/logos/${fileName}` : '' }));
+    setBranding(prev => ({ ...prev, headerLogoUrl: fileName ? `/img/${fileName}` : '' }));
     setCustomLogoFile(null);
     if (showToast) {
       showToast('info', fileName 
@@ -1073,8 +1073,8 @@ export default function WallpaperTab({
           </div>
           <p className="text-xs text-slate-500 max-w-md">
             {loc(
-              'می‌توانید با دکمه "آپلود تصویر جدید" عکس‌های دلخواه خود را در مسیر /opt/matrix-synapse/wallpaper آپلود کنید.',
-              'Click "Upload Wallpaper" to upload background images directly to /opt/matrix-synapse/wallpaper.'
+              'می‌توانید با دکمه "آپلود تصویر جدید" عکس‌های دلخواه خود را در مسیر /var/www/element/img آپلود کنید.',
+              'Click "Upload Wallpaper" to upload background images directly to /var/www/element/img.'
             )}
           </p>
           <button

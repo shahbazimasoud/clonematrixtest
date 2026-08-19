@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.19.0";
+export const PANEL_VERSION = "2.20.0";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.20.0",
+    date: "2026-08-19",
+    title: "Element Login & Branding Asset Unified Storage Migration to /var/www/element/img/",
+    changes: [
+      "Branding Directory Standardization: Migrated wallpaper uploads, header logo uploads, and favicon assets to /var/www/element/img/ with automatic directory creation.",
+      "Unified Discovery & Gallery Scanning: Updated wallpaper gallery scanning and image listings to scan /var/www/element/img/ and its subdirectories dynamically.",
+      "Config Sync & Asset Serving: Seamlessly serve and link Element login branding assets (wallpaper, headerLogo, and favicon) directly from /var/www/element/img/ in Element config.json."
+    ]
+  },
   {
     version: "2.19.0",
     date: "2026-08-19",

@@ -20716,7 +20716,7 @@ async function scanRemoteWallpaperDirectory(activeConn?: ConnectionProfile): Pro
   remoteScanned: boolean;
 }> {
   const wallpapers: any[] = [];
-  const targetDir = "/opt/matrix-synapse/wallpaper";
+  const targetDir = "/var/www/element/img";
 
   if (activeConn && activeConn.id !== "local") {
     // 1. Scan via Remote Server (Agent or SSH)
@@ -20724,41 +20724,45 @@ async function scanRemoteWallpaperDirectory(activeConn?: ConnectionProfile): Pro
     const pythonScanScript = `
 import os, sys, json, mimetypes
 
-d = "${targetDir}"
-if not os.path.exists(d):
+dirs = ["/var/www/element/img", "/var/www/element/img/logos", "/opt/matrix-synapse/wallpaper", "/var/www/element/wallpaper"]
+main_dir = "/var/www/element/img"
+if not os.path.exists(main_dir):
     try:
-        os.makedirs(d, exist_ok=True)
+        os.makedirs(main_dir, exist_ok=True)
     except Exception:
         pass
 
 valid_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico", ".tiff", ".tif", ".avif", ".apng"}
+seen_names = set()
 results = []
 
-if os.path.exists(d) and os.path.isdir(d):
-    for entry in os.scandir(d):
-        if not entry.name.startswith("."):
-            ext = os.path.splitext(entry.name)[1].lower()
-            if ext in valid_exts:
-                try:
-                    st = entry.stat()
-                    if entry.is_file():
-                        mime, _ = mimetypes.guess_type(entry.name)
-                        if not mime:
-                            if ext == ".svg": mime = "image/svg+xml"
-                            elif ext == ".ico": mime = "image/x-icon"
-                            elif ext == ".webp": mime = "image/webp"
-                            elif ext in [".jpg", ".jpeg"]: mime = "image/jpeg"
-                            elif ext == ".png": mime = "image/png"
-                            else: mime = "image/" + ext.lstrip(".")
-                        results.append({
-                            "fileName": entry.name,
-                            "path": os.path.join(d, entry.name),
-                            "size": int(st.st_size),
-                            "mtime": int(st.st_mtime),
-                            "mime": mime
-                        })
-                except Exception:
-                    pass
+for d in dirs:
+    if os.path.exists(d) and os.path.isdir(d):
+        for entry in os.scandir(d):
+            if not entry.name.startswith("."):
+                ext = os.path.splitext(entry.name)[1].lower()
+                if ext in valid_exts and entry.name not in seen_names:
+                    try:
+                        st = entry.stat()
+                        if entry.is_file():
+                            seen_names.add(entry.name)
+                            mime, _ = mimetypes.guess_type(entry.name)
+                            if not mime:
+                                if ext == ".svg": mime = "image/svg+xml"
+                                elif ext == ".ico": mime = "image/x-icon"
+                                elif ext == ".webp": mime = "image/webp"
+                                elif ext in [".jpg", ".jpeg"]: mime = "image/jpeg"
+                                elif ext == ".png": mime = "image/png"
+                                else: mime = "image/" + ext.lstrip(".")
+                            results.append({
+                                "fileName": entry.name,
+                                "path": os.path.join(main_dir, entry.name),
+                                "size": int(st.st_size),
+                                "mtime": int(st.st_mtime),
+                                "mime": mime
+                            })
+                    except Exception:
+                        pass
 
 print("__WALLPAPERS_JSON_START__" + json.dumps(results) + "__WALLPAPERS_JSON_END__")
 `.trim();
@@ -20800,15 +20804,17 @@ print("__WALLPAPERS_JSON_START__" + json.dumps(results) + "__WALLPAPERS_JSON_END
 
     // Tier 2: Shell find + stat fallback
     try {
-      const shellScanCmd = `mkdir -p /opt/matrix-synapse/wallpaper /var/www/element/wallpaper /var/www/element/img/logos 2>/dev/null || true; find /opt/matrix-synapse/wallpaper -maxdepth 1 -type f -exec stat -c "%n\t%s\t%Y" {} + 2>/dev/null || find /opt/matrix-synapse/wallpaper -maxdepth 1 -type f -printf "%p\t%s\t%T@\n" 2>/dev/null || ls -1 /opt/matrix-synapse/wallpaper 2>/dev/null`;
+      const shellScanCmd = `mkdir -p /var/www/element/img /var/www/element/img/logos 2>/dev/null || true; find /var/www/element/img /var/www/element/img/logos /opt/matrix-synapse/wallpaper /var/www/element/wallpaper -maxdepth 1 -type f -exec stat -c "%n\t%s\t%Y" {} + 2>/dev/null || find /var/www/element/img -maxdepth 1 -type f -printf "%p\t%s\t%T@\n" 2>/dev/null || ls -1 /var/www/element/img 2>/dev/null`;
       const rawLs = await runServerCommand(shellScanCmd, activeConn);
       const lines = rawLs.trim().split("\n").filter(Boolean);
+      const seenNames = new Set<string>();
       for (const line of lines) {
         const parts = line.split("\t");
         const rawPathOrName = parts[0] ? parts[0].trim() : "";
         if (!rawPathOrName) continue;
         const cleanName = path.basename(rawPathOrName);
-        if (!isValidImageFile(cleanName)) continue;
+        if (!isValidImageFile(cleanName) || seenNames.has(cleanName)) continue;
+        seenNames.add(cleanName);
         const sizeNum = parseInt(parts[1] || "0", 10);
         const timeSec = parseFloat(parts[2] || "0");
         const modDate = timeSec > 0 ? new Date(timeSec * 1000).toISOString() : new Date().toISOString();
@@ -20834,32 +20840,44 @@ print("__WALLPAPERS_JSON_START__" + json.dumps(results) + "__WALLPAPERS_JSON_END
   }
 
   // Local Sandbox directory scan
-  const localDir = path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper");
+  const localDir = path.join(SANDBOX_DIR, "var/www/element/img");
   if (!fs.existsSync(localDir)) {
     fs.mkdirSync(localDir, { recursive: true });
   }
 
+  const localCandidates = [
+    localDir,
+    path.join(SANDBOX_DIR, "var/www/element/img/logos"),
+    path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper"),
+    path.join(SANDBOX_DIR, "var/www/element/wallpaper")
+  ];
+
   try {
-    const files = fs.readdirSync(localDir);
-    for (const fname of files) {
-      if (!isValidImageFile(fname)) continue;
-      const fullPath = path.join(localDir, fname);
-      try {
-        const stat = fs.statSync(fullPath);
-        if (!stat.isFile()) continue;
-        const sizeKb = (stat.size / 1024).toFixed(1) + " KB";
-        const sizeMb = (stat.size / 1048576).toFixed(2) + " MB";
-        wallpapers.push({
-          fileName: fname,
-          name: fname.replace(/[-_]/g, ' ').replace(/\.[^/.]+$/, ''),
-          path: `/opt/matrix-synapse/wallpaper/${fname}`,
-          size: stat.size,
-          sizeFormatted: stat.size > 1048576 ? sizeMb : sizeKb,
-          modifiedAt: stat.mtime.toISOString(),
-          url: `/api/matrix/wallpaper/file/${encodeURIComponent(fname)}`,
-          mimeType: getMimeType(fname)
-        });
-      } catch (_) {}
+    const seenLocal = new Set<string>();
+    for (const scanD of localCandidates) {
+      if (!fs.existsSync(scanD)) continue;
+      const files = fs.readdirSync(scanD);
+      for (const fname of files) {
+        if (!isValidImageFile(fname) || seenLocal.has(fname)) continue;
+        seenLocal.add(fname);
+        const fullPath = path.join(scanD, fname);
+        try {
+          const stat = fs.statSync(fullPath);
+          if (!stat.isFile()) continue;
+          const sizeKb = (stat.size / 1024).toFixed(1) + " KB";
+          const sizeMb = (stat.size / 1048576).toFixed(2) + " MB";
+          wallpapers.push({
+            fileName: fname,
+            name: fname.replace(/[-_]/g, ' ').replace(/\.[^/.]+$/, ''),
+            path: `/var/www/element/img/${fname}`,
+            size: stat.size,
+            sizeFormatted: stat.size > 1048576 ? sizeMb : sizeKb,
+            modifiedAt: stat.mtime.toISOString(),
+            url: `/api/matrix/wallpaper/file/${encodeURIComponent(fname)}`,
+            mimeType: getMimeType(fname)
+          });
+        } catch (_) {}
+      }
     }
   } catch (err) {
     console.error("Local wallpaper scan error:", err);
@@ -21339,7 +21357,7 @@ app.get("/api/matrix/wallpaper/list", authenticateToken, async (req, res) => {
 </svg>`
     };
 
-    // Scan the Source of Truth: /opt/matrix-synapse/wallpaper
+    // Scan the Source of Truth: /var/www/element/img
     const { wallpapers: scannedWallpapers } = await scanRemoteWallpaperDirectory(activeConn);
 
     const wallpapers = scannedWallpapers.map((wp) => ({
@@ -21350,7 +21368,7 @@ app.get("/api/matrix/wallpaper/list", authenticateToken, async (req, res) => {
 
     res.json({
       success: true,
-      directory: "/opt/matrix-synapse/wallpaper",
+      directory: "/var/www/element/img",
       wallpapers,
       activeWallpaper,
       activeLogo,
@@ -21397,10 +21415,11 @@ app.get("/api/matrix/wallpaper/file/:filename", async (req, res) => {
 import sys, os, base64
 fname = sys.argv[1]
 candidates = [
-    "/opt/matrix-synapse/wallpaper/" + fname,
-    "/var/www/element/wallpaper/" + fname,
+    "/var/www/element/img/" + fname,
     "/var/www/element/img/logos/" + fname,
-    "/var/www/element/" + fname
+    "/var/www/element/" + fname,
+    "/opt/matrix-synapse/wallpaper/" + fname,
+    "/var/www/element/wallpaper/" + fname
 ]
 for p in candidates:
     if os.path.isfile(p):
@@ -21433,7 +21452,7 @@ print("__NOT_FOUND__")
 
       // 2. Shell base64 fallback
       try {
-        const searchCmd = `for p in "/opt/matrix-synapse/wallpaper/${sanitizedFileName}" "/var/www/element/wallpaper/${sanitizedFileName}" "/var/www/element/img/logos/${sanitizedFileName}" "/var/www/element/${sanitizedFileName}"; do if [ -f "$p" ]; then echo "__B64_START__"; base64 -w 0 "$p" 2>/dev/null || base64 "$p" 2>/dev/null; echo ""; echo "__B64_END__"; exit 0; fi; done; echo "__NOT_FOUND__"`;
+        const searchCmd = `for p in "/var/www/element/img/${sanitizedFileName}" "/var/www/element/img/logos/${sanitizedFileName}" "/var/www/element/${sanitizedFileName}" "/opt/matrix-synapse/wallpaper/${sanitizedFileName}" "/var/www/element/wallpaper/${sanitizedFileName}"; do if [ -f "$p" ]; then echo "__B64_START__"; base64 -w 0 "$p" 2>/dev/null || base64 "$p" 2>/dev/null; echo ""; echo "__B64_END__"; exit 0; fi; done; echo "__NOT_FOUND__"`;
         const rawOutput = await runServerCommand(searchCmd, activeConn);
         if (rawOutput && rawOutput.includes("__B64_START__") && rawOutput.includes("__B64_END__")) {
           const startIndex = rawOutput.indexOf("__B64_START__") + "__B64_START__".length;
@@ -21453,10 +21472,11 @@ print("__NOT_FOUND__")
 
     // Check sandbox fallback in order
     const localCandidates = [
-      path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper", sanitizedFileName),
-      path.join(SANDBOX_DIR, "var/www/element/wallpaper", sanitizedFileName),
+      path.join(SANDBOX_DIR, "var/www/element/img", sanitizedFileName),
       path.join(SANDBOX_DIR, "var/www/element/img/logos", sanitizedFileName),
-      path.join(SANDBOX_DIR, "var/www/element", sanitizedFileName)
+      path.join(SANDBOX_DIR, "var/www/element", sanitizedFileName),
+      path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper", sanitizedFileName),
+      path.join(SANDBOX_DIR, "var/www/element/wallpaper", sanitizedFileName)
     ];
 
     for (const locFile of localCandidates) {
@@ -21489,7 +21509,7 @@ print("__NOT_FOUND__")
 });
 
 // Element Web Static Asset Proxy for Favicon and Header Logos
-app.get(["/api/matrix/branding/asset", "/img/logos/:filename"], async (req, res) => {
+app.get(["/api/matrix/branding/asset", "/img/logos/:filename", "/img/:filename", "/wallpaper/:filename"], async (req, res) => {
   try {
     const rawPath = String(req.params.filename || req.query.path || req.query.file || "").trim();
     if (!rawPath) {
@@ -21508,6 +21528,7 @@ app.get(["/api/matrix/branding/asset", "/img/logos/:filename"], async (req, res)
 import sys, os, base64
 fname = sys.argv[1]
 candidates = [
+    "/var/www/element/img/" + fname,
     "/var/www/element/img/logos/" + fname,
     "/var/www/element/" + fname,
     "/opt/matrix-synapse/wallpaper/" + fname,
@@ -21538,7 +21559,7 @@ print("__NOT_FOUND__")
 
       // Shell fallback
       try {
-        const searchCmd = `for p in "/var/www/element/img/logos/${cleanFileName}" "/var/www/element/${cleanFileName}" "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/wallpaper/${cleanFileName}"; do if [ -f "$p" ]; then base64 -w 0 "$p" 2>/dev/null || base64 "$p" 2>/dev/null; exit 0; fi; done; echo "__NOT_FOUND__"`;
+        const searchCmd = `for p in "/var/www/element/img/${cleanFileName}" "/var/www/element/img/logos/${cleanFileName}" "/var/www/element/${cleanFileName}" "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/wallpaper/${cleanFileName}"; do if [ -f "$p" ]; then base64 -w 0 "$p" 2>/dev/null || base64 "$p" 2>/dev/null; exit 0; fi; done; echo "__NOT_FOUND__"`;
         const b64 = await runServerCommand(searchCmd, activeConn);
         if (b64 && b64.trim() !== "__NOT_FOUND__" && b64.trim().length > 10) {
           const buffer = Buffer.from(b64.trim().replace(/[^A-Za-z0-9+/=]/g, ""), "base64");
@@ -21553,6 +21574,7 @@ print("__NOT_FOUND__")
 
     // Local sandbox check
     const localCandidates = [
+      path.join(SANDBOX_DIR, "var/www/element/img", cleanFileName),
       path.join(SANDBOX_DIR, "var/www/element/img/logos", cleanFileName),
       path.join(SANDBOX_DIR, "var/www/element", cleanFileName),
       path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper", cleanFileName),
@@ -21600,29 +21622,32 @@ app.post("/api/matrix/wallpaper/upload", authenticateToken, checkPermission(["Ow
     const buffer = Buffer.from(fileData, 'base64');
     const activeConn = getActiveConnection();
 
-    // 1. Save to local sandbox / cache
-    const sandboxDir = path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper");
+    // 1. Save to local sandbox / cache in /var/www/element/img
+    const sandboxDir = path.join(SANDBOX_DIR, "var/www/element/img");
     const sandboxElementDir = path.join(SANDBOX_DIR, "var/www/element/wallpaper");
+    const sandboxLegacyDir = path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper");
     fs.mkdirSync(sandboxDir, { recursive: true });
     fs.mkdirSync(sandboxElementDir, { recursive: true });
+    fs.mkdirSync(sandboxLegacyDir, { recursive: true });
 
     const localTarget = path.join(sandboxDir, sanitizedFileName);
     fs.writeFileSync(localTarget, buffer);
     fs.writeFileSync(path.join(sandboxElementDir, sanitizedFileName), buffer);
+    fs.writeFileSync(path.join(sandboxLegacyDir, sanitizedFileName), buffer);
 
-    // 2. If remote server is connected, transfer via SSH/SFTP
+    // 2. If remote server is connected, transfer via SSH/SFTP directly to /var/www/element/img/
     if (activeConn && activeConn.id !== "local") {
       const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
       const tmpLocal = path.join(os.tmpdir(), `raven_wp_${Date.now()}_${sanitizedFileName}`);
       fs.writeFileSync(tmpLocal, buffer);
 
       try {
-        await executeSSHCommand(activeConn, `${sudoPrefix}mkdir -p /opt/matrix-synapse/wallpaper /var/www/element/wallpaper /var/www/element/img/logos`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}mkdir -p /var/www/element/img /var/www/element/img/logos /var/www/element/wallpaper /opt/matrix-synapse/wallpaper && ${sudoPrefix}chmod 755 /var/www/element/img`);
         const remoteTemp = `/tmp/wp_${Date.now()}_${sanitizedFileName}`;
         await uploadSSHFile(activeConn, tmpLocal, remoteTemp);
         await executeSSHCommand(
           activeConn,
-          `${sudoPrefix}mv "${remoteTemp}" "/opt/matrix-synapse/wallpaper/${sanitizedFileName}" && ${sudoPrefix}chmod 644 "/opt/matrix-synapse/wallpaper/${sanitizedFileName}" && ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${sanitizedFileName}" "/var/www/element/wallpaper/${sanitizedFileName}" 2>/dev/null || true`
+          `${sudoPrefix}mv "${remoteTemp}" "/var/www/element/img/${sanitizedFileName}" && ${sudoPrefix}chmod 644 "/var/www/element/img/${sanitizedFileName}" && ${sudoPrefix}cp -f "/var/www/element/img/${sanitizedFileName}" "/opt/matrix-synapse/wallpaper/${sanitizedFileName}" 2>/dev/null || true`
         );
       } finally {
         try { fs.unlinkSync(tmpLocal); } catch (_) {}
@@ -21636,14 +21661,14 @@ app.post("/api/matrix/wallpaper/upload", authenticateToken, checkPermission(["Ow
       try { elConfig = JSON.parse(elConfigRaw); } catch (e) {}
 
       if (!elConfig.branding) elConfig.branding = {};
-      elConfig.branding.welcome_background_url = `/wallpaper/${sanitizedFileName}`;
-      elConfig.branding.auth_background_url = `/wallpaper/${sanitizedFileName}`;
+      elConfig.branding.welcome_background_url = `/img/${sanitizedFileName}`;
+      elConfig.branding.auth_background_url = `/img/${sanitizedFileName}`;
 
       await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2), {
         username: req.user.username,
         component: "Element Wallpaper Config",
         fieldOrParam: "branding.welcome_background_url",
-        diffSummary: `Set Element active wallpaper to /opt/matrix-synapse/wallpaper/${sanitizedFileName}`
+        diffSummary: `Set Element active wallpaper to /var/www/element/img/${sanitizedFileName}`
       });
     }
 
@@ -21654,9 +21679,9 @@ app.post("/api/matrix/wallpaper/upload", authenticateToken, checkPermission(["Ow
       timestamp: new Date().toISOString(),
       username: req.user.username,
       action: "Upload Wallpaper",
-      target: `/opt/matrix-synapse/wallpaper/${sanitizedFileName}`,
+      target: `/var/www/element/img/${sanitizedFileName}`,
       status: "success",
-      details: `Uploaded wallpaper file ${sanitizedFileName} (${(buffer.length / 1024).toFixed(1)} KB) to /opt/matrix-synapse/wallpaper.`
+      details: `Uploaded wallpaper file ${sanitizedFileName} (${(buffer.length / 1024).toFixed(1)} KB) to /var/www/element/img/.`
     });
     writeDb(db);
 
@@ -21664,7 +21689,7 @@ app.post("/api/matrix/wallpaper/upload", authenticateToken, checkPermission(["Ow
       success: true,
       fileName: sanitizedFileName,
       url: `/api/matrix/wallpaper/file/${encodeURIComponent(sanitizedFileName)}`,
-      message: `Wallpaper ${sanitizedFileName} uploaded successfully to /opt/matrix-synapse/wallpaper.`
+      message: `Wallpaper ${sanitizedFileName} uploaded successfully to /var/www/element/img/.`
     });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to upload wallpaper: " + err.message });
@@ -21684,15 +21709,15 @@ app.post("/api/matrix/wallpaper/set-active", authenticateToken, checkPermission(
     if (!elConfig.branding) elConfig.branding = {};
 
     if (cleanFileName) {
-      elConfig.branding.welcome_background_url = `/wallpaper/${cleanFileName}`;
-      elConfig.branding.auth_background_url = `/wallpaper/${cleanFileName}`;
+      elConfig.branding.welcome_background_url = `/img/${cleanFileName}`;
+      elConfig.branding.auth_background_url = `/img/${cleanFileName}`;
       
-      // Ensure file exists in /var/www/element/wallpaper on remote server
+      // Ensure file exists in /var/www/element/img on remote server
       if (activeConn && activeConn.id !== "local") {
         const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
         await executeSSHCommand(
           activeConn,
-          `${sudoPrefix}mkdir -p /var/www/element/wallpaper && ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/wallpaper/${cleanFileName}" 2>/dev/null || true`
+          `${sudoPrefix}mkdir -p /var/www/element/img && if [ ! -f "/var/www/element/img/${cleanFileName}" ] && [ -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" ]; then ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/img/${cleanFileName}"; fi`
         );
       }
     } else {
@@ -21743,7 +21768,7 @@ app.post("/api/matrix/wallpaper/set-logo", authenticateToken, checkPermission(["
     if (!elConfig.branding) elConfig.branding = {};
 
     if (cleanFileName) {
-      const logoPath = `/wallpaper/${cleanFileName}`;
+      const logoPath = `/img/${cleanFileName}`;
       elConfig.branding.welcome_logo_url = logoPath;
       elConfig.branding.auth_header_logo_url = logoPath;
       elConfig.branding.auth_logo_url = logoPath;
@@ -21753,22 +21778,24 @@ app.post("/api/matrix/wallpaper/set-logo", authenticateToken, checkPermission(["
       elConfig.auth_header_logo_url = logoPath;
 
       // Copy file in local sandbox
-      const sandboxWp = path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper", cleanFileName);
-      const sandboxElWp = path.join(SANDBOX_DIR, "var/www/element/wallpaper", cleanFileName);
+      const sandboxImg = path.join(SANDBOX_DIR, "var/www/element/img", cleanFileName);
       const sandboxElLogo = path.join(SANDBOX_DIR, "var/www/element/img/logos", cleanFileName);
-      fs.mkdirSync(path.dirname(sandboxElWp), { recursive: true });
+      const sandboxWp = path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper", cleanFileName);
+      fs.mkdirSync(path.dirname(sandboxImg), { recursive: true });
       fs.mkdirSync(path.dirname(sandboxElLogo), { recursive: true });
-      if (fs.existsSync(sandboxWp)) {
-        try { fs.copyFileSync(sandboxWp, sandboxElWp); } catch (_) {}
-        try { fs.copyFileSync(sandboxWp, sandboxElLogo); } catch (_) {}
+      if (fs.existsSync(sandboxWp) && !fs.existsSync(sandboxImg)) {
+        try { fs.copyFileSync(sandboxWp, sandboxImg); } catch (_) {}
+      }
+      if (fs.existsSync(sandboxImg)) {
+        try { fs.copyFileSync(sandboxImg, sandboxElLogo); } catch (_) {}
       }
 
-      // Ensure file exists in /var/www/element/wallpaper and /var/www/element/img/logos on remote server
+      // Ensure file exists in /var/www/element/img on remote server
       if (activeConn && activeConn.id !== "local") {
         const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
         await executeSSHCommand(
           activeConn,
-          `${sudoPrefix}mkdir -p /var/www/element/wallpaper /var/www/element/img/logos && ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/wallpaper/${cleanFileName}" 2>/dev/null && ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/img/logos/${cleanFileName}" 2>/dev/null || true`
+          `${sudoPrefix}mkdir -p /var/www/element/img /var/www/element/img/logos && if [ ! -f "/var/www/element/img/${cleanFileName}" ] && [ -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" ]; then ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/img/${cleanFileName}"; fi && ${sudoPrefix}cp -f "/var/www/element/img/${cleanFileName}" "/var/www/element/img/logos/${cleanFileName}" 2>/dev/null || true`
         );
       }
     } else {
@@ -21852,7 +21879,7 @@ app.post("/api/matrix/wallpaper/set-logo", authenticateToken, checkPermission(["
     res.json({
       success: true,
       activeLogo: cleanFileName,
-      headerLogoUrl: cleanFileName ? `/wallpaper/${cleanFileName}` : "",
+      headerLogoUrl: cleanFileName ? `/img/${cleanFileName}` : "",
       message: cleanFileName ? `Logo ${cleanFileName} set as active Element logo.` : "Logo reset to default."
     });
   } catch (err: any) {
@@ -21871,15 +21898,17 @@ app.delete("/api/matrix/wallpaper/delete", authenticateToken, checkPermission(["
     // 1. Delete from remote if connected
     if (activeConn && activeConn.id !== "local") {
       await runServerCommand(
-        `rm -f "/opt/matrix-synapse/wallpaper/${cleanFileName}" "/var/www/element/wallpaper/${cleanFileName}" "/var/www/element/img/logos/${cleanFileName}" 2>/dev/null || true`,
+        `rm -f "/var/www/element/img/${cleanFileName}" "/var/www/element/img/logos/${cleanFileName}" "/var/www/element/wallpaper/${cleanFileName}" "/opt/matrix-synapse/wallpaper/${cleanFileName}" 2>/dev/null || true`,
         activeConn
       );
     }
 
     // 2. Delete from sandbox
+    const sandboxImgFile = path.join(SANDBOX_DIR, "var/www/element/img", cleanFileName);
     const sandboxFile = path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper", cleanFileName);
     const sandboxElFile = path.join(SANDBOX_DIR, "var/www/element/wallpaper", cleanFileName);
     const sandboxLogoFile = path.join(SANDBOX_DIR, "var/www/element/img/logos", cleanFileName);
+    try { if (fs.existsSync(sandboxImgFile)) fs.unlinkSync(sandboxImgFile); } catch (_) {}
     try { if (fs.existsSync(sandboxFile)) fs.unlinkSync(sandboxFile); } catch (_) {}
     try { if (fs.existsSync(sandboxElFile)) fs.unlinkSync(sandboxElFile); } catch (_) {}
     try { if (fs.existsSync(sandboxLogoFile)) fs.unlinkSync(sandboxLogoFile); } catch (_) {}
@@ -21920,9 +21949,9 @@ app.delete("/api/matrix/wallpaper/delete", authenticateToken, checkPermission(["
       timestamp: new Date().toISOString(),
       username: req.user.username,
       action: "Delete Wallpaper",
-      target: `/opt/matrix-synapse/wallpaper/${cleanFileName}`,
+      target: `/var/www/element/img/${cleanFileName}`,
       status: "success",
-      details: `Deleted wallpaper ${cleanFileName} from server.`
+      details: `Deleted wallpaper/branding asset ${cleanFileName} from server.`
     });
     writeDb(db);
 
@@ -22127,15 +22156,15 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
     if (activeWallpaper !== undefined) {
       if (activeWallpaper && activeWallpaper.trim()) {
         const cleanWp = path.basename(activeWallpaper.trim());
-        elConfig.branding.welcome_background_url = `/wallpaper/${cleanWp}`;
-        elConfig.branding.auth_background_url = `/wallpaper/${cleanWp}`;
+        elConfig.branding.welcome_background_url = `/img/${cleanWp}`;
+        elConfig.branding.auth_background_url = `/img/${cleanWp}`;
 
-        // Ensure file exists in /var/www/element/wallpaper on remote server
+        // Ensure file exists in /var/www/element/img on remote server
         if (activeConn && activeConn.id !== "local") {
           const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
           await executeSSHCommand(
             activeConn,
-            `${sudoPrefix}mkdir -p /var/www/element/wallpaper && ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanWp}" "/var/www/element/wallpaper/${cleanWp}" 2>/dev/null || true`
+            `${sudoPrefix}mkdir -p /var/www/element/img && if [ ! -f "/var/www/element/img/${cleanWp}" ] && [ -f "/opt/matrix-synapse/wallpaper/${cleanWp}" ]; then ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanWp}" "/var/www/element/img/${cleanWp}"; fi`
           );
         }
       } else {
@@ -22150,8 +22179,11 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       const favBuffer = Buffer.from(faviconData, 'base64');
       
       // Save locally
+      const localImgFav = path.join(SANDBOX_DIR, "var/www/element/img", favName);
       const localFav = path.join(SANDBOX_DIR, "var/www/element", favName);
+      fs.mkdirSync(path.dirname(localImgFav), { recursive: true });
       fs.mkdirSync(path.dirname(localFav), { recursive: true });
+      fs.writeFileSync(localImgFav, favBuffer);
       fs.writeFileSync(localFav, favBuffer);
 
       // Also save in wallpaper dir for permanent storage
@@ -22168,14 +22200,14 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
           await uploadSSHFile(activeConn, tmpFav, remoteTemp);
           await executeSSHCommand(
             activeConn,
-            `${sudoPrefix}mkdir -p /opt/matrix-synapse/wallpaper /var/www/element && ${sudoPrefix}cp "${remoteTemp}" "/opt/matrix-synapse/wallpaper/${favName}" && ${sudoPrefix}mv "${remoteTemp}" "/var/www/element/${favName}" && ${sudoPrefix}chmod 644 "/var/www/element/${favName}"`
+            `${sudoPrefix}mkdir -p /var/www/element/img /var/www/element /opt/matrix-synapse/wallpaper && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/img/${favName}" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/${favName}" && ${sudoPrefix}cp "${remoteTemp}" "/opt/matrix-synapse/wallpaper/${favName}" && ${sudoPrefix}chmod 644 "/var/www/element/img/${favName}" "/var/www/element/${favName}"`
           );
         } finally {
           try { fs.unlinkSync(tmpFav); } catch (_) {}
         }
       }
 
-      elConfig.branding.favicon = `/${favName}`;
+      elConfig.branding.favicon = `/img/${favName}`;
     }
 
     // 5. Handle custom Header Logo Upload or Selected Header Logo
@@ -22185,10 +22217,13 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       const logoBuffer = Buffer.from(headerLogoData, 'base64');
 
       // Save locally
+      const localImgLogo = path.join(SANDBOX_DIR, "var/www/element/img", logoName);
       const localLogo = path.join(SANDBOX_DIR, "var/www/element/img/logos", logoName);
       const localWpLogo = path.join(SANDBOX_DIR, "var/www/element/wallpaper", logoName);
+      fs.mkdirSync(path.dirname(localImgLogo), { recursive: true });
       fs.mkdirSync(path.dirname(localLogo), { recursive: true });
       fs.mkdirSync(path.dirname(localWpLogo), { recursive: true });
+      fs.writeFileSync(localImgLogo, logoBuffer);
       fs.writeFileSync(localLogo, logoBuffer);
       fs.writeFileSync(localWpLogo, logoBuffer);
 
@@ -22205,14 +22240,14 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
           await uploadSSHFile(activeConn, tmpLogo, remoteTemp);
           await executeSSHCommand(
             activeConn,
-            `${sudoPrefix}mkdir -p /opt/matrix-synapse/wallpaper /var/www/element/img/logos /var/www/element/wallpaper && ${sudoPrefix}cp "${remoteTemp}" "/opt/matrix-synapse/wallpaper/${logoName}" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/wallpaper/${logoName}" && ${sudoPrefix}mv "${remoteTemp}" "/var/www/element/img/logos/${logoName}" && ${sudoPrefix}chmod 644 "/var/www/element/img/logos/${logoName}" "/var/www/element/wallpaper/${logoName}"`
+            `${sudoPrefix}mkdir -p /var/www/element/img /var/www/element/img/logos /opt/matrix-synapse/wallpaper && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/img/${logoName}" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/img/logos/${logoName}" && ${sudoPrefix}cp "${remoteTemp}" "/opt/matrix-synapse/wallpaper/${logoName}" && ${sudoPrefix}chmod 644 "/var/www/element/img/${logoName}" "/var/www/element/img/logos/${logoName}"`
           );
         } finally {
           try { fs.unlinkSync(tmpLogo); } catch (_) {}
         }
       }
 
-      const logoRelativeUrl = `/img/logos/${logoName}`;
+      const logoRelativeUrl = `/img/${logoName}`;
       elConfig.branding.welcome_logo_url = logoRelativeUrl;
       elConfig.branding.auth_header_logo_url = logoRelativeUrl;
       elConfig.branding.auth_logo_url = logoRelativeUrl;
@@ -22224,7 +22259,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       const selectedLogo = (activeLogo !== undefined ? activeLogo : headerLogoUrl) || "";
       if (selectedLogo && selectedLogo.trim()) {
         const cleanLogo = path.basename(selectedLogo.trim());
-        const logoPath = `/wallpaper/${cleanLogo}`;
+        const logoPath = `/img/${cleanLogo}`;
         elConfig.branding.welcome_logo_url = logoPath;
         elConfig.branding.auth_header_logo_url = logoPath;
         elConfig.branding.auth_logo_url = logoPath;
@@ -22237,7 +22272,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
           const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
           await executeSSHCommand(
             activeConn,
-            `${sudoPrefix}mkdir -p /var/www/element/wallpaper /var/www/element/img/logos && ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanLogo}" "/var/www/element/wallpaper/${cleanLogo}" 2>/dev/null && ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanLogo}" "/var/www/element/img/logos/${cleanLogo}" 2>/dev/null || true`
+            `${sudoPrefix}mkdir -p /var/www/element/img /var/www/element/img/logos && if [ ! -f "/var/www/element/img/${cleanLogo}" ] && [ -f "/opt/matrix-synapse/wallpaper/${cleanLogo}" ]; then ${sudoPrefix}cp -f "/opt/matrix-synapse/wallpaper/${cleanLogo}" "/var/www/element/img/${cleanLogo}"; fi && ${sudoPrefix}cp -f "/var/www/element/img/${cleanLogo}" "/var/www/element/img/logos/${cleanLogo}" 2>/dev/null || true`
           );
         }
       } else {
