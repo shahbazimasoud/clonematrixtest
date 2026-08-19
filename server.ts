@@ -22037,6 +22037,159 @@ app.delete("/api/matrix/wallpaper/delete", authenticateToken, checkPermission(["
   }
 });
 
+/**
+ * Synapse Password & Local/Active Directory Auth Provider Policy
+ * Discovers and configures /etc/matrix-synapse/conf.d/password.yaml
+ */
+async function discoverSynapsePasswordConfig(activeConn?: any): Promise<{
+  enabled: boolean;
+  localdb_enabled: boolean;
+  authPolicy: 'both' | 'ldap_only' | 'local_only';
+  sourceFile: string;
+}> {
+  const targetPath = "/etc/matrix-synapse/conf.d/password.yaml";
+  const content = await readConfigContent(targetPath, "");
+  
+  let enabled = true;
+  let localdb_enabled = true;
+  let found = false;
+
+  if (content && content.trim()) {
+    try {
+      const parsed = yaml.load(content) as any;
+      if (parsed && typeof parsed === "object" && parsed.password_config) {
+        if (typeof parsed.password_config.enabled === "boolean") {
+          enabled = parsed.password_config.enabled;
+        }
+        if (typeof parsed.password_config.localdb_enabled === "boolean") {
+          localdb_enabled = parsed.password_config.localdb_enabled;
+        }
+        found = true;
+      }
+    } catch (_) {}
+  }
+
+  if (!found) {
+    // Check fallback /etc/matrix-synapse/homeserver.yaml
+    const hsContent = await readConfigContent("/etc/matrix-synapse/homeserver.yaml", "");
+    if (hsContent && hsContent.trim()) {
+      try {
+        const hsParsed = yaml.load(hsContent) as any;
+        if (hsParsed && typeof hsParsed === "object" && hsParsed.password_config) {
+          if (typeof hsParsed.password_config.enabled === "boolean") {
+            enabled = hsParsed.password_config.enabled;
+          }
+          if (typeof hsParsed.password_config.localdb_enabled === "boolean") {
+            localdb_enabled = hsParsed.password_config.localdb_enabled;
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  let authPolicy: 'both' | 'ldap_only' | 'local_only' = 'both';
+  if (localdb_enabled === false) {
+    authPolicy = 'ldap_only';
+  } else {
+    authPolicy = 'both';
+  }
+
+  return {
+    enabled,
+    localdb_enabled,
+    authPolicy,
+    sourceFile: targetPath
+  };
+}
+
+async function saveSynapsePasswordConfig(params: {
+  authPolicy?: 'both' | 'ldap_only' | 'local_only';
+  enabled?: boolean;
+  localdb_enabled?: boolean;
+}, username: string = "Admin"): Promise<{
+  success: boolean;
+  config: {
+    enabled: boolean;
+    localdb_enabled: boolean;
+    authPolicy: 'both' | 'ldap_only' | 'local_only';
+    sourceFile: string;
+  };
+}> {
+  const targetPath = "/etc/matrix-synapse/conf.d/password.yaml";
+  
+  let enabled = params.enabled !== undefined ? (params.enabled === true) : true;
+  let localdb_enabled = params.localdb_enabled !== undefined ? (params.localdb_enabled === true) : true;
+
+  if (params.authPolicy === 'ldap_only') {
+    enabled = true;
+    localdb_enabled = false;
+  } else if (params.authPolicy === 'both' || params.authPolicy === 'local_only') {
+    enabled = true;
+    localdb_enabled = true;
+  }
+
+  const yamlContent = `# Matrix Synapse Password Authentication & Local/LDAP Provider Configuration
+# Managed automatically by Raven Matrix Admin Panel
+#
+# password_config:
+#   enabled: Whether password authentication is enabled (default: true)
+#   localdb_enabled: Whether authentication against the local database is allowed (default: true)
+#                    If false, users cannot log in with local accounts and must use Active Directory / LDAP.
+
+password_config:
+  enabled: ${enabled}
+  localdb_enabled: ${localdb_enabled}
+`;
+
+  await writeConfigContent(targetPath, yamlContent, {
+    username,
+    component: "Synapse Password & LocalDB Auth Policy",
+    diffSummary: `Updated /etc/matrix-synapse/conf.d/password.yaml: enabled=${enabled}, localdb_enabled=${localdb_enabled} (Auth Policy: ${localdb_enabled === false ? 'Active Directory / LDAP Only' : 'Both Local & Active Directory'})`
+  });
+
+  const db = readDb();
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username,
+    action: "Update Synapse Authentication Policy",
+    target: "/etc/matrix-synapse/conf.d/password.yaml",
+    status: "success",
+    details: `Configured Synapse password_config: enabled=${enabled}, localdb_enabled=${localdb_enabled} (Policy: ${localdb_enabled === false ? 'Active Directory / LDAP Only (Local Logins Blocked)' : 'Both Local DB & Active Directory Enabled'})`
+  });
+  writeDb(db);
+
+  return {
+    success: true,
+    config: {
+      enabled,
+      localdb_enabled,
+      authPolicy: localdb_enabled === false ? 'ldap_only' : 'both',
+      sourceFile: targetPath
+    }
+  };
+}
+
+app.get("/api/matrix/auth-policy", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    const result = await discoverSynapsePasswordConfig(activeConn);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to read authentication policy: " + err.message });
+  }
+});
+
+app.post("/api/matrix/auth-policy", authenticateToken, checkPermission(["Owner", "Super Admin", "Admin"]), async (req, res) => {
+  try {
+    const { authPolicy, enabled, localdb_enabled } = req.body;
+    const result = await saveSynapsePasswordConfig({ authPolicy, enabled, localdb_enabled }, req.user?.username || "Admin");
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to save authentication policy: " + err.message });
+  }
+});
+
 app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
   try {
     const elConfigRaw = await readConfigContent("/var/www/element/config.json", "{}");
@@ -22108,8 +22261,8 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
       elConfig.settingDefaults?.['UIFeature.registration'] === false
     ) ? false : true;
 
-    const db = readDb();
-    const sec = getSecuritySettings(db);
+    const activeConn = getActiveConnection();
+    const passCfg = await discoverSynapsePasswordConfig(activeConn);
 
     res.json({
       brandName: elConfig.brand || "Element",
@@ -22129,12 +22282,11 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
       defaultWidgetContainerHeight,
       disable3pidLogin,
       elementCall,
-      captchaEnabled: sec.captchaEnabled !== false,
-      captchaMode: sec.captchaMode || "on_failed",
-      captchaTriggerAttempts: typeof sec.captchaTriggerAttempts === "number" ? sec.captchaTriggerAttempts : 2,
-      lockoutEnabled: sec.lockoutEnabled !== false,
-      maxFailedAttempts: typeof sec.maxFailedAttempts === "number" ? sec.maxFailedAttempts : 3,
-      lockoutDurationMinutes: typeof sec.lockoutDurationMinutes === "number" ? sec.lockoutDurationMinutes : 15
+      authPolicy: passCfg.authPolicy,
+      passwordConfig: {
+        enabled: passCfg.enabled,
+        localdb_enabled: passCfg.localdb_enabled
+      }
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -22166,12 +22318,10 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       disable_3pid_login,
       elementCall,
       element_call,
-      captchaEnabled,
-      captchaMode,
-      captchaTriggerAttempts,
-      lockoutEnabled,
-      maxFailedAttempts,
-      lockoutDurationMinutes
+      authPolicy,
+      passwordConfig,
+      localdb_enabled,
+      localDbEnabled
     } = req.body;
 
     const activeConn = getActiveConnection();
@@ -22540,19 +22690,33 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       faviconUrl: elConfig.branding.favicon || "/favicon.ico"
     }, activeConn);
 
-    const db = readDb();
-    const sec = getSecuritySettings(db);
-    let secUpdated = false;
-    if (typeof captchaEnabled === 'boolean') { sec.captchaEnabled = captchaEnabled; secUpdated = true; }
-    if (['always', 'on_failed'].includes(captchaMode)) { sec.captchaMode = captchaMode; secUpdated = true; }
-    if (typeof captchaTriggerAttempts === 'number' && captchaTriggerAttempts >= 1) { sec.captchaTriggerAttempts = captchaTriggerAttempts; secUpdated = true; }
-    if (typeof lockoutEnabled === 'boolean') { sec.lockoutEnabled = lockoutEnabled; secUpdated = true; }
-    if (typeof maxFailedAttempts === 'number' && maxFailedAttempts >= 1) { sec.maxFailedAttempts = maxFailedAttempts; secUpdated = true; }
-    if (typeof lockoutDurationMinutes === 'number' && lockoutDurationMinutes >= 1) { sec.lockoutDurationMinutes = lockoutDurationMinutes; secUpdated = true; }
-    if (secUpdated) {
-      db.securitySettings = sec;
+    // 9. Synchronize Password & Authentication Policy (/etc/matrix-synapse/conf.d/password.yaml) if supplied
+    let currentAuthPolicy: 'both' | 'ldap_only' | 'local_only' = 'both';
+    let currentPassEnabled = true;
+    let currentLocalDbEnabled = true;
+
+    if (authPolicy !== undefined || passwordConfig !== undefined || localdb_enabled !== undefined || localDbEnabled !== undefined) {
+      const targetLocalDb = (localdb_enabled !== undefined ? localdb_enabled === true : (localDbEnabled !== undefined ? localDbEnabled === true : (passwordConfig?.localdb_enabled !== undefined ? passwordConfig.localdb_enabled === true : (authPolicy !== 'ldap_only'))));
+      const targetEnabled = (passwordConfig?.enabled !== undefined ? passwordConfig.enabled === true : true);
+      const targetPolicy = authPolicy || (targetLocalDb === false ? 'ldap_only' : 'both');
+
+      const savedPassResult = await saveSynapsePasswordConfig({
+        authPolicy: targetPolicy,
+        enabled: targetEnabled,
+        localdb_enabled: targetLocalDb
+      }, req.user?.username || "Admin");
+
+      currentAuthPolicy = savedPassResult.config.authPolicy;
+      currentPassEnabled = savedPassResult.config.enabled;
+      currentLocalDbEnabled = savedPassResult.config.localdb_enabled;
+    } else {
+      const passCfg = await discoverSynapsePasswordConfig(activeConn);
+      currentAuthPolicy = passCfg.authPolicy;
+      currentPassEnabled = passCfg.enabled;
+      currentLocalDbEnabled = passCfg.localdb_enabled;
     }
 
+    const db = readDb();
     db.auditLogs.unshift({
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -22560,7 +22724,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       action: "Update Element Branding",
       target: "Element Web",
       status: "success",
-      details: `Saved Element login page customization, theme (${elConfig.default_theme || 'light'}), widget container height (${elConfig.default_widget_container_height || 280}), disable 3PID login (${elConfig.disable_3pid_login === true}), CAPTCHA (${sec.captchaEnabled !== false ? sec.captchaMode : 'disabled'}), element call (${JSON.stringify(elConfig.element_call || {})}), wallpaper, favicon (${elConfig.branding.favicon || 'default'}), header logo, and login options.`
+      details: `Saved Element login page customization, theme (${elConfig.default_theme || 'light'}), widget container height (${elConfig.default_widget_container_height || 280}), disable 3PID login (${elConfig.disable_3pid_login === true}), Auth Policy (${currentAuthPolicy === 'ldap_only' ? 'Active Directory / LDAP Only' : 'Both Local & Active Directory'}), element call (${JSON.stringify(elConfig.element_call || {})}), wallpaper, favicon (${elConfig.branding.favicon || 'default'}), header logo, and login options.`
     });
     writeDb(db);
 
@@ -22569,7 +22733,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
 
     res.json({
       success: true,
-      message: "Element branding and login settings applied successfully.",
+      message: "Element branding, login, and authentication settings applied successfully.",
       branding: {
         brandName: elConfig.brand || "Element",
         showAuthFooter: elConfig.branding.show_auth_footer,
@@ -22591,12 +22755,11 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
           disable: elConfig.element_call?.disable === true,
           use_exclusively: elConfig.element_call?.use_exclusively === true
         },
-        captchaEnabled: sec.captchaEnabled !== false,
-        captchaMode: sec.captchaMode || "on_failed",
-        captchaTriggerAttempts: typeof sec.captchaTriggerAttempts === "number" ? sec.captchaTriggerAttempts : 2,
-        lockoutEnabled: sec.lockoutEnabled !== false,
-        maxFailedAttempts: typeof sec.maxFailedAttempts === "number" ? sec.maxFailedAttempts : 3,
-        lockoutDurationMinutes: typeof sec.lockoutDurationMinutes === "number" ? sec.lockoutDurationMinutes : 15
+        authPolicy: currentAuthPolicy,
+        passwordConfig: {
+          enabled: currentPassEnabled,
+          localdb_enabled: currentLocalDbEnabled
+        }
       }
     });
   } catch (err: any) {

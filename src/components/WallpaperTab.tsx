@@ -54,7 +54,8 @@ import {
   Hash,
   Lock,
   Shield,
-  Settings2
+  Settings2,
+  FileText
 } from 'lucide-react';
 
 export interface WallpaperItem {
@@ -91,12 +92,11 @@ export interface BrandingConfig {
     disable?: boolean;
     use_exclusively?: boolean;
   };
-  captchaEnabled?: boolean;
-  captchaMode?: 'always' | 'on_failed';
-  captchaTriggerAttempts?: number;
-  lockoutEnabled?: boolean;
-  maxFailedAttempts?: number;
-  lockoutDurationMinutes?: number;
+  authPolicy?: 'both' | 'ldap_only' | 'local_only';
+  passwordConfig?: {
+    enabled?: boolean;
+    localdb_enabled?: boolean;
+  };
 }
 
 interface WallpaperThumbnailProps {
@@ -208,12 +208,11 @@ export default function WallpaperTab({
       disable: false,
       use_exclusively: false
     },
-    captchaEnabled: true,
-    captchaMode: 'on_failed',
-    captchaTriggerAttempts: 2,
-    lockoutEnabled: true,
-    maxFailedAttempts: 3,
-    lockoutDurationMinutes: 15
+    authPolicy: 'both',
+    passwordConfig: {
+      enabled: true,
+      localdb_enabled: true
+    }
   });
 
   // Server-confirmed state (used to detect unsaved changes)
@@ -238,12 +237,11 @@ export default function WallpaperTab({
       disable: false,
       use_exclusively: false
     },
-    captchaEnabled: true,
-    captchaMode: 'on_failed',
-    captchaTriggerAttempts: 2,
-    lockoutEnabled: true,
-    maxFailedAttempts: 3,
-    lockoutDurationMinutes: 15
+    authPolicy: 'both',
+    passwordConfig: {
+      enabled: true,
+      localdb_enabled: true
+    }
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -253,11 +251,6 @@ export default function WallpaperTab({
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedForPreview, setSelectedForPreview] = useState<WallpaperItem | null>(null);
   const [copiedPath, setCopiedPath] = useState(false);
-
-  // Sample CAPTCHA Interactive Sandbox State
-  const [sampleCaptchaSvg, setSampleCaptchaSvg] = useState<string>('');
-  const [sampleCaptchaCode, setSampleCaptchaCode] = useState<string>('');
-  const [isLoadingSampleCaptcha, setIsLoadingSampleCaptcha] = useState<boolean>(false);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -316,31 +309,11 @@ export default function WallpaperTab({
     if ((branding.elementCall?.brand || '') !== (serverBranding.elementCall?.brand || '')) return true;
     if ((branding.elementCall?.disable === true) !== (serverBranding.elementCall?.disable === true)) return true;
     if ((branding.elementCall?.use_exclusively === true) !== (serverBranding.elementCall?.use_exclusively === true)) return true;
-    if ((branding.captchaEnabled !== false) !== (serverBranding.captchaEnabled !== false)) return true;
-    if ((branding.captchaMode || 'on_failed') !== (serverBranding.captchaMode || 'on_failed')) return true;
-    if ((branding.captchaTriggerAttempts || 2) !== (serverBranding.captchaTriggerAttempts || 2)) return true;
-    if ((branding.lockoutEnabled !== false) !== (serverBranding.lockoutEnabled !== false)) return true;
-    if ((branding.maxFailedAttempts || 3) !== (serverBranding.maxFailedAttempts || 3)) return true;
-    if ((branding.lockoutDurationMinutes || 15) !== (serverBranding.lockoutDurationMinutes || 15)) return true;
+    if ((branding.authPolicy || 'both') !== (serverBranding.authPolicy || 'both')) return true;
+    if ((branding.passwordConfig?.localdb_enabled !== false) !== (serverBranding.passwordConfig?.localdb_enabled !== false)) return true;
+    if ((branding.passwordConfig?.enabled !== false) !== (serverBranding.passwordConfig?.enabled !== false)) return true;
     return false;
   }, [activeWallpaper, serverActiveWallpaper, activeLogo, serverActiveLogo, customFaviconFile, customLogoFile, branding, serverBranding]);
-
-  // Sample CAPTCHA generator
-  const fetchSampleCaptcha = async () => {
-    setIsLoadingSampleCaptcha(true);
-    try {
-      const res = await fetch('/api/security/captcha');
-      if (res.ok) {
-        const data = await res.json();
-        setSampleCaptchaSvg(data.svg || '');
-        setSampleCaptchaCode('');
-      }
-    } catch (err) {
-      console.warn('Sample captcha fetch error:', err);
-    } finally {
-      setIsLoadingSampleCaptcha(false);
-    }
-  };
 
   // Trigger system file browser directly
   const triggerFileBrowser = () => {
@@ -357,13 +330,13 @@ export default function WallpaperTab({
     setLogoError(false);
     setActiveLogoError(false);
     try {
-      const [wpRes, secRes] = await Promise.all([
+      const [wpRes, authRes] = await Promise.all([
         fetch('/api/matrix/wallpaper/list', {
           headers: {
             'Authorization': `Bearer ${authToken}`
           }
         }),
-        fetch('/api/security/settings', {
+        fetch('/api/matrix/auth-policy', {
           headers: {
             'Authorization': `Bearer ${authToken}`
           }
@@ -376,10 +349,10 @@ export default function WallpaperTab({
         const activeLg = data.activeLogo || (data.branding && data.branding.activeLogo) || '';
         const b = data.branding || {};
         
-        let secData: any = {};
-        if (secRes && secRes.ok) {
+        let authData: any = {};
+        if (authRes && authRes.ok) {
           try {
-            secData = await secRes.json();
+            authData = await authRes.json();
           } catch (_) {}
         }
 
@@ -404,12 +377,11 @@ export default function WallpaperTab({
             disable: b.elementCall?.disable === true || data.elementCall?.disable === true,
             use_exclusively: b.elementCall?.use_exclusively === true || data.elementCall?.use_exclusively === true
           },
-          captchaEnabled: secData.captchaEnabled !== undefined ? (secData.captchaEnabled !== false) : (b.captchaEnabled !== false),
-          captchaMode: secData.captchaMode || b.captchaMode || 'on_failed',
-          captchaTriggerAttempts: typeof secData.captchaTriggerAttempts === 'number' ? secData.captchaTriggerAttempts : (typeof b.captchaTriggerAttempts === 'number' ? b.captchaTriggerAttempts : 2),
-          lockoutEnabled: secData.lockoutEnabled !== undefined ? (secData.lockoutEnabled !== false) : (b.lockoutEnabled !== false),
-          maxFailedAttempts: typeof secData.maxFailedAttempts === 'number' ? secData.maxFailedAttempts : (typeof b.maxFailedAttempts === 'number' ? b.maxFailedAttempts : 3),
-          lockoutDurationMinutes: typeof secData.lockoutDurationMinutes === 'number' ? secData.lockoutDurationMinutes : (typeof b.lockoutDurationMinutes === 'number' ? b.lockoutDurationMinutes : 15)
+          authPolicy: authData.authPolicy || b.authPolicy || (authData.localdb_enabled === false ? 'ldap_only' : 'both'),
+          passwordConfig: {
+            enabled: authData.enabled !== undefined ? authData.enabled : (b.passwordConfig?.enabled !== false),
+            localdb_enabled: authData.localdb_enabled !== undefined ? authData.localdb_enabled : (b.passwordConfig?.localdb_enabled !== false)
+          }
         };
 
         setWallpapers(data.wallpapers || []);
@@ -432,7 +404,6 @@ export default function WallpaperTab({
 
   useEffect(() => {
     fetchData();
-    fetchSampleCaptcha();
   }, [authToken, activeConnectionId]);
 
   // Reset pagination when search query, page size, or view mode changes
@@ -662,45 +633,28 @@ export default function WallpaperTab({
           disable: branding.elementCall?.disable === true,
           use_exclusively: branding.elementCall?.use_exclusively === true
         },
-        captchaEnabled: branding.captchaEnabled !== false,
-        captchaMode: branding.captchaMode || 'on_failed',
-        captchaTriggerAttempts: branding.captchaTriggerAttempts || 2,
-        lockoutEnabled: branding.lockoutEnabled !== false,
-        maxFailedAttempts: branding.maxFailedAttempts || 3,
-        lockoutDurationMinutes: branding.lockoutDurationMinutes || 15
+        authPolicy: branding.authPolicy || 'both',
+        passwordConfig: {
+          enabled: branding.passwordConfig?.enabled !== false,
+          localdb_enabled: branding.passwordConfig?.localdb_enabled !== false
+        },
+        localdb_enabled: branding.authPolicy === 'ldap_only' ? false : (branding.passwordConfig?.localdb_enabled !== false)
       };
 
-      const [resBranding, resSecurity] = await Promise.all([
-        fetch('/api/matrix/branding/save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify(payload)
-        }),
-        fetch('/api/security/settings', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify({
-            captchaEnabled: branding.captchaEnabled !== false,
-            captchaMode: branding.captchaMode || 'on_failed',
-            captchaTriggerAttempts: branding.captchaTriggerAttempts || 2,
-            lockoutEnabled: branding.lockoutEnabled !== false,
-            maxFailedAttempts: branding.maxFailedAttempts || 3,
-            lockoutDurationMinutes: branding.lockoutDurationMinutes || 15
-          })
-        }).catch(() => null)
-      ]);
+      const resBranding = await fetch('/api/matrix/branding/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify(payload)
+      });
 
       if (resBranding.ok) {
         if (showToast) {
           showToast('success', loc(
-            'تمامی تنظیمات والپیپر، لوگو، امنیت لاگین و کپچا، تم، ارتفاع کانتینر ویجت، ۳PID، Element Call و برندینگ با موفقیت در سرور المنت اعمال شد.',
-            'All Element wallpaper, logo, login CAPTCHA security, theme, widget height, 3PID, Element Call, and branding settings successfully saved and applied to server.'
+            'تمامی تنظیمات والپیپر، لوگو، سیاست ورود کاربران (Local / Active Directory)، تم، ارتفاع کانتینر ویجت، ۳PID، Element Call و برندینگ با موفقیت در سرور اعمال شد.',
+            'All Element wallpaper, logo, user authentication policy (Local / Active Directory), theme, widget height, 3PID, Element Call, and branding settings successfully saved.'
           ));
         }
         setCustomFaviconFile(null);
@@ -738,12 +692,11 @@ export default function WallpaperTab({
         disable: false,
         use_exclusively: false
       },
-      captchaEnabled: true,
-      captchaMode: 'on_failed',
-      captchaTriggerAttempts: 2,
-      lockoutEnabled: true,
-      maxFailedAttempts: 3,
-      lockoutDurationMinutes: 15
+      authPolicy: 'both',
+      passwordConfig: {
+        enabled: true,
+        localdb_enabled: true
+      }
     });
     setCustomFaviconFile(null);
     setCustomLogoFile(null);
@@ -2378,25 +2331,25 @@ export default function WallpaperTab({
             </div>
           </div>
 
-          {/* 7. Login Security & CAPTCHA Protection Hub (Spans 2 columns) */}
-          <div className="md:col-span-2 spatial-glass rounded-2xl p-5 border border-indigo-500/20 bg-gradient-to-br from-indigo-950/20 via-slate-900/40 to-slate-950/60 space-y-5" id="section-captcha-security-config">
+          {/* 7. User Authentication Policy & Local Login Control (password.yaml) */}
+          <div className="md:col-span-2 spatial-glass rounded-2xl p-5 border border-indigo-500/20 bg-gradient-to-br from-indigo-950/20 via-slate-900/40 to-slate-950/60 space-y-5" id="section-auth-policy-config">
             {/* Header & Badges */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-500/20 pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-lg shadow-indigo-500/10">
-                  <ShieldCheck className="w-5 h-5" />
+                  <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                    <span>{loc('سیستم امنیتی کپچا و حفاظت از فرم ورود', 'Login Security & CAPTCHA Protection Hub')}</span>
+                    <span>{loc('کنترل دسترسی و سیاست ورود کاربران (Local / Active Directory)', 'User Login Source & Authentication Policy')}</span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      Anti-Brute Force
+                      password.yaml
                     </span>
                   </h4>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {loc(
-                      'پیکربندی مکانیزم کپچای امنیتی برای مقابله با حملات Brute-force، ربات‌ها و تست مداوم کلمه عبور در صفحه ورود المنت و پنل.',
-                      'Configure CAPTCHA challenge rules to guard Element Web and Management Panel against brute-force password attacks and bots.'
+                      'تعیین منابع مجاز برای احراز هویت کاربران سیناپس (/etc/matrix-synapse/conf.d/password.yaml). می‌توانید از ورود کاربران دیتابیس محلی جلوگیری کنید تا تنها کاربران اکتیو دایرکتوری مجاز به ورود باشند.',
+                      'Configure Synapse password authentication policy (/etc/matrix-synapse/conf.d/password.yaml). You can disallow local database logins so only Active Directory / LDAP users are permitted.'
                     )}
                   </p>
                 </div>
@@ -2404,280 +2357,170 @@ export default function WallpaperTab({
 
               {/* Status Badge */}
               <div className="flex items-center gap-2 self-start sm:self-auto">
-                {branding.captchaEnabled !== false ? (
-                  <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    {branding.captchaMode === 'always'
-                      ? loc('کپچا: فعال همیشگی', 'CAPTCHA: Always Required')
-                      : loc(`کپچا: فعال هوشمند (پس از ${branding.captchaTriggerAttempts || 2} خطا)`, `CAPTCHA: Smart Trigger (After ${branding.captchaTriggerAttempts || 2} Fails)`)}
+                {branding.authPolicy === 'ldap_only' ? (
+                  <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
+                    <Shield className="w-3.5 h-3.5 text-amber-400" />
+                    {loc('فقط اکتیو دایرکتوری / LDAP (کاربران محلی مسدود)', 'AD / LDAP Only (Local DB Blocked)')}
+                  </span>
+                ) : branding.authPolicy === 'local_only' ? (
+                  <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30 flex items-center gap-1.5 shadow-sm">
+                    <UserCheck className="w-3.5 h-3.5 text-blue-400" />
+                    {loc('فقط کاربران محلی (Local DB Only)', 'Local DB Only')}
                   </span>
                 ) : (
-                  <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-500/15 text-slate-400 border border-slate-500/30 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-slate-500" />
-                    {loc('کپچا: غیرفعال', 'CAPTCHA: Disabled')}
+                  <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    {loc('هر دو (لوکال + اکتیو دایرکتوری)', 'Both (Local + Active Directory)')}
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Master Switch: Enable / Disable CAPTCHA */}
-            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-bold text-white">
-                    {loc('فعال‌سازی سیستم امنیتی کپچا در صفحه ورود', 'Enable CAPTCHA Protection on Login Form')}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  {loc(
-                    'در صورت فعال بودن، کاربران طبق تنظیمات حالت انتخابی زیر ملزم به حل کد کپچای تصویری خواهند بود.',
-                    'When active, users will be required to solve SVG CAPTCHA challenges according to the selected mode below.'
-                  )}
-                </p>
-              </div>
-              <button
-                type="button"
-                id="toggle-captcha-master-switch"
-                disabled={isReadOnly}
-                onClick={() => setBranding({ ...branding, captchaEnabled: branding.captchaEnabled === false ? true : false })}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  branding.captchaEnabled !== false ? 'bg-indigo-500' : 'bg-slate-700'
-                } ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    branding.captchaEnabled !== false ? 'translate-x-5' : 'translate-x-0'
+            {/* Authentication Source Selection Options */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                {loc('انتخاب نوع سیاست ورود کاربران به المنت و سرور سیناپس', 'Select User Login Policy')}
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Option 1: Both Local & Active Directory */}
+                <button
+                  type="button"
+                  id="btn-auth-policy-both"
+                  disabled={isReadOnly}
+                  onClick={() => setBranding({
+                    ...branding,
+                    authPolicy: 'both',
+                    passwordConfig: { enabled: true, localdb_enabled: true }
+                  })}
+                  className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-2.5 cursor-pointer ${
+                    (branding.authPolicy || 'both') === 'both'
+                      ? 'bg-emerald-500/15 border-emerald-500/40 shadow-md shadow-emerald-500/10'
+                      : 'bg-white/[0.02] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
                   }`}
-                />
-              </button>
-            </div>
-
-            {/* Mode & Trigger Configuration (Visible when CAPTCHA is enabled) */}
-            {branding.captchaEnabled !== false && (
-              <div className="space-y-4 pt-1">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
-                    {loc('حالت فعال‌سازی کپچا در صفحه لاگین', 'CAPTCHA Activation Mode')}
-                  </label>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Mode 1: Smart Trigger on Failed Attempts */}
-                    <button
-                      type="button"
-                      id="btn-captcha-mode-on-failed"
-                      disabled={isReadOnly}
-                      onClick={() => setBranding({ ...branding, captchaMode: 'on_failed' })}
-                      className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-2.5 ${
-                        (branding.captchaMode || 'on_failed') === 'on_failed'
-                          ? 'bg-indigo-500/15 border-indigo-500/40 shadow-md shadow-indigo-500/10'
-                          : 'bg-white/[0.02] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-2">
-                          <SlidersHorizontal className={`w-4 h-4 ${(branding.captchaMode || 'on_failed') === 'on_failed' ? 'text-indigo-400' : 'text-slate-400'}`} />
-                          <span className="text-xs font-bold text-white">
-                            {loc('هوشمند پس از تلاش‌های ناموفق', 'Smart Trigger on Failed Attempts')}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          {loc('پیشنهادی (UX بهینه)', 'Recommended')}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        {loc(
-                          'کپچا در حالت عادی مخفی است و فقط زمانی ظاهر می‌شود که رمز عبور چند بار اشتباه وارد شود.',
-                          'Hidden by default for smooth UX; dynamically appears only after repeated failed password attempts.'
-                        )}
-                      </p>
-                      {(branding.captchaMode || 'on_failed') === 'on_failed' && (
-                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-400">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>{loc('حالت فعال فعلی', 'Currently Selected')}</span>
-                        </div>
-                      )}
-                    </button>
-
-                    {/* Mode 2: Always Require CAPTCHA */}
-                    <button
-                      type="button"
-                      id="btn-captcha-mode-always"
-                      disabled={isReadOnly}
-                      onClick={() => setBranding({ ...branding, captchaMode: 'always' })}
-                      className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-2.5 ${
-                        branding.captchaMode === 'always'
-                          ? 'bg-indigo-500/15 border-indigo-500/40 shadow-md shadow-indigo-500/10'
-                          : 'bg-white/[0.02] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-2">
-                          <Lock className={`w-4 h-4 ${branding.captchaMode === 'always' ? 'text-indigo-400' : 'text-slate-400'}`} />
-                          <span className="text-xs font-bold text-white">
-                            {loc('همیشه فعال و الزامی', 'Always Required (Strict)')}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          {loc('حداکثر امنیت', 'Maximum Security')}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        {loc(
-                          'کپچا در هر بار تلاش برای ورود بدون استثنا از کاربر خواسته می‌شود تا جلوی ربات‌های خودکار گرفته شود.',
-                          'Enforces CAPTCHA on every single login attempt from the very first submission.'
-                        )}
-                      </p>
-                      {branding.captchaMode === 'always' && (
-                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-400">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>{loc('حالت فعال فعلی', 'Currently Selected')}</span>
-                        </div>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Threshold Slider & Quick Presets (Only for on_failed mode) */}
-                {(branding.captchaMode || 'on_failed') === 'on_failed' && (
-                  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="text-xs font-bold text-white block">
-                          {loc('آستانه فعال‌سازی کپچا (تعداد دفعات ورود ناموفق)', 'Failed Attempts Trigger Threshold')}
-                        </span>
-                        <p className="text-[11px] text-slate-400">
-                          {loc(
-                            `پس از ${branding.captchaTriggerAttempts || 2} بار ورود ناموفق، فرم ورود بلافاصله کپچا را الزامی خواهد کرد.`,
-                            `CAPTCHA is triggered after ${branding.captchaTriggerAttempts || 2} consecutive failed attempts.`
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-mono font-bold text-indigo-400 bg-indigo-500/20 px-3 py-1 rounded-lg border border-indigo-500/30">
-                          {branding.captchaTriggerAttempts || 2}
-                        </span>
-                        <span className="text-xs text-slate-400">{loc('تلاش', 'Attempts')}</span>
-                      </div>
-                    </div>
-
-                    {/* Range Slider */}
-                    <div className="space-y-2">
-                      <input
-                        type="range"
-                        min="1"
-                        max="10"
-                        step="1"
-                        id="slider-captcha-trigger-attempts"
-                        value={branding.captchaTriggerAttempts || 2}
-                        disabled={isReadOnly}
-                        onChange={(e) => setBranding({ ...branding, captchaTriggerAttempts: parseInt(e.target.value, 10) || 2 })}
-                        className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                      />
-                      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                        <span>1 {loc('(سخت‌گیرانه)', '(Strict)')}</span>
-                        <span>2 {loc('(پیش‌فرض)', '(Default)')}</span>
-                        <span>3</span>
-                        <span>5</span>
-                        <span>10 {loc('(آسان‌گیر)', '(Lenient)')}</span>
-                      </div>
-                    </div>
-
-                    {/* Quick Preset Pills */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <span className="text-[11px] text-slate-400 font-medium">{loc('پیش‌تنظیم‌های سریع:', 'Quick Presets:')}</span>
-                      {[
-                        { val: 1, label: loc('۱ تلاش (سخت‌گیرانه)', '1 Attempt (Strict)') },
-                        { val: 2, label: loc('۲ تلاش (استاندارد)', '2 Attempts (Standard)') },
-                        { val: 3, label: loc('۳ تلاش (متعادل)', '3 Attempts (Balanced)') },
-                        { val: 5, label: loc('۵ تلاش (آسان)', '5 Attempts (Relaxed)') }
-                      ].map((preset) => (
-                        <button
-                          key={preset.val}
-                          type="button"
-                          disabled={isReadOnly}
-                          onClick={() => setBranding({ ...branding, captchaTriggerAttempts: preset.val })}
-                          className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                            (branding.captchaTriggerAttempts || 2) === preset.val
-                              ? 'bg-indigo-500 text-white border-indigo-400 font-bold shadow-sm'
-                              : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Interactive Live CAPTCHA Preview & Sandbox */}
-                <div className="p-4 rounded-xl bg-slate-950/70 border border-white/10 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                >
+                  <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
-                      <Eye className="w-4 h-4 text-indigo-400" />
+                      <Layers className={`w-4 h-4 ${(branding.authPolicy || 'both') === 'both' ? 'text-emerald-400' : 'text-slate-400'}`} />
                       <span className="text-xs font-bold text-white">
-                        {loc('پیش‌نمایش زنده و تست عملکرد کپچا در صفحه لاگین', 'Live CAPTCHA Interactive Sandbox & Preview')}
+                        {loc('هردو (لوکال + اکتیو دایرکتوری)', 'Both (Local + LDAP/AD)')}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      id="btn-refresh-sample-captcha"
-                      onClick={fetchSampleCaptcha}
-                      disabled={isLoadingSampleCaptcha}
-                      className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all self-start sm:self-auto"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSampleCaptcha ? 'animate-spin' : ''}`} />
-                      <span>{loc('تولید کپچای جدید', 'Generate New Sample')}</span>
-                    </button>
                   </div>
-
-                  <div className="flex flex-col md:flex-row items-center gap-4">
-                    {/* Live SVG Display Box */}
-                    <div className="w-full md:w-auto min-w-[200px] h-[64px] bg-[#0b101b] rounded-xl border border-indigo-500/30 flex items-center justify-center p-2 shadow-inner relative overflow-hidden">
-                      {sampleCaptchaSvg ? (
-                        <div
-                          className="w-full h-full flex items-center justify-center"
-                          dangerouslySetInnerHTML={{ __html: sampleCaptchaSvg }}
-                        />
-                      ) : (
-                        <div className="text-xs text-slate-500 font-mono animate-pulse">
-                          {loc('در حال بارگذاری کپچا...', 'Loading CAPTCHA...')}
-                        </div>
-                      )}
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {loc(
+                      'هم کاربران تعریف‌شده در دیتابیس محلی سیناپس و هم کاربران Active Directory / LDAP می‌توانند لاگین کنند.',
+                      'Both local database users and Active Directory / LDAP domain users can authenticate and log in.'
+                    )}
+                  </p>
+                  {(branding.authPolicy || 'both') === 'both' && (
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{loc('فعال', 'Active')}</span>
                     </div>
+                  )}
+                </button>
 
-                    {/* Simulated User Input Simulation */}
-                    <div className="flex-1 w-full space-y-1.5">
-                      <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
-                        <KeyRound className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{loc('نمای فیلد ورودی کد کپچا در فرم لاگین:', 'How users will see and type the code:')}</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={sampleCaptchaCode}
-                          onChange={(e) => setSampleCaptchaCode(e.target.value)}
-                          placeholder={loc('کد تصویر بالا را وارد کنید', 'Enter security code')}
-                          maxLength={6}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-xs font-mono tracking-widest text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
-                        />
-                      </div>
+                {/* Option 2: Active Directory / LDAP Only (Block Local Users) */}
+                <button
+                  type="button"
+                  id="btn-auth-policy-ldap-only"
+                  disabled={isReadOnly}
+                  onClick={() => setBranding({
+                    ...branding,
+                    authPolicy: 'ldap_only',
+                    passwordConfig: { enabled: true, localdb_enabled: false }
+                  })}
+                  className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-2.5 cursor-pointer ${
+                    branding.authPolicy === 'ldap_only'
+                      ? 'bg-amber-500/15 border-amber-500/40 shadow-md shadow-amber-500/10'
+                      : 'bg-white/[0.02] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                      <Shield className={`w-4 h-4 ${branding.authPolicy === 'ldap_only' ? 'text-amber-400' : 'text-slate-400'}`} />
+                      <span className="text-xs font-bold text-white">
+                        {loc('فقط اکتیو دایرکتوری (مسدودسازی لوکال)', 'Active Directory Only (No Local)')}
+                      </span>
                     </div>
                   </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {loc(
+                      'از ورود کلیه کاربران محلی (localdb_enabled: false) جلوگیری می‌شود و احراز هویت منحصراً از طریق Active Directory انجام می‌گیرد.',
+                      'Blocks all local database user logins (localdb_enabled: false); only domain users authenticated via Active Directory can log in.'
+                    )}
+                  </p>
+                  {branding.authPolicy === 'ldap_only' && (
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-400">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{loc('فعال', 'Active')}</span>
+                    </div>
+                  )}
+                </button>
 
-                  {/* Security Insight Footnote */}
-                  <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-400">
-                    <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                    <span>
-                      {loc(
-                        'کپچای تولید شده با نویز تصادفی، اعوجاج کاراکترها و انحناهای گرافیکی SVG محافظت شده و به صورت امن در نشست سرور اعتبارسنجی می‌گردد.',
-                        'The generated SVG challenge features randomized noise lines, distortion waves, and server-side cryptographic matching.'
-                      )}
-                    </span>
+                {/* Option 3: Local DB Only */}
+                <button
+                  type="button"
+                  id="btn-auth-policy-local-only"
+                  disabled={isReadOnly}
+                  onClick={() => setBranding({
+                    ...branding,
+                    authPolicy: 'local_only',
+                    passwordConfig: { enabled: true, localdb_enabled: true }
+                  })}
+                  className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-2.5 cursor-pointer ${
+                    branding.authPolicy === 'local_only'
+                      ? 'bg-blue-500/15 border-blue-500/40 shadow-md shadow-blue-500/10'
+                      : 'bg-white/[0.02] border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className={`w-4 h-4 ${branding.authPolicy === 'local_only' ? 'text-blue-400' : 'text-slate-400'}`} />
+                      <span className="text-xs font-bold text-white">
+                        {loc('فقط کاربران محلی (Local DB Only)', 'Local DB Only')}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {loc(
+                      'ورود فقط برای کاربرانی که به طور مستقیم در دیتابیس داخلی سیناپس رجیستر شده‌اند مجاز است.',
+                      'Logins are allowed strictly for users registered directly in the local Synapse database.'
+                    )}
+                  </p>
+                  {branding.authPolicy === 'local_only' && (
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-400">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{loc('فعال', 'Active')}</span>
+                    </div>
+                  )}
+                </button>
               </div>
-            )}
+            </div>
+
+            {/* Generated YAML Configuration Preview */}
+            <div className="rounded-xl p-4 bg-black/50 border border-white/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-400" />
+                  <span>/etc/matrix-synapse/conf.d/password.yaml</span>
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/10 text-slate-300">
+                  YAML Config
+                </span>
+              </div>
+              <pre className="text-xs font-mono text-emerald-400 bg-slate-950/80 p-3 rounded-lg border border-white/5 overflow-x-auto">
+{`password_config:
+  enabled: true
+  localdb_enabled: ${branding.authPolicy === 'ldap_only' ? 'false' : 'true'}`}
+              </pre>
+              <p className="text-[11px] text-slate-400">
+                {branding.authPolicy === 'ldap_only'
+                  ? loc('با ذخیره این تنظیمات، مقدار localdb_enabled: false در فایل password.yaml ثبت شده و ورود کاربران لوکال ناممکن می‌گردد.', 'Saving this sets localdb_enabled: false in password.yaml, completely disabling local database login.')
+                  : loc('با ذخیره این تنظیمات، مقدار localdb_enabled: true در فایل password.yaml ثبت شده و ورود کاربران لوکال مجاز خواهد بود.', 'Saving this sets localdb_enabled: true in password.yaml, allowing local database user logins.')}
+              </p>
+            </div>
           </div>
 
           {/* 8. Default Theme (default_theme: light / dark) */}

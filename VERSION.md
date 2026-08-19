@@ -16,9 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.23.0** (Released: 2026-08-19)
+## Current Panel Version: **v2.24.0** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.24.0** - 2026-08-19
+- **User Authentication Policy & Local Login Control (/etc/matrix-synapse/conf.d/password.yaml)**:
+  - **Purge CAPTCHA & Anti-Brute Force**: Completely removed CAPTCHA, brute-force challenges, and related backend endpoints from the codebase.
+  - **Local vs. Active Directory Login Control**: Added User Authentication Policy management inside `Element Login Config & Wallpaper` tab with three policy modes: Both (Local + LDAP/AD), Active Directory / LDAP Only, or Local DB Only.
+  - **Synapse password.yaml Management**: Automated creation and updates of `/etc/matrix-synapse/conf.d/password.yaml` containing `password_config` (`enabled` and `localdb_enabled`).
+  - **Dynamic Local User Disabling**: Selecting Active Directory / LDAP Only sets `localdb_enabled: false`, blocking local database user logins across Matrix Synapse.
+  - **Dedicated REST API Endpoints**: Added `/api/matrix/auth-policy` GET/POST and integrated policy state in branding save & fetch pipelines.
 
 #### **v2.23.0** - 2026-08-19
 - **Element Login Security & CAPTCHA Protection Hub**:

@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.23.0";
+export const PANEL_VERSION = "2.24.0";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.24.0",
+    date: "2026-08-19",
+    title: "User Authentication Policy & Local Login Control (/etc/matrix-synapse/conf.d/password.yaml)",
+    changes: [
+      "Purge CAPTCHA & Anti-Brute Force: Completely removed CAPTCHA, brute-force challenges, and related backend endpoints from the codebase.",
+      "Local vs. Active Directory Login Control: Added User Authentication Policy management inside Element Login Config & Wallpaper tab with three policy modes: Both (Local + LDAP/AD), Active Directory / LDAP Only, or Local DB Only.",
+      "Synapse password.yaml Management: Automated creation and updates of /etc/matrix-synapse/conf.d/password.yaml containing password_config (enabled and localdb_enabled).",
+      "Dynamic Local User Disabling: Selecting Active Directory / LDAP Only sets localdb_enabled: false, blocking local database user logins across Matrix Synapse.",
+      "Dedicated REST API Endpoints: Added /api/matrix/auth-policy GET/POST and integrated policy state in branding save & fetch pipelines."
+    ]
+  },
   {
     version: "2.23.0",
     date: "2026-08-19",
