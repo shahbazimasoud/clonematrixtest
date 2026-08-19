@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.24.0";
+export const PANEL_VERSION = "2.24.1";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.24.1",
+    date: "2026-08-19",
+    title: "Auth Policy UI Harmonization & Local DB Option Refinement",
+    changes: [
+      "Palette Harmonization: Harmonized User Login Source & Authentication Policy card colors, borders, and glass effects with other Element Login cards.",
+      "Dual Option Simplification: Refined policy selector to 2 distinct options: 'Both (Local + LDAP/AD)' and 'Active Directory Only (Block Local Users)' by removing the redundant local-only option.",
+      "UI Cleanliness: Standardized typography, badges, and YAML preview code block styling."
+    ]
+  },
   {
     version: "2.24.0",
     date: "2026-08-19",

@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.24.0** (Released: 2026-08-19)
+## Current Panel Version: **v2.24.1** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.24.1** - 2026-08-19
+- **Auth Policy UI Harmonization & Local DB Option Refinement**:
+  - **Palette Harmonization**: Harmonized User Login Source & Authentication Policy card colors, borders, and glass effects with other Element Login cards.
+  - **Dual Option Simplification**: Refined policy selector to 2 distinct options: 'Both (Local + LDAP/AD)' and 'Active Directory Only (Block Local Users)' by removing the redundant local-only option.
+  - **UI Cleanliness**: Standardized typography, badges, and YAML preview code block styling.
 
 #### **v2.24.0** - 2026-08-19
 - **User Authentication Policy & Local Login Control (/etc/matrix-synapse/conf.d/password.yaml)**:
