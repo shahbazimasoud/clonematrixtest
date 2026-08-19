@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.22.0";
+export const PANEL_VERSION = "2.23.0";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.23.0",
+    date: "2026-08-19",
+    title: "Element Login Security & CAPTCHA Protection Hub",
+    changes: [
+      "Login Security & CAPTCHA Configuration Card: Added comprehensive CAPTCHA security management interface inside Element Login Config & Wallpaper tab.",
+      "Dual CAPTCHA Activation Modes: Supported smart triggering upon repeated failed login attempts ('on_failed') or mandatory challenge on every login ('always').",
+      "Dynamic Failed Attempts Threshold: Configurable trigger threshold slider with quick presets (1, 2, 3, 5 attempts) to prevent brute-force attacks.",
+      "Live Interactive CAPTCHA Preview & Tester: Integrated real-time SVG CAPTCHA generator and sandbox input testing directly in the configuration panel.",
+      "End-to-End Persistence: Full backend synchronization across /api/matrix/branding/save, /api/matrix/branding/config, /api/security/settings, and audit logging."
+    ]
+  },
   {
     version: "2.22.0",
     date: "2026-08-19",

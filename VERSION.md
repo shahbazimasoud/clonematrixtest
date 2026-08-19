@@ -16,9 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.22.0** (Released: 2026-08-19)
+## Current Panel Version: **v2.23.0** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.23.0** - 2026-08-19
+- **Element Login Security & CAPTCHA Protection Hub**:
+  - **Login Security & CAPTCHA Configuration Card**: Added comprehensive CAPTCHA security management interface inside `Element Login Config & Wallpaper` tab.
+  - **Dual CAPTCHA Activation Modes**: Supported smart triggering upon repeated failed login attempts (`on_failed`) or mandatory challenge on every login (`always`).
+  - **Dynamic Failed Attempts Threshold**: Configurable trigger threshold slider with quick presets (1, 2, 3, 5 attempts) to prevent brute-force attacks.
+  - **Live Interactive CAPTCHA Preview & Tester**: Integrated real-time SVG CAPTCHA generator and sandbox input testing directly in the configuration panel.
+  - **End-to-End Persistence**: Full backend synchronization across `/api/matrix/branding/save`, `/api/matrix/branding/config`, `/api/security/settings`, and audit logging.
 
 #### **v2.22.0** - 2026-08-19
 - **Favicon System-Wide Sync, Light Theme UI Polish & Default Country Code Purge**:

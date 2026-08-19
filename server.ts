@@ -22108,6 +22108,9 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
       elConfig.settingDefaults?.['UIFeature.registration'] === false
     ) ? false : true;
 
+    const db = readDb();
+    const sec = getSecuritySettings(db);
+
     res.json({
       brandName: elConfig.brand || "Element",
       activeWallpaper,
@@ -22125,7 +22128,13 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
       defaultTheme,
       defaultWidgetContainerHeight,
       disable3pidLogin,
-      elementCall
+      elementCall,
+      captchaEnabled: sec.captchaEnabled !== false,
+      captchaMode: sec.captchaMode || "on_failed",
+      captchaTriggerAttempts: typeof sec.captchaTriggerAttempts === "number" ? sec.captchaTriggerAttempts : 2,
+      lockoutEnabled: sec.lockoutEnabled !== false,
+      maxFailedAttempts: typeof sec.maxFailedAttempts === "number" ? sec.maxFailedAttempts : 3,
+      lockoutDurationMinutes: typeof sec.lockoutDurationMinutes === "number" ? sec.lockoutDurationMinutes : 15
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -22156,7 +22165,13 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       disable3pidLogin,
       disable_3pid_login,
       elementCall,
-      element_call
+      element_call,
+      captchaEnabled,
+      captchaMode,
+      captchaTriggerAttempts,
+      lockoutEnabled,
+      maxFailedAttempts,
+      lockoutDurationMinutes
     } = req.body;
 
     const activeConn = getActiveConnection();
@@ -22526,6 +22541,18 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
     }, activeConn);
 
     const db = readDb();
+    const sec = getSecuritySettings(db);
+    let secUpdated = false;
+    if (typeof captchaEnabled === 'boolean') { sec.captchaEnabled = captchaEnabled; secUpdated = true; }
+    if (['always', 'on_failed'].includes(captchaMode)) { sec.captchaMode = captchaMode; secUpdated = true; }
+    if (typeof captchaTriggerAttempts === 'number' && captchaTriggerAttempts >= 1) { sec.captchaTriggerAttempts = captchaTriggerAttempts; secUpdated = true; }
+    if (typeof lockoutEnabled === 'boolean') { sec.lockoutEnabled = lockoutEnabled; secUpdated = true; }
+    if (typeof maxFailedAttempts === 'number' && maxFailedAttempts >= 1) { sec.maxFailedAttempts = maxFailedAttempts; secUpdated = true; }
+    if (typeof lockoutDurationMinutes === 'number' && lockoutDurationMinutes >= 1) { sec.lockoutDurationMinutes = lockoutDurationMinutes; secUpdated = true; }
+    if (secUpdated) {
+      db.securitySettings = sec;
+    }
+
     db.auditLogs.unshift({
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -22533,7 +22560,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       action: "Update Element Branding",
       target: "Element Web",
       status: "success",
-      details: `Saved Element login page customization, theme (${elConfig.default_theme || 'light'}), widget container height (${elConfig.default_widget_container_height || 280}), disable 3PID login (${elConfig.disable_3pid_login === true}), element call (${JSON.stringify(elConfig.element_call || {})}), wallpaper, favicon (${elConfig.branding.favicon || 'default'}), header logo, and login options.`
+      details: `Saved Element login page customization, theme (${elConfig.default_theme || 'light'}), widget container height (${elConfig.default_widget_container_height || 280}), disable 3PID login (${elConfig.disable_3pid_login === true}), CAPTCHA (${sec.captchaEnabled !== false ? sec.captchaMode : 'disabled'}), element call (${JSON.stringify(elConfig.element_call || {})}), wallpaper, favicon (${elConfig.branding.favicon || 'default'}), header logo, and login options.`
     });
     writeDb(db);
 
@@ -22563,7 +22590,13 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
           brand: elConfig.element_call?.brand || "",
           disable: elConfig.element_call?.disable === true,
           use_exclusively: elConfig.element_call?.use_exclusively === true
-        }
+        },
+        captchaEnabled: sec.captchaEnabled !== false,
+        captchaMode: sec.captchaMode || "on_failed",
+        captchaTriggerAttempts: typeof sec.captchaTriggerAttempts === "number" ? sec.captchaTriggerAttempts : 2,
+        lockoutEnabled: sec.lockoutEnabled !== false,
+        maxFailedAttempts: typeof sec.maxFailedAttempts === "number" ? sec.maxFailedAttempts : 3,
+        lockoutDurationMinutes: typeof sec.lockoutDurationMinutes === "number" ? sec.lockoutDurationMinutes : 15
       }
     });
   } catch (err: any) {
