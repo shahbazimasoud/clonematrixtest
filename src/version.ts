@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.21.0";
+export const PANEL_VERSION = "2.22.0";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.22.0",
+    date: "2026-08-19",
+    title: "Favicon System-Wide Sync, Light Theme UI Polish & Default Country Code Purge",
+    changes: [
+      "Favicon Comprehensive Deployment: Added automatic multi-path deployment and DOM synchronization for custom Element Web favicons across /var/www/element/img/, /var/www/element/favicon.ico, and HTML DOM link headers.",
+      "Light Theme UI Palette Refinement: Unified background, border, and text inputs across Default Widget Container Height, Element Call Settings, and Login Options for harmonious light & dark mode appearance.",
+      "Default Country Code Removal: Completely purged Default Country Code from both frontend UI components and backend branding config save/load pipelines."
+    ]
+  },
   {
     version: "2.21.0",
     date: "2026-08-19",

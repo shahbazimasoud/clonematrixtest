@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.21.0** (Released: 2026-08-19)
+## Current Panel Version: **v2.22.0** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.22.0** - 2026-08-19
+- **Favicon System-Wide Sync, Light Theme UI Polish & Default Country Code Purge**:
+  - **Favicon Comprehensive Deployment**: Added automatic multi-path deployment and DOM synchronization for custom Element Web favicons across `/var/www/element/img/`, `/var/www/element/favicon.ico`, and HTML DOM link headers.
+  - **Light Theme UI Palette Refinement**: Unified background, border, and text inputs across Default Widget Container Height, Element Call Settings, and Login Options for harmonious light & dark mode appearance.
+  - **Default Country Code Removal**: Completely purged Default Country Code from both frontend UI components and backend branding config save/load pipelines.
 
 #### **v2.21.0** - 2026-08-19
 - **Element Config Expansion: Default Theme, 3PID Disable, Widget Height, Country Code & Element Call**:

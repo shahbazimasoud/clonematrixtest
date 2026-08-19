@@ -20886,7 +20886,7 @@ print("__WALLPAPERS_JSON_START__" + json.dumps(results) + "__WALLPAPERS_JSON_END
   return { wallpapers, remoteScanned: false };
 }
 
-// Helper to inject or clean CSS and DOM overrides for Element Web Branding (Footer, Forgot Password, Create Account, Logo Cursor, Login Dropdown Options)
+// Helper to inject or clean CSS and DOM overrides for Element Web Branding (Footer, Forgot Password, Create Account, Logo Cursor, Login Dropdown Options, and Favicon)
 async function syncElementBrandingDom(
   optionsOrFooter: boolean | {
     showAuthFooter?: boolean;
@@ -20895,6 +20895,7 @@ async function syncElementBrandingDom(
     logoClickUrl?: string;
     loginFields?: { allowMxid?: boolean; allowEmail?: boolean; allowPhone?: boolean };
     disable3pidLogin?: boolean;
+    faviconUrl?: string;
   },
   logoClickUrlOrConn?: any,
   loginFieldsOrConn?: any,
@@ -20907,6 +20908,7 @@ async function syncElementBrandingDom(
     let logoClickUrl = "";
     let loginFields: { allowMxid?: boolean; allowEmail?: boolean; allowPhone?: boolean } = { allowMxid: true, allowEmail: true, allowPhone: true };
     let disable3pidLogin = false;
+    let faviconUrl = "";
     let activeConn = maybeConn;
 
     if (typeof optionsOrFooter === 'object' && optionsOrFooter !== null) {
@@ -20916,6 +20918,7 @@ async function syncElementBrandingDom(
       if (optionsOrFooter.logoClickUrl !== undefined) logoClickUrl = optionsOrFooter.logoClickUrl || "";
       if (optionsOrFooter.loginFields) loginFields = { ...loginFields, ...optionsOrFooter.loginFields };
       if (optionsOrFooter.disable3pidLogin !== undefined) disable3pidLogin = optionsOrFooter.disable3pidLogin === true;
+      if (optionsOrFooter.faviconUrl !== undefined) faviconUrl = optionsOrFooter.faviconUrl || "";
       if (logoClickUrlOrConn && typeof logoClickUrlOrConn === 'object') activeConn = logoClickUrlOrConn;
     } else {
       showAuthFooter = optionsOrFooter !== false;
@@ -20930,6 +20933,7 @@ async function syncElementBrandingDom(
           if (loginFieldsOrConn.showCreateAccount !== undefined) showCreateAccount = loginFieldsOrConn.showCreateAccount !== false;
           if (loginFieldsOrConn.loginFields) loginFields = { ...loginFields, ...loginFieldsOrConn.loginFields };
           if (loginFieldsOrConn.disable3pidLogin !== undefined) disable3pidLogin = loginFieldsOrConn.disable3pidLogin === true;
+          if (loginFieldsOrConn.faviconUrl !== undefined) faviconUrl = loginFieldsOrConn.faviconUrl || "";
         } else if (!activeConn && typeof loginFieldsOrConn === 'object') {
           activeConn = loginFieldsOrConn;
         }
@@ -20940,6 +20944,7 @@ async function syncElementBrandingDom(
     const allowMxid = loginFields.allowMxid !== false;
     const allowEmail = !disable3pidLogin && loginFields.allowEmail !== false;
     const allowPhone = !disable3pidLogin && loginFields.allowPhone !== false;
+    const cleanFaviconUrl = (faviconUrl || "").trim();
 
     // 1. Generate clean CSS override snippet (footer display, forgot password, create account, logo cursor, and login dropdown filters)
     const cssRules: string[] = [];
@@ -20980,7 +20985,7 @@ async function syncElementBrandingDom(
     const cssContent = cssRules.filter(Boolean).join("\n\n");
     const styleTag = `<style id="raven-branding-overrides">\n${cssContent}\n</style>`;
 
-    // 2. Generate DOM script for flawless option filtering and element visibility in Element Web
+    // 2. Generate DOM script for option filtering, element visibility, and runtime favicon sync in Element Web
     const scriptTag = `<script id="raven-login-fields-sync">
 (function() {
   var ALLOW_MXID = ${allowMxid};
@@ -20989,9 +20994,33 @@ async function syncElementBrandingDom(
   var DISABLE_3PID = ${disable3pidLogin};
   var ALLOW_FORGOT_PW = ${showForgotPassword};
   var ALLOW_CREATE_ACC = ${showCreateAccount};
+  var TARGET_FAVICON = ${JSON.stringify(cleanFaviconUrl)};
+
+  function syncFavicon() {
+    if (!TARGET_FAVICON) return;
+    try {
+      var head = document.head || document.getElementsByTagName('head')[0];
+      if (!head) return;
+      var existingFavicons = head.querySelectorAll('link[rel*="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
+      if (existingFavicons && existingFavicons.length > 0) {
+        existingFavicons.forEach(function(el) {
+          if (el.getAttribute('href') !== TARGET_FAVICON) {
+            el.setAttribute('href', TARGET_FAVICON);
+          }
+        });
+      } else {
+        var link = document.createElement('link');
+        link.rel = 'shortcut icon';
+        link.type = 'image/x-icon';
+        link.href = TARGET_FAVICON;
+        head.appendChild(link);
+      }
+    } catch(e) {}
+  }
 
   function filterLoginOptions() {
     try {
+      syncFavicon();
       var selects = document.querySelectorAll('select[id*="mx_Field_"], select.mx_Field_select, select#mx_Field_1');
       selects.forEach(function(sel) {
         if (DISABLE_3PID) {
@@ -21105,6 +21134,19 @@ async function syncElementBrandingDom(
       html = html.replace(/<script id="raven-login-fields-sync">[\s\S]*?<\/script>/gi, '');
       html = html.replace(/<script id="raven-logo-redirect">[\s\S]*?<\/script>/gi, '');
 
+      // Update or inject Favicon in HTML head
+      if (cleanFaviconUrl) {
+        const faviconTags = `  <link id="raven-custom-favicon" rel="icon" href="${cleanFaviconUrl}">\n  <link rel="shortcut icon" href="${cleanFaviconUrl}">`;
+        // Replace existing favicon links
+        html = html.replace(/<link\b[^>]*\brel=["'](?:shortcut )?icon["'][^>]*>/gi, '');
+        html = html.replace(/<link id="raven-custom-favicon"[^>]*>/gi, '');
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${faviconTags}\n</head>`);
+        } else if (html.includes('<head>')) {
+          html = html.replace('<head>', `<head>\n${faviconTags}`);
+        }
+      }
+
       // Inject clean style into head
       if (html.includes('</head>')) {
         html = html.replace('</head>', `  ${styleTag}\n</head>`);
@@ -21167,7 +21209,7 @@ async function syncElementBrandingDom(
             username: "admin",
             component: "Element Web Branding DOM Sync",
             fieldOrParam: "index.html",
-            diffSummary: `Cleaned branding overrides in ${candPath}: Footer=${showAuthFooter}, LogoClickUrl=${cleanClickUrl || 'default'}`
+            diffSummary: `Cleaned branding overrides in ${candPath}: Footer=${showAuthFooter}, Favicon=${cleanFaviconUrl || 'default'}, LogoClickUrl=${cleanClickUrl || 'default'}`
           });
         }
       } catch (pathErr) {
@@ -22048,7 +22090,6 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
     const defaultTheme = elConfig.default_theme || elConfig.setting_defaults?.theme || elConfig.settingDefaults?.theme || "light";
     const defaultWidgetContainerHeight = typeof elConfig.default_widget_container_height === "number" ? elConfig.default_widget_container_height : (parseInt(elConfig.default_widget_container_height, 10) || 280);
     const disable3pidLogin = elConfig.disable_3pid_login === true;
-    const defaultCountryCode = elConfig.default_country_code || "GB";
     const elementCall = {
       brand: elConfig.element_call?.brand || "",
       disable: elConfig.element_call?.disable === true,
@@ -22084,7 +22125,6 @@ app.get("/api/matrix/branding/config", authenticateToken, async (req, res) => {
       defaultTheme,
       defaultWidgetContainerHeight,
       disable3pidLogin,
-      defaultCountryCode,
       elementCall
     });
   } catch (err: any) {
@@ -22115,8 +22155,6 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       default_widget_container_height,
       disable3pidLogin,
       disable_3pid_login,
-      defaultCountryCode,
-      default_country_code,
       elementCall,
       element_call
     } = req.body;
@@ -22236,13 +22274,19 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       const favName = faviconFileName ? path.basename(faviconFileName) : 'custom_favicon.ico';
       const favBuffer = Buffer.from(faviconData, 'base64');
       
-      // Save locally
+      // Save locally across all standard Element Web paths for instant icon serving
       const localImgFav = path.join(SANDBOX_DIR, "var/www/element/img", favName);
       const localFav = path.join(SANDBOX_DIR, "var/www/element", favName);
+      const localFavIco = path.join(SANDBOX_DIR, "var/www/element", "favicon.ico");
+      const localImgFavIco = path.join(SANDBOX_DIR, "var/www/element/img", "favicon.ico");
+      const localImgFavPng = path.join(SANDBOX_DIR, "var/www/element/img", "favicon.png");
       fs.mkdirSync(path.dirname(localImgFav), { recursive: true });
       fs.mkdirSync(path.dirname(localFav), { recursive: true });
       fs.writeFileSync(localImgFav, favBuffer);
       fs.writeFileSync(localFav, favBuffer);
+      fs.writeFileSync(localFavIco, favBuffer);
+      fs.writeFileSync(localImgFavIco, favBuffer);
+      fs.writeFileSync(localImgFavPng, favBuffer);
 
       // Also save in wallpaper dir for permanent storage
       const wpFav = path.join(SANDBOX_DIR, "opt/matrix-synapse/wallpaper", favName);
@@ -22258,7 +22302,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
           await uploadSSHFile(activeConn, tmpFav, remoteTemp);
           await executeSSHCommand(
             activeConn,
-            `${sudoPrefix}mkdir -p /var/www/element/img /var/www/element /opt/matrix-synapse/wallpaper && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/img/${favName}" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/${favName}" && ${sudoPrefix}cp "${remoteTemp}" "/opt/matrix-synapse/wallpaper/${favName}" && ${sudoPrefix}chmod 644 "/var/www/element/img/${favName}" "/var/www/element/${favName}"`
+            `${sudoPrefix}mkdir -p /var/www/element/img /var/www/element /opt/matrix-synapse/wallpaper && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/img/${favName}" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/${favName}" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/favicon.ico" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/img/favicon.ico" && ${sudoPrefix}cp "${remoteTemp}" "/var/www/element/img/favicon.png" && ${sudoPrefix}cp "${remoteTemp}" "/opt/matrix-synapse/wallpaper/${favName}" && ${sudoPrefix}chmod 644 "/var/www/element/img/${favName}" "/var/www/element/${favName}" "/var/www/element/favicon.ico" "/var/www/element/img/favicon.ico" "/var/www/element/img/favicon.png" 2>/dev/null || true`
           );
         } finally {
           try { fs.unlinkSync(tmpFav); } catch (_) {}
@@ -22417,14 +22461,10 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       elConfig.disable_3pid_login = finalDisable3pid === true;
     }
 
-    // 7.4 Handle Default Country Code
-    const finalCountryCode = (defaultCountryCode !== undefined ? defaultCountryCode : default_country_code);
-    if (finalCountryCode !== undefined) {
-      const cleanCode = String(finalCountryCode).trim().toUpperCase();
-      elConfig.default_country_code = cleanCode || "GB";
-    }
+    // Permanently remove default_country_code
+    delete elConfig.default_country_code;
 
-    // 7.5 Handle Element Call Configuration
+    // 7.4 Handle Element Call Configuration
     const finalElementCall = (elementCall !== undefined ? elementCall : element_call);
     if (finalElementCall !== undefined && typeof finalElementCall === 'object' && finalElementCall !== null) {
       if (!elConfig.element_call) elConfig.element_call = {};
@@ -22443,10 +22483,10 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
     await writeConfigContent("/var/www/element/config.json", JSON.stringify(elConfig, null, 2), {
       username: req.user.username,
       component: "Element Branding & Customization",
-      diffSummary: `Updated Element branding & config: Theme=${elConfig.default_theme || 'light'}, WidgetHeight=${elConfig.default_widget_container_height || 280}, Disable3PID=${elConfig.disable_3pid_login === true}, CountryCode=${elConfig.default_country_code || 'GB'}, Footer=${showAuthFooter}, ForgotPassword=${showForgotPassword}, CreateAccount=${showCreateAccount}, Logo URL=${logoClickUrl || 'default'}, Wallpaper=${activeWallpaper || 'default'}, Login fields: mxid=${elConfig.branding.login_field_mxid !== false}, email=${elConfig.branding.login_field_email !== false}, phone=${elConfig.branding.login_field_phone !== false}`
+      diffSummary: `Updated Element branding & config: Theme=${elConfig.default_theme || 'light'}, WidgetHeight=${elConfig.default_widget_container_height || 280}, Disable3PID=${elConfig.disable_3pid_login === true}, Footer=${showAuthFooter}, ForgotPassword=${showForgotPassword}, CreateAccount=${showCreateAccount}, Favicon=${elConfig.branding.favicon || 'default'}, Logo URL=${logoClickUrl || 'default'}, Wallpaper=${activeWallpaper || 'default'}, Login fields: mxid=${elConfig.branding.login_field_mxid !== false}, email=${elConfig.branding.login_field_email !== false}, phone=${elConfig.branding.login_field_phone !== false}`
     });
 
-    // 9. Synchronize CSS and DOM overrides (Footer hiding, Forgot password, Create account, Logo click redirect, Login dropdown options)
+    // 9. Synchronize CSS and DOM overrides (Footer hiding, Forgot password, Create account, Logo click redirect, Login dropdown options, Favicon)
     const effectiveFooterState = (
       elConfig.branding.hide_auth_footer === true ||
       elConfig.branding.show_auth_footer === false ||
@@ -22481,7 +22521,8 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       showCreateAccount: effectiveCreateAccount,
       logoClickUrl: effectiveLogoClick,
       loginFields: loginFieldOptions,
-      disable3pidLogin: elConfig.disable_3pid_login === true
+      disable3pidLogin: elConfig.disable_3pid_login === true,
+      faviconUrl: elConfig.branding.favicon || "/favicon.ico"
     }, activeConn);
 
     const db = readDb();
@@ -22492,7 +22533,7 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       action: "Update Element Branding",
       target: "Element Web",
       status: "success",
-      details: `Saved Element login page customization, theme (${elConfig.default_theme || 'light'}), widget container height (${elConfig.default_widget_container_height || 280}), disable 3PID login (${elConfig.disable_3pid_login === true}), country code (${elConfig.default_country_code || 'GB'}), element call (${JSON.stringify(elConfig.element_call || {})}), wallpaper, favicon, header logo, and login options.`
+      details: `Saved Element login page customization, theme (${elConfig.default_theme || 'light'}), widget container height (${elConfig.default_widget_container_height || 280}), disable 3PID login (${elConfig.disable_3pid_login === true}), element call (${JSON.stringify(elConfig.element_call || {})}), wallpaper, favicon (${elConfig.branding.favicon || 'default'}), header logo, and login options.`
     });
     writeDb(db);
 
@@ -22518,7 +22559,6 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
         defaultTheme: elConfig.default_theme || "light",
         defaultWidgetContainerHeight: elConfig.default_widget_container_height || 280,
         disable3pidLogin: elConfig.disable_3pid_login === true,
-        defaultCountryCode: elConfig.default_country_code || "GB",
         elementCall: {
           brand: elConfig.element_call?.brand || "",
           disable: elConfig.element_call?.disable === true,

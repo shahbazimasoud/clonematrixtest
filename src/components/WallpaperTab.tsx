@@ -49,7 +49,6 @@ import {
   ChevronsRight,
   Sun,
   Moon,
-  Flag,
   Video,
   SlidersHorizontal,
   Hash,
@@ -87,7 +86,6 @@ export interface BrandingConfig {
   defaultTheme?: 'light' | 'dark';
   defaultWidgetContainerHeight?: number;
   disable3pidLogin?: boolean;
-  defaultCountryCode?: string;
   elementCall?: {
     brand?: string;
     disable?: boolean;
@@ -199,7 +197,6 @@ export default function WallpaperTab({
     defaultTheme: 'light',
     defaultWidgetContainerHeight: 280,
     disable3pidLogin: false,
-    defaultCountryCode: 'GB',
     elementCall: {
       brand: '',
       disable: false,
@@ -224,7 +221,6 @@ export default function WallpaperTab({
     defaultTheme: 'light',
     defaultWidgetContainerHeight: 280,
     disable3pidLogin: false,
-    defaultCountryCode: 'GB',
     elementCall: {
       brand: '',
       disable: false,
@@ -294,7 +290,6 @@ export default function WallpaperTab({
     if ((branding.defaultTheme || 'light') !== (serverBranding.defaultTheme || 'light')) return true;
     if ((branding.defaultWidgetContainerHeight || 280) !== (serverBranding.defaultWidgetContainerHeight || 280)) return true;
     if ((branding.disable3pidLogin === true) !== (serverBranding.disable3pidLogin === true)) return true;
-    if ((branding.defaultCountryCode || 'GB') !== (serverBranding.defaultCountryCode || 'GB')) return true;
     if ((branding.elementCall?.brand || '') !== (serverBranding.elementCall?.brand || '')) return true;
     if ((branding.elementCall?.disable === true) !== (serverBranding.elementCall?.disable === true)) return true;
     if ((branding.elementCall?.use_exclusively === true) !== (serverBranding.elementCall?.use_exclusively === true)) return true;
@@ -342,7 +337,6 @@ export default function WallpaperTab({
           defaultTheme: b.defaultTheme || data.defaultTheme || 'light',
           defaultWidgetContainerHeight: typeof b.defaultWidgetContainerHeight === 'number' ? b.defaultWidgetContainerHeight : (typeof data.defaultWidgetContainerHeight === 'number' ? data.defaultWidgetContainerHeight : 280),
           disable3pidLogin: b.disable3pidLogin === true || data.disable3pidLogin === true,
-          defaultCountryCode: b.defaultCountryCode || data.defaultCountryCode || 'GB',
           elementCall: {
             brand: b.elementCall?.brand || data.elementCall?.brand || '',
             disable: b.elementCall?.disable === true || data.elementCall?.disable === true,
@@ -594,7 +588,6 @@ export default function WallpaperTab({
         defaultTheme: branding.defaultTheme || 'light',
         defaultWidgetContainerHeight: typeof branding.defaultWidgetContainerHeight === 'number' ? branding.defaultWidgetContainerHeight : 280,
         disable3pidLogin: branding.disable3pidLogin === true,
-        defaultCountryCode: branding.defaultCountryCode || 'GB',
         elementCall: {
           brand: branding.elementCall?.brand || '',
           disable: branding.elementCall?.disable === true,
@@ -614,8 +607,8 @@ export default function WallpaperTab({
       if (res.ok) {
         if (showToast) {
           showToast('success', loc(
-            'تمامی تنظیمات والپیپر، لوگو، تم، ارتفاع کانتینر ویجت، ۳PID، کد کشور، Element Call و برندینگ با موفقیت در سرور المنت اعمال شد.',
-            'All Element wallpaper, logo, theme, widget height, 3PID, country code, Element Call, and branding settings successfully saved and applied to server.'
+            'تمامی تنظیمات والپیپر، لوگو، تم، ارتفاع کانتینر ویجت، ۳PID، Element Call و برندینگ با موفقیت در سرور المنت اعمال شد.',
+            'All Element wallpaper, logo, theme, widget height, 3PID, Element Call, and branding settings successfully saved and applied to server.'
           ));
         }
         setCustomFaviconFile(null);
@@ -648,7 +641,6 @@ export default function WallpaperTab({
       defaultTheme: 'light',
       defaultWidgetContainerHeight: 280,
       disable3pidLogin: false,
-      defaultCountryCode: 'GB',
       elementCall: {
         brand: '',
         disable: false,
@@ -2256,7 +2248,7 @@ export default function WallpaperTab({
                   <>
                     <div className="relative min-w-[200px]">
                       <select
-                        className="w-full bg-[#1b2234] border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none"
+                        className="w-full bg-white/5 border border-white/10 text-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none"
                         disabled
                         value={
                           branding.loginFieldMxid !== false
@@ -2267,13 +2259,13 @@ export default function WallpaperTab({
                         }
                       >
                         {branding.loginFieldMxid !== false && (
-                          <option value="login_field_mxid">Username</option>
+                          <option value="login_field_mxid" className="bg-[#171d2b] text-white">Username</option>
                         )}
                         {branding.loginFieldEmail !== false && (
-                          <option value="login_field_email">Email address</option>
+                          <option value="login_field_email" className="bg-[#171d2b] text-white">Email address</option>
                         )}
                         {branding.loginFieldPhone !== false && (
-                          <option value="login_field_password">Phone</option>
+                          <option value="login_field_password" className="bg-[#171d2b] text-white">Phone</option>
                         )}
                       </select>
                     </div>
@@ -2352,62 +2344,7 @@ export default function WallpaperTab({
             </div>
           </div>
 
-          {/* 8. Default Country Code (default_country_code: GB, IR, ES, SA, DE, RU) */}
-          <div className="spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-3">
-            <div>
-              <label className="text-xs font-bold text-white uppercase tracking-wider block">
-                {loc('کد کشور پیش‌فرض شماره تلفن (Default Country Code)', 'Default Country Code')}
-              </label>
-              <p className="text-[11px] text-slate-400 mt-1">
-                {loc('پیش‌شماره و کشور پیش‌فرض برای ورود/ثبت‌نام با شماره تلفن (default_country_code)', 'Default country code for international phone inputs in Element')}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="relative">
-                <select
-                  value={branding.defaultCountryCode || 'GB'}
-                  onChange={(e) => setBranding({ ...branding, defaultCountryCode: e.target.value })}
-                  disabled={isReadOnly}
-                  className="w-full bg-[#171d2b] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-200 focus:outline-none focus:border-pink-500/50 appearance-none cursor-pointer"
-                  id="select-default-country-code"
-                >
-                  <option value="GB">🇬🇧 GB - United Kingdom (+44)</option>
-                  <option value="IR">🇮🇷 IR - Iran (+98)</option>
-                  <option value="ES">🇪🇸 ES - Spain (+34)</option>
-                  <option value="SA">🇸🇦 SA - Saudi Arabia (+966)</option>
-                  <option value="DE">🇩🇪 DE - Germany (+49)</option>
-                  <option value="RU">🇷🇺 RU - Russia (+7)</option>
-                </select>
-                <Flag className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                {['GB', 'IR', 'ES', 'SA', 'DE', 'RU'].map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => setBranding({ ...branding, defaultCountryCode: code })}
-                    disabled={isReadOnly}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                      branding.defaultCountryCode === code
-                        ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm'
-                        : 'bg-white/5 border border-white/5 text-slate-400 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    {code === 'GB' && '🇬🇧 GB'}
-                    {code === 'IR' && '🇮🇷 IR'}
-                    {code === 'ES' && '🇪🇸 ES'}
-                    {code === 'SA' && '🇸🇦 SA'}
-                    {code === 'DE' && '🇩🇪 DE'}
-                    {code === 'RU' && '🇷🇺 RU'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 9. Default Widget Container Height (default_widget_container_height: default 280) */}
+          {/* 8. Default Widget Container Height (default_widget_container_height: default 280) */}
           <div className="spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-3">
             <div>
               <label className="text-xs font-bold text-white uppercase tracking-wider block">
@@ -2432,7 +2369,7 @@ export default function WallpaperTab({
                       setBranding({ ...branding, defaultWidgetContainerHeight: isNaN(val) ? 280 : val });
                     }}
                     disabled={isReadOnly}
-                    className="w-full bg-[#171d2b] border border-white/10 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-pink-500/50 pl-14"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-pink-500/50 pl-14"
                     id="input-widget-container-height"
                   />
                   <span className="text-[11px] font-bold text-slate-400 absolute left-3 top-2">px</span>
@@ -2471,7 +2408,7 @@ export default function WallpaperTab({
             </div>
           </div>
 
-          {/* 10. Element Call Configuration (element_call: brand, disable, use_exclusively) */}
+          {/* 9. Element Call Configuration (element_call: brand, disable, use_exclusively) */}
           <div className="spatial-glass rounded-2xl p-5 border border-white/10 bg-white/5 space-y-4">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
@@ -2507,7 +2444,7 @@ export default function WallpaperTab({
                   })}
                   disabled={isReadOnly}
                   placeholder="Element Call / Company Video"
-                  className="w-full bg-[#171d2b] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500/50"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500/50"
                   id="input-element-call-brand"
                 />
               </div>
