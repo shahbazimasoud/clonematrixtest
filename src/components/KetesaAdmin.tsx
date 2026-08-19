@@ -8412,12 +8412,12 @@ export default function KetesaAdmin({
                             </button>
                           )}
                         </div>
-                        <div className={`border rounded-xl overflow-hidden ${
+                        <div className={`border rounded-xl overflow-visible ${
                           isLightMode ? 'border-slate-200 bg-white shadow-sm' : 'bg-black/20 border-white/5'
                         }`}>
                           <table className="w-full text-left text-xs font-mono">
                             <thead>
-                              <tr className={`${
+                              <tr className={`rounded-t-xl ${
                                 isLightMode ? 'bg-slate-100/80 text-slate-600 border-b border-slate-200' : 'bg-black/40 text-gray-400 border-b border-white/5'
                               }`}>
                                 <th className="p-3">Device ID</th>
@@ -8435,8 +8435,9 @@ export default function KetesaAdmin({
                               ) : (
                                 selectedUserDetails.devices.map((dev: any) => {
                                   const dId = dev.device_id || dev.id;
+                                  const isDropdownOpen = activeDeviceDropdown === dId;
                                   return (
-                                    <tr key={dId} className={`transition-colors ${
+                                    <tr key={dId} className={`transition-colors ${isDropdownOpen ? 'relative z-30' : 'relative z-0'} ${
                                       isLightMode ? 'hover:bg-slate-50/50 text-slate-700' : 'hover:bg-white/5 text-gray-300'
                                     }`}>
                                       <td className={`p-3 font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-300'}`}>{dId}</td>
@@ -8445,7 +8446,7 @@ export default function KetesaAdmin({
                                       <td className={`p-3 max-w-[200px] truncate font-sans ${isLightMode ? 'text-slate-400' : 'text-gray-500'}`} title={dev.userAgent}>
                                         {dev.userAgent || 'N/A'}
                                       </td>
-                                      <td className="p-3 text-center">
+                                      <td className={`p-3 text-center ${isDropdownOpen ? 'relative z-40' : ''}`}>
                                         <div className="relative inline-block text-left">
                                           <button
                                             type="button"
@@ -8463,17 +8464,24 @@ export default function KetesaAdmin({
                                             <MoreVertical className="h-4 w-4" />
                                           </button>
 
-                                          {activeDeviceDropdown === dId && (
+                                          {isDropdownOpen && (
                                             <>
-                                              <div className="fixed inset-0 z-40" onClick={() => setActiveDeviceDropdown(null)} />
-                                              <div className={`absolute ${isRtl ? 'left-0' : 'right-0'} mt-1 w-44 rounded-xl shadow-xl border p-1 z-50 space-y-0.5 ${
+                                              <div 
+                                                className="fixed inset-0 z-[999]" 
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setActiveDeviceDropdown(null);
+                                                }} 
+                                              />
+                                              <div className={`absolute ${isRtl ? 'left-0' : 'right-0'} mt-1 w-48 rounded-xl shadow-2xl border p-1 z-[1000] space-y-0.5 animate-in fade-in duration-100 ${
                                                 isLightMode 
-                                                  ? 'bg-white border-slate-200 text-slate-800' 
-                                                  : 'bg-slate-900 border-white/10 text-gray-100'
+                                                  ? 'bg-white border-slate-200 text-slate-800 shadow-slate-300/80' 
+                                                  : 'bg-slate-900 border-white/15 text-gray-100 shadow-black/90'
                                               }`}>
                                                 <button
                                                   type="button"
-                                                  onClick={() => {
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
                                                     setActiveDeviceDropdown(null);
                                                     handleTerminateDevice(dId);
                                                   }}

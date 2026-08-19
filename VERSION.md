@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.24.1** (Released: 2026-08-19)
+## Current Panel Version: **v2.24.2** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.24.2** - 2026-08-19
+- **Active Client Devices Dropdown Menu Z-Index & Table Overflow Fix**:
+  - **Z-Index & Stacking Context Fix**: Fixed the 3-dot dropdown menu in Matrix Admin -> Active Client Devices & Matrix Sessions to prevent clipping under table rows and containers.
+  - **Table Container Overflow**: Updated devices table wrapper to `overflow-visible` and assigned high priority z-index layering to the active row and dropdown overlay.
 
 #### **v2.24.1** - 2026-08-19
 - **Auth Policy UI Harmonization & Local DB Option Refinement**:

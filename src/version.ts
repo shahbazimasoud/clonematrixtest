@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.24.1";
+export const PANEL_VERSION = "2.24.2";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.24.2",
+    date: "2026-08-19",
+    title: "Active Client Devices Dropdown Menu Z-Index & Table Overflow Fix",
+    changes: [
+      "Z-Index & Stacking Context Fix: Fixed the 3-dot dropdown menu in Matrix Admin -> Active Client Devices & Matrix Sessions to prevent clipping under table rows and containers.",
+      "Table Container Overflow: Updated devices table wrapper to overflow-visible and assigned high priority z-index layering to the active row and dropdown overlay."
+    ]
+  },
   {
     version: "2.24.1",
     date: "2026-08-19",
