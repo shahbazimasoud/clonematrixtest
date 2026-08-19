@@ -1679,8 +1679,12 @@ export default function ConfigForms({
     });
   };
 
-  const handleRollback = async (backupFilename?: string) => {
-    if (!window.confirm(lang === 'fa' ? "آیا از بازگردانی این نسخه پشتیبان مطمئن هستید؟ این کار تنظیمات و سرویس Matrix Synapse را ریستارت می‌کند." : "Are you sure you want to rollback to this configuration backup?")) return;
+  const handleRollback = async (backupFilename?: string, targetScope: string = 'all') => {
+    const scopeMsg = targetScope === 'synapse' ? (lang === 'fa' ? 'پیکربندی Synapse (/etc/matrix-synapse)' : 'Synapse Configuration (/etc/matrix-synapse)')
+      : targetScope === 'element' ? (lang === 'fa' ? 'کلاینت وب Element (/var/www/element)' : 'Element Web Client (/var/www/element)')
+      : (lang === 'fa' ? 'تمام فایل‌های پیکربندی (/var/www/element و /etc/matrix-synapse)' : 'All configuration files (/var/www/element & /etc/matrix-synapse)');
+      
+    if (!window.confirm(lang === 'fa' ? `آیا از بازگردانی ${scopeMsg} از این نسخه پشتیبان مطمئن هستید؟ این کار سرویس Matrix Synapse را ریستارت می‌کند.` : `Are you sure you want to rollback ${scopeMsg} from this backup? This will restart the Matrix Synapse service.`)) return;
     setRollingBack(true);
     try {
       const res = await fetch('/api/matrix/config/rollback', {
@@ -1689,13 +1693,13 @@ export default function ConfigForms({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ backupFilename })
+        body: JSON.stringify({ backupFilename, targetScope })
       });
       const data = await res.json();
       if (res.ok) {
-        if (showToast) showToast('success', lang === 'fa' ? 'پیکربندی با موفقیت بازگردانی شد!' : 'Configuration rolled back successfully!');
+        if (showToast) showToast('success', lang === 'fa' ? 'پیکربندی با موفقیت بازگردانی شد و سرویس ریستارت گردید!' : 'Configuration rolled back and service restarted successfully!');
         fetchBackups();
-        setTimeout(() => window.location.reload(), 1500);
+        if (onCreateBackup) onCreateBackup(false);
       } else {
         if (showToast) showToast('error', data.message || (lang === 'fa' ? 'بازگردانی با خطا مواجه شد.' : 'Rollback failed'));
       }
@@ -5581,11 +5585,16 @@ export default function ConfigForms({
                           <Settings className="w-4 h-4 text-amber-400" />
                           <span>{lang === 'fa' ? 'نسخه پشتیبان تنظیمات (Config)' : 'Configuration Backup (Config)'}</span>
                         </h4>
-                        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                        <p className="text-xs text-slate-400 mb-2 leading-relaxed">
                           {lang === 'fa' 
-                            ? 'یک فایل فشرده بک‌آپ از تنظیمات اصلی ماتریکس سیناپس، پروفایل‌های المنت، پروکسی‌ها و تنظیمات امنیتی ایجاد می‌کند.' 
-                            : 'Creates a compressed backup archive of Synapse configs, Element web client profiles, Nginx proxies, and LDAP connection details.'}
+                            ? 'تهیه نسخه پشتیبان کامل از مسیرهای /var/www/element/ و /etc/matrix-synapse/ (همراه با تمام زیرپوشه‌ها) و ذخیره مستقیم در مسیر /opt/matrix-element-Backup/' 
+                            : 'Backs up /var/www/element/ and /etc/matrix-synapse/ (including all subdirectories) to /opt/matrix-element-Backup/ on the server.'}
                         </p>
+                        <div className={`flex flex-wrap gap-1 mb-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] font-mono text-amber-300">/var/www/element/**</span>
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[10px] font-mono text-amber-300">/etc/matrix-synapse/**</span>
+                          <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-mono text-cyan-300">Target: /opt/matrix-element-Backup/</span>
+                        </div>
                       </div>
                       <div className={`flex items-center justify-between pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
                         <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
@@ -5707,31 +5716,61 @@ export default function ConfigForms({
                       {backupsList.map((bak: any, idx: number) => (
                         <div 
                           key={bak.filename || idx}
-                          className={`flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5 hover:border-white/10 transition-all ${isRtl ? 'flex-row-reverse' : ''}`}
+                          className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl bg-black/20 border border-white/5 hover:border-white/10 transition-all gap-3 ${isRtl ? 'sm:flex-row-reverse' : ''}`}
                         >
-                          <div className={`flex items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
-                            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                          <div className={`flex items-start sm:items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 mt-0.5 sm:mt-0">
                               <Clock className="w-4 h-4" />
                             </div>
                             <div>
-                              <div className="text-xs font-mono font-medium text-slate-200">
+                              <div className="text-xs font-mono font-semibold text-slate-200 break-all select-all">
                                 {bak.filename}
                               </div>
-                              <div className="text-[11px] text-slate-400">
+                              <div className="text-[11px] text-slate-400 mt-0.5">
                                 {bak.dateStr || new Date(bak.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}
                               </div>
+                              {bak.coveredPaths && bak.coveredPaths.length > 0 && (
+                                <div className={`flex flex-wrap gap-1 mt-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                  {bak.coveredPaths.map((p: string, i: number) => (
+                                    <span key={i} className="px-1.5 py-0.2 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-slate-300">
+                                      {p}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleRollback(bak.filename)}
-                            disabled={rollingBack || isReadOnly}
-                            className="px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            <span>{lang === 'fa' ? 'بازگردانی' : 'Rollback'}</span>
-                          </button>
+                          <div className={`flex items-center gap-1.5 self-end sm:self-auto ${isRtl ? 'flex-row-reverse' : ''}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleRollback(bak.filename, 'all')}
+                              disabled={rollingBack || isReadOnly}
+                              className="px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                              title={lang === 'fa' ? 'بازگردانی کامل (سیناپس و المنت)' : 'Full Rollback (Synapse & Element)'}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>{lang === 'fa' ? 'بازگردانی کامل' : 'Full Rollback'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRollback(bak.filename, 'synapse')}
+                              disabled={rollingBack || isReadOnly}
+                              className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                              title={lang === 'fa' ? 'فقط بازگردانی Synapse' : 'Synapse Only'}
+                            >
+                              <span>{lang === 'fa' ? 'سیناپس' : 'Synapse'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRollback(bak.filename, 'element')}
+                              disabled={rollingBack || isReadOnly}
+                              className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                              title={lang === 'fa' ? 'فقط بازگردانی Element' : 'Element Only'}
+                            >
+                              <span>{lang === 'fa' ? 'المنت' : 'Element'}</span>
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>

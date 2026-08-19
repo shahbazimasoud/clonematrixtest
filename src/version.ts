@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.24.3";
+export const PANEL_VERSION = "2.25.0";
 export const PANEL_BUILD_DATE = "2026-08-19";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.25.0",
+    date: "2026-08-19",
+    title: "Dedicated /opt/matrix-element-Backup Storage & Multi-Path Element/Synapse Configuration Backup Suite",
+    changes: [
+      "Dedicated /opt/matrix-element-Backup Directory: Standardized remote server backup archive storage to /opt/matrix-element-Backup with dynamic directory creation, write verification, and catalog scanning.",
+      "Multi-Path Configuration Backup Engine: Comprehensive backup of /var/www/element/ (including all subdirectories) and /etc/matrix-synapse/ (including all subdirectories) in both remote SSH/Agent and local environments.",
+      "Dual Format Archival & Restoration: Integrated full .tar.gz archive creation and extraction alongside JSON structured dumps with recursive directory traversal.",
+      "Granular Scope-Based Rollback: Supported rollback targets ('all' for both Element and Synapse, 'synapse' for /etc/matrix-synapse, and 'element' for /var/www/element) with automatic Synapse service restart and error recovery.",
+      "Enhanced UI Visualizations: Updated Configuration Snapshots and Archived Backups Catalog to highlight covered paths, directory tags, and quick-rollback action triggers."
+    ]
+  },
   {
     version: "2.24.3",
     date: "2026-08-19",

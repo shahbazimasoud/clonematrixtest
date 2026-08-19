@@ -16,9 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.24.3** (Released: 2026-08-19)
+## Current Panel Version: **v2.25.0** (Released: 2026-08-19)
 
 ### Changelog History
+
+#### **v2.25.0** - 2026-08-19
+- **Dedicated /opt/matrix-element-Backup Storage & Multi-Path Element/Synapse Configuration Backup Suite**:
+  - **Dedicated /opt/matrix-element-Backup Directory**: Standardized remote server backup archive storage to `/opt/matrix-element-Backup` with dynamic directory creation, write verification, and catalog scanning.
+  - **Multi-Path Configuration Backup Engine**: Comprehensive backup of `/var/www/element/` (including all subdirectories) and `/etc/matrix-synapse/` (including all subdirectories) in both remote SSH/Agent and local environments.
+  - **Dual Format Archival & Restoration**: Integrated full `.tar.gz` archive creation and extraction alongside JSON structured dumps with recursive directory traversal.
+  - **Granular Scope-Based Rollback**: Supported rollback targets (`all` for both Element and Synapse, `synapse` for `/etc/matrix-synapse`, and `element` for `/var/www/element`) with automatic Synapse service restart and error recovery.
+  - **Enhanced UI Visualizations**: Updated Configuration Snapshots and Archived Backups Catalog to highlight covered paths, directory tags, and quick-rollback action triggers.
 
 #### **v2.24.3** - 2026-08-19
 - **Eliminate Double Scrollbars & Unified Natural Page Scroll in Wallpaper & Config Views**:

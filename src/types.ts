@@ -183,6 +183,7 @@ export interface BackupItem {
   hasSSL: boolean;
   type?: 'config' | 'database';
   path?: string;
+  coveredPaths?: string[];
 }
 
 export interface UndoItem {
