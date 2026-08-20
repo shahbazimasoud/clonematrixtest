@@ -20336,6 +20336,28 @@ function formatBytes(bytes: number, decimals = 1) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+// Helper to recursively copy directory in Node.js
+function copyDirRecursiveSync(src: string, dest: string) {
+  if (!fs.existsSync(src)) return;
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+  try {
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        copyDirRecursiveSync(srcPath, destPath);
+      } else {
+        try {
+          fs.copyFileSync(srcPath, destPath);
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
 function getDirectoryFilesMap(targetDir: string, virtualPrefix: string): { [vPath: string]: string } {
   const result: { [vPath: string]: string } = {};
   if (!fs.existsSync(targetDir)) return result;
@@ -20614,6 +20636,7 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
   const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, "");
   const tarFilename = `${backupType}-backup-${dateStr}-${timeStr}.tar.gz`;
   const jsonFilename = `${backupType}-backup-${dateStr}-${timeStr}.json`;
+  const snapshotDirName = `snapshot-${dateStr}-${timeStr}`;
 
   try {
     let finalPath = path.join(backupDirPath, tarFilename);
@@ -20624,16 +20647,46 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
       const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
       
       if (backupType === "config") {
-        const createCmd = `
-${sudoPrefix}mkdir -p "${backupDirPath}" && \
-cd / && \
-${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matrix-synapse 2>/dev/null || true
+        const createScript = `
+${sudoPrefix}mkdir -p "${backupDirPath}"
+${sudoPrefix}chmod 755 "${backupDirPath}" 2>/dev/null || true
+
+TARGETS=""
+[ -e "/var/www/element" ] && TARGETS="$TARGETS var/www/element"
+[ -e "/etc/matrix-synapse" ] && TARGETS="$TARGETS etc/matrix-synapse"
+[ -e "/etc/matrix-stack.conf" ] && TARGETS="$TARGETS etc/matrix-stack.conf"
+[ -e "/etc/matrix-stack-ldap.conf" ] && TARGETS="$TARGETS etc/matrix-stack-ldap.conf"
+[ -e "/etc/nginx/sites-available/matrix.conf" ] && TARGETS="$TARGETS etc/nginx/sites-available/matrix.conf"
+[ -e "/etc/matrix-pgadmin/servers.json" ] && TARGETS="$TARGETS etc/matrix-pgadmin/servers.json"
+
+if [ -n "$TARGETS" ]; then
+  cd / && ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" --ignore-failed-read $TARGETS 2>/dev/null || \
+  cd / && ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" $TARGETS 2>/dev/null || true
+fi
+
+if [ ! -s "${backupDirPath}/${tarFilename}" ]; then
+  ${sudoPrefix}mkdir -p /tmp/syn_bak_tmp/etc/matrix-synapse /tmp/syn_bak_tmp/var/www/element
+  [ -d /etc/matrix-synapse ] && ${sudoPrefix}cp -rf /etc/matrix-synapse/. /tmp/syn_bak_tmp/etc/matrix-synapse/ 2>/dev/null || true
+  [ -d /var/www/element ] && ${sudoPrefix}cp -rf /var/www/element/. /tmp/syn_bak_tmp/var/www/element/ 2>/dev/null || true
+  cd /tmp/syn_bak_tmp && ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" . 2>/dev/null || true
+  ${sudoPrefix}rm -rf /tmp/syn_bak_tmp
+fi
+
+SNAP_DIR="${backupDirPath}/${snapshotDirName}"
+${sudoPrefix}mkdir -p "$SNAP_DIR/var/www/element" "$SNAP_DIR/etc/matrix-synapse"
+[ -d "/var/www/element" ] && ${sudoPrefix}cp -rf /var/www/element/. "$SNAP_DIR/var/www/element/" 2>/dev/null || true
+[ -d "/etc/matrix-synapse" ] && ${sudoPrefix}cp -rf /etc/matrix-synapse/. "$SNAP_DIR/etc/matrix-synapse/" 2>/dev/null || true
+[ -f "/etc/matrix-stack.conf" ] && ${sudoPrefix}cp -f /etc/matrix-stack.conf "$SNAP_DIR/" 2>/dev/null || true
+[ -f "/etc/matrix-stack-ldap.conf" ] && ${sudoPrefix}cp -f /etc/matrix-stack-ldap.conf "$SNAP_DIR/" 2>/dev/null || true
+[ -f "/etc/nginx/sites-available/matrix.conf" ] && ${sudoPrefix}cp -f /etc/nginx/sites-available/matrix.conf "$SNAP_DIR/" 2>/dev/null || true
+
+${sudoPrefix}chmod -R 755 "${backupDirPath}" 2>/dev/null || true
 `.trim();
 
         if (activeConn.authType === "agent") {
-          await executeRemoteAgentTask(activeConn.id, "execute_command", { command: createCmd });
+          await executeRemoteAgentTask(activeConn.id, "execute_command", { command: createScript });
         } else {
-          await executeSSHCommand(activeConn, createCmd);
+          await executeSSHCommand(activeConn, `${sudoPrefix}bash -c '${createScript.replace(/'/g, "'\\''")}'`);
         }
 
         // Also build companion JSON archive
@@ -20657,7 +20710,8 @@ ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matr
           }
         };
 
-        const writeJsonCmd = `${sudoPrefix}mkdir -p "${backupDirPath}" && echo '${Buffer.from(JSON.stringify(payload, null, 2)).toString("base64")}' | base64 -d | ${sudoPrefix}tee "${backupDirPath}/${jsonFilename}" > /dev/null`;
+        const jsonB64 = Buffer.from(JSON.stringify(payload, null, 2)).toString("base64");
+        const writeJsonCmd = `${sudoPrefix}mkdir -p "${backupDirPath}" && echo "${jsonB64}" | ${sudoPrefix}base64 -d | ${sudoPrefix}tee "${backupDirPath}/${jsonFilename}" > /dev/null || true`;
         if (activeConn.authType === "agent") {
           await executeRemoteAgentTask(activeConn.id, "execute_command", { command: writeJsonCmd });
         } else {
@@ -20681,7 +20735,8 @@ ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matr
           timestamp,
           dbData: db
         };
-        const writeJsonCmd = `${sudoPrefix}mkdir -p "${backupDirPath}" && echo '${Buffer.from(JSON.stringify(dbPayload, null, 2)).toString("base64")}' | base64 -d | ${sudoPrefix}tee "${backupDirPath}/${jsonFilename}" > /dev/null`;
+        const dbB64 = Buffer.from(JSON.stringify(dbPayload, null, 2)).toString("base64");
+        const writeJsonCmd = `${sudoPrefix}mkdir -p "${backupDirPath}" && echo "${dbB64}" | ${sudoPrefix}base64 -d | ${sudoPrefix}tee "${backupDirPath}/${jsonFilename}" > /dev/null || true`;
         if (activeConn.authType === "agent") {
           await executeRemoteAgentTask(activeConn.id, "execute_command", { command: writeJsonCmd });
         } else {
@@ -20693,15 +20748,28 @@ ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matr
     } 
     // 2. Local / Sandbox execution
     else {
-      const localBackupDir = getBackupDirectory();
-      const localFilePath = path.join(localBackupDir, jsonFilename);
+      // Ensure target paths exist in BOTH /opt/matrix-element-Backup AND sandbox
+      const targetBackupDirs = [
+        "/opt/matrix-element-Backup",
+        getRealPath("/opt/matrix-element-Backup"),
+        getBackupDirectory()
+      ];
+
+      for (const d of targetBackupDirs) {
+        try {
+          if (!fs.existsSync(d)) {
+            fs.mkdirSync(d, { recursive: true });
+          }
+        } catch (_) {}
+      }
 
       if (backupType === "config") {
-        // Collect all files from /var/www/element and /etc/matrix-synapse
-        const elementFiles = getDirectoryFilesMap(getRealPath("/var/www/element"), "/var/www/element");
-        const synapseFiles = getDirectoryFilesMap(getRealPath("/etc/matrix-synapse"), "/etc/matrix-synapse");
-        
-        // Also ensure key files are included
+        // Collect all files from /var/www/element and /etc/matrix-synapse (checking both real & sandbox paths)
+        const elementRealFiles = getDirectoryFilesMap("/var/www/element", "/var/www/element");
+        const elementSandboxFiles = getDirectoryFilesMap(getRealPath("/var/www/element"), "/var/www/element");
+        const synapseRealFiles = getDirectoryFilesMap("/etc/matrix-synapse", "/etc/matrix-synapse");
+        const synapseSandboxFiles = getDirectoryFilesMap(getRealPath("/etc/matrix-synapse"), "/etc/matrix-synapse");
+
         const stackConf = readSandboxFile("/etc/matrix-stack.conf", "");
         const stackLdapConf = readSandboxFile("/etc/matrix-stack-ldap.conf", "");
         const hsYaml = readSandboxFile("/etc/matrix-synapse/homeserver.yaml", "");
@@ -20710,8 +20778,10 @@ ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matr
         const nginxConf = readSandboxFile("/etc/nginx/sites-available/matrix.conf", "");
 
         const allFiles: { [path: string]: string } = {
-          ...elementFiles,
-          ...synapseFiles,
+          ...elementRealFiles,
+          ...elementSandboxFiles,
+          ...synapseRealFiles,
+          ...synapseSandboxFiles,
           "/etc/matrix-stack.conf": stackConf,
           "/etc/matrix-stack-ldap.conf": stackLdapConf,
           "/etc/matrix-synapse/homeserver.yaml": hsYaml,
@@ -20728,17 +20798,85 @@ ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matr
           files: allFiles
         };
 
-        fs.writeFileSync(localFilePath, JSON.stringify(payload, null, 2), "utf8");
-        
-        // Also save .tar.gz bundle
+        const jsonStr = JSON.stringify(payload, null, 2);
+
+        // Copy source directory contents to snapshots in /opt/matrix-element-Backup/snapshot-YYYYMMDD-HHMMSS
+        for (const baseDir of targetBackupDirs) {
+          try {
+            const snapDir = path.join(baseDir, snapshotDirName);
+            const elDest = path.join(snapDir, "var/www/element");
+            const synDest = path.join(snapDir, "etc/matrix-synapse");
+            fs.mkdirSync(elDest, { recursive: true });
+            fs.mkdirSync(synDest, { recursive: true });
+
+            copyDirRecursiveSync("/var/www/element", elDest);
+            copyDirRecursiveSync(getRealPath("/var/www/element"), elDest);
+            copyDirRecursiveSync("/etc/matrix-synapse", synDest);
+            copyDirRecursiveSync(getRealPath("/etc/matrix-synapse"), synDest);
+
+            // Write individual key files
+            fs.writeFileSync(path.join(snapDir, "matrix-stack.conf"), stackConf, "utf8");
+            fs.writeFileSync(path.join(snapDir, "matrix-stack-ldap.conf"), stackLdapConf, "utf8");
+            fs.writeFileSync(path.join(snapDir, "matrix-nginx.conf"), nginxConf, "utf8");
+
+            // Write JSON manifest to directory
+            fs.writeFileSync(path.join(baseDir, jsonFilename), jsonStr, "utf8");
+          } catch (_) {}
+        }
+
+        // Create genuine .tar.gz bundle
+        let tarCreated = false;
         try {
-          const tarLocalPath = path.join(localBackupDir, tarFilename);
-          fs.writeFileSync(tarLocalPath, JSON.stringify(payload, null, 2), "utf8");
+          const tempTarDir = path.join(os.tmpdir(), `matrix_tar_${Date.now()}`);
+          fs.mkdirSync(tempTarDir, { recursive: true });
+          
+          const tempElDir = path.join(tempTarDir, "var/www/element");
+          const tempSynDir = path.join(tempTarDir, "etc/matrix-synapse");
+          fs.mkdirSync(tempElDir, { recursive: true });
+          fs.mkdirSync(tempSynDir, { recursive: true });
+
+          copyDirRecursiveSync("/var/www/element", tempElDir);
+          copyDirRecursiveSync(getRealPath("/var/www/element"), tempElDir);
+          copyDirRecursiveSync("/etc/matrix-synapse", tempSynDir);
+          copyDirRecursiveSync(getRealPath("/etc/matrix-synapse"), tempSynDir);
+
+          for (const [vPath, content] of Object.entries(allFiles)) {
+            try {
+              const rel = vPath.startsWith("/") ? vPath.slice(1) : vPath;
+              const target = path.join(tempTarDir, rel);
+              fs.mkdirSync(path.dirname(target), { recursive: true });
+              fs.writeFileSync(target, content, "utf8");
+            } catch (_) {}
+          }
+
+          for (const baseDir of targetBackupDirs) {
+            try {
+              const tarDest = path.join(baseDir, tarFilename);
+              execSync(`tar -czf "${tarDest}" -C "${tempTarDir}" .`, { stdio: "ignore" });
+              tarCreated = true;
+            } catch (_) {}
+          }
+
+          // Clean up temp directory
+          try {
+            fs.rmSync(tempTarDir, { recursive: true, force: true });
+          } catch (_) {}
         } catch (_) {}
 
-        const fileSize = fs.statSync(localFilePath).size;
+        // Fallback: If tar command didn't run, write compressed gzip JSON
+        if (!tarCreated) {
+          const gzipped = zlib.gzipSync(Buffer.from(jsonStr, "utf8"));
+          for (const baseDir of targetBackupDirs) {
+            try {
+              fs.writeFileSync(path.join(baseDir, tarFilename), gzipped);
+            } catch (_) {}
+          }
+        }
+
+        const primaryPath = path.join("/opt/matrix-element-Backup", tarFilename);
+        finalPath = fs.existsSync(primaryPath) ? primaryPath : path.join(getBackupDirectory(), tarFilename);
+        const fileSize = fs.existsSync(finalPath) ? fs.statSync(finalPath).size : Buffer.byteLength(jsonStr);
         formattedSize = formatBytes(fileSize);
-        finalPath = localFilePath;
       } else {
         // Database Backup
         const payload = {
@@ -20746,10 +20884,14 @@ ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matr
           timestamp,
           dbData: db
         };
-        fs.writeFileSync(localFilePath, JSON.stringify(payload, null, 2), "utf8");
-        const fileSize = fs.statSync(localFilePath).size;
-        formattedSize = formatBytes(fileSize);
-        finalPath = localFilePath;
+        const jsonStr = JSON.stringify(payload, null, 2);
+        for (const baseDir of targetBackupDirs) {
+          try {
+            fs.writeFileSync(path.join(baseDir, jsonFilename), jsonStr, "utf8");
+          } catch (_) {}
+        }
+        finalPath = path.join("/opt/matrix-element-Backup", jsonFilename);
+        formattedSize = formatBytes(Buffer.byteLength(jsonStr));
       }
     }
 

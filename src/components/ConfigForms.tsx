@@ -1483,6 +1483,7 @@ export default function ConfigForms({
       });
       if (res.ok) {
         if (showToast) showToast('success', `${type === 'config' ? (lang === 'fa' ? 'نسخه پشتیبان تنظیمات' : 'Configuration') : (lang === 'fa' ? 'نسخه پشتیبان دیتابیس' : 'Database')} ${lang === 'fa' ? 'با موفقیت ایجاد شد' : 'backup created successfully'}`);
+        fetchBackups();
         if (onCreateBackup) onCreateBackup(includeSSL);
       } else {
         if (showToast) showToast('error', lang === 'fa' ? 'خطا در ایجاد نسخه پشتیبان' : 'Error creating backup');

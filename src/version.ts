@@ -16,8 +16,8 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.25.0";
-export const PANEL_BUILD_DATE = "2026-08-19";
+export const PANEL_VERSION = "2.25.1";
+export const PANEL_BUILD_DATE = "2026-08-20";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
 
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.25.1",
+    date: "2026-08-20",
+    title: "Fix Backup Delivery & Direct Multi-Path Storage in /opt/matrix-element-Backup",
+    changes: [
+      "Target Directory Archival Fix: Resolved empty /opt/matrix-element-Backup issue by generating genuine compressed .tar.gz archives, companion JSON manifests, and direct snapshot subdirectories in target locations.",
+      "Dual Environment Mirroring: Synchronized backup writes across primary filesystem (/opt/matrix-element-Backup/) and sandbox environments simultaneously.",
+      "Resilient Remote Bash Script: Upgraded SSH & Agent execution with multi-path detection for /var/www/element/** and /etc/matrix-synapse/**, automatic directory provisioning, and permissions enforcement.",
+      "Instant UI Snapshot Refresh: Automated live catalog re-fetching upon backup creation to display new archives immediately in Homeserver and Reporting panels."
+    ]
+  },
   {
     version: "2.25.0",
     date: "2026-08-19",

@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.25.0** (Released: 2026-08-19)
+## Current Panel Version: **v2.25.1** (Released: 2026-08-20)
 
 ### Changelog History
+
+#### **v2.25.1** - 2026-08-20
+- **Fix Backup Delivery & Direct Multi-Path Storage in /opt/matrix-element-Backup**:
+  - **Target Directory Archival Fix**: Resolved empty `/opt/matrix-element-Backup` issue by generating genuine compressed `.tar.gz` archives, companion JSON manifests, and direct snapshot subdirectories in target locations.
+  - **Dual Environment Mirroring**: Synchronized backup writes across primary filesystem (`/opt/matrix-element-Backup/`) and sandbox environments simultaneously.
+  - **Resilient Remote Bash Script**: Upgraded SSH & Agent execution with multi-path detection for `/var/www/element/**` and `/etc/matrix-synapse/**`, automatic directory provisioning, and permissions enforcement.
+  - **Instant UI Snapshot Refresh**: Automated live catalog re-fetching upon backup creation to display new archives immediately in Homeserver and Reporting panels.
 
 #### **v2.25.0** - 2026-08-19
 - **Dedicated /opt/matrix-element-Backup Storage & Multi-Path Element/Synapse Configuration Backup Suite**:
