@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.25.1";
+export const PANEL_VERSION = "2.25.2";
 export const PANEL_BUILD_DATE = "2026-08-20";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.25.2",
+    date: "2026-08-20",
+    title: "Remote-First Architecture & Strict Multi-Path Archive Verification for /opt/matrix-element-Backup",
+    changes: [
+      "Remote-First Execution Enforcement: All backup creation, listing, and restore procedures execute exclusively on the remote server via active SSH/Agent connection.",
+      "Strict Archive Verification: Eliminated silent error handling; backups are verified via remote filesystem checks (test -f, test -s, tar -tzf) before returning success.",
+      "Path Traversal Protection: Enforced strict boundary checks during restoration to ensure archives contain only authorized Matrix Synapse and Element configuration targets.",
+      "Companion Manifest & Detailed Toast Reporting: Guaranteed companion JSON manifest generation on remote target paths and surfaced explicit remote failure messages to the UI."
+    ]
+  },
   {
     version: "2.25.1",
     date: "2026-08-20",

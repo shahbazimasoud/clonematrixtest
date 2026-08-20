@@ -17906,12 +17906,12 @@ app.get("/api/matrix/config/backups", authenticateToken, async (req, res) => {
     const activeConn = getActiveConnection();
     const scannedBackups = await scanServerBackups(activeConn);
     
-    // Filter and map all config backups & snapshots
+    // Filter and map all config backups & snapshots from /opt/matrix-element-Backup
     const snapshots: any[] = [];
     const seenFiles = new Set<string>();
 
     for (const b of scannedBackups) {
-      if (b.type === "config" || b.filename.includes("config") || b.filename.includes("synapse") || b.filename.endsWith(".tar.gz") || b.filename.endsWith(".json")) {
+      if (b.type === "config" || b.filename.includes("config") || b.filename.includes("synapse") || b.filename.endsWith(".tar.gz") || b.filename.endsWith(".json") || b.filename.startsWith("snapshot-")) {
         if (!seenFiles.has(b.filename)) {
           seenFiles.add(b.filename);
           snapshots.push({
@@ -17921,7 +17921,7 @@ app.get("/api/matrix/config/backups", authenticateToken, async (req, res) => {
             size: b.size || "Unknown",
             type: "config",
             coveredPaths: b.coveredPaths || ["/var/www/element", "/etc/matrix-synapse"],
-            path: b.path || `/opt/matrix-element-Backup/${b.filename}`,
+            path: b.path || `${REMOTE_BACKUP_BASE_DIR}/${b.filename}`,
             isLatest: false
           });
         }
@@ -17929,46 +17929,35 @@ app.get("/api/matrix/config/backups", authenticateToken, async (req, res) => {
     }
 
     // Also scan legacy /etc/matrix-synapse/homeserver.yaml.bak_*
-    const listCmd = `ls -la /etc/matrix-synapse/homeserver.yaml.bak_* 2>/dev/null || true`;
-    let rawList = "";
-    if (activeConn && activeConn.id !== "local") {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      if (activeConn.authType === "agent") {
-        rawList = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: listCmd }) || "";
-      } else {
-        rawList = await executeSSHCommand(activeConn, `${sudoPrefix}${listCmd}`);
-      }
-    } else {
-      try {
-        rawList = execSync(listCmd).toString();
-      } catch (e) {}
-    }
-
-    const lines = rawList.split("\n");
-    lines.forEach((line) => {
-      const match = line.match(/(homeserver\.yaml\.bak_(\d+|latest))/);
-      if (match) {
-        const filename = match[1];
-        const tsRaw = match[2];
-        let timestamp = Date.now();
-        if (tsRaw && tsRaw !== "latest" && !isNaN(Number(tsRaw))) {
-          timestamp = Number(tsRaw);
+    try {
+      const listCmd = `ls -la /etc/matrix-synapse/homeserver.yaml.bak_* 2>/dev/null || true`;
+      const rawList = await runActiveServerCommand(activeConn, listCmd, false);
+      const lines = rawList.split("\n");
+      lines.forEach((line) => {
+        const match = line.match(/(homeserver\.yaml\.bak_(\d+|latest))/);
+        if (match) {
+          const filename = match[1];
+          const tsRaw = match[2];
+          let timestamp = Date.now();
+          if (tsRaw && tsRaw !== "latest" && !isNaN(Number(tsRaw))) {
+            timestamp = Number(tsRaw);
+          }
+          if (!seenFiles.has(filename)) {
+            seenFiles.add(filename);
+            snapshots.push({
+              filename,
+              timestamp,
+              dateStr: new Date(timestamp).toLocaleString(),
+              size: "Snapshot",
+              type: "config",
+              coveredPaths: ["/etc/matrix-synapse/homeserver.yaml"],
+              path: `/etc/matrix-synapse/${filename}`,
+              isLatest: filename.endsWith("_latest")
+            });
+          }
         }
-        if (!seenFiles.has(filename)) {
-          seenFiles.add(filename);
-          snapshots.push({
-            filename,
-            timestamp,
-            dateStr: new Date(timestamp).toLocaleString(),
-            size: "Snapshot",
-            type: "config",
-            coveredPaths: ["/etc/matrix-synapse/homeserver.yaml"],
-            path: `/etc/matrix-synapse/${filename}`,
-            isLatest: filename.endsWith("_latest")
-          });
-        }
-      }
-    });
+      });
+    } catch (_) {}
 
     snapshots.sort((a, b) => b.timestamp - a.timestamp);
     if (snapshots.length > 0) {
@@ -17988,64 +17977,105 @@ app.post("/api/matrix/config/rollback", authenticateToken, checkPermission(["Own
     const activeConn = getActiveConnection();
     const scope = targetScope || "all";
 
-    let targetFile = "";
+    let cleanName = "";
+    let isLegacyHomeserver = false;
+
     if (backupFilename) {
-      const cleanName = backupFilename.replace(/[^a-zA-Z0-9._-]/g, "");
+      const sanitized = backupFilename.replace(/[^a-zA-Z0-9._-]/g, "");
+      if (!sanitized || sanitized === "." || sanitized === "..") {
+        return res.status(400).json({ error: "Invalid backup filename." });
+      }
+      cleanName = sanitized;
       if (cleanName.startsWith("homeserver.yaml.bak_")) {
-        targetFile = `/etc/matrix-synapse/${cleanName}`;
-      } else {
-        targetFile = `/opt/matrix-element-Backup/${cleanName}`;
+        isLegacyHomeserver = true;
       }
     } else {
       // Find latest backup in /opt/matrix-element-Backup or fallback
       const scanned = await scanServerBackups(activeConn);
-      const latest = scanned.find((b: any) => b.type === "config" || b.filename.endsWith(".tar.gz") || b.filename.endsWith(".json"));
+      const latest = scanned.find((b: any) => b.type === "config" || b.filename.endsWith(".tar.gz") || b.filename.endsWith(".json") || b.filename.startsWith("snapshot-"));
       if (latest) {
-        targetFile = latest.path || `/opt/matrix-element-Backup/${latest.filename}`;
+        cleanName = latest.filename;
       } else {
-        targetFile = "/etc/matrix-synapse/homeserver.yaml.bak_latest";
+        isLegacyHomeserver = true;
+        cleanName = "homeserver.yaml.bak_latest";
       }
     }
 
     let restored = false;
     let restoreDetails = "";
+    const targetFile = isLegacyHomeserver ? `/etc/matrix-synapse/${cleanName}` : `${REMOTE_BACKUP_BASE_DIR}/${cleanName}`;
 
     // 1. If target is a .tar.gz archive in /opt/matrix-element-Backup/
-    if (targetFile.endsWith(".tar.gz")) {
+    if (cleanName.endsWith(".tar.gz")) {
+      // Validate archive exists & is readable & valid tar
+      const verifyCmd = `test -f "${targetFile}" && test -s "${targetFile}" && tar -tzf "${targetFile}" >/dev/null`;
+      try {
+        await runActiveServerCommand(activeConn, verifyCmd);
+      } catch (vErr: any) {
+        return res.status(400).json({
+          error: "Rollback verification failed",
+          message: `Archive file ${targetFile} is invalid or corrupt: ${vErr.message}`
+        });
+      }
+
+      // Path traversal security check on archive contents
+      try {
+        const listArchiveCmd = `tar -tf "${targetFile}"`;
+        const archiveList = await runActiveServerCommand(activeConn, listArchiveCmd);
+        const illegalEntries = archiveList.split("\n").map(s => s.trim()).filter(Boolean).filter(entry => {
+          if (entry.startsWith("/") || entry.includes("..")) return true;
+          if (!entry.startsWith("var/www/element") && !entry.startsWith("etc/matrix-synapse") && !entry.startsWith("etc/matrix-stack") && !entry.startsWith("etc/nginx")) {
+            return true;
+          }
+          return false;
+        });
+
+        if (illegalEntries.length > 0) {
+          return res.status(403).json({
+            error: "Security validation error",
+            message: `Archive contains unauthorized target paths outside Matrix/Element configuration: ${illegalEntries.slice(0, 3).join(", ")}`
+          });
+        }
+      } catch (checkErr: any) {
+        console.warn("[ROLLBACK] Archive list check warning:", checkErr);
+      }
+
       let extractScope = "";
       if (scope === "synapse") extractScope = "etc/matrix-synapse";
       else if (scope === "element") extractScope = "var/www/element";
       else if (scope === "homeserver") extractScope = "etc/matrix-synapse/homeserver.yaml";
       else extractScope = "var/www/element etc/matrix-synapse";
 
-      if (activeConn && activeConn.id !== "local") {
-        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-        const cmd = `${sudoPrefix}tar -xzf "${targetFile}" -C / ${extractScope} 2>/dev/null || ${sudoPrefix}tar -xzf "${targetFile}" -C /`;
-        if (activeConn.authType === "agent") {
-          await executeRemoteAgentTask(activeConn.id, "execute_command", { command: cmd });
-        } else {
-          await executeSSHCommand(activeConn, cmd);
-        }
-        restored = true;
-      } else {
-        // Local extraction
-        try {
-          execSync(`tar -xzf "${targetFile}" -C / ${extractScope} 2>/dev/null || tar -xzf "${targetFile}" -C /`);
-          restored = true;
-        } catch (e: any) {
-          console.warn("Local tar extraction fallback:", e);
-          restored = true;
-        }
-      }
+      const extractCmd = `cd / && tar -xzf "${targetFile}" -C / ${extractScope}`;
+      await runActiveServerCommand(activeConn, extractCmd);
+      restored = true;
       restoreDetails = `Extracted archive ${targetFile} with scope [${scope}].`;
-    } 
-    // 2. If target is a .json backup file in /opt/matrix-element-Backup/
-    else if (targetFile.endsWith(".json")) {
-      let jsonContent = "";
-      try {
-        jsonContent = await readConfigContent(targetFile);
-      } catch (_) {}
+    }
+    // 2. If target is a snapshot directory in /opt/matrix-element-Backup/
+    else if (cleanName.startsWith("snapshot-")) {
+      const snapDir = `${REMOTE_BACKUP_BASE_DIR}/${cleanName}`;
+      const verifySnapCmd = `test -d "${snapDir}/var/www/element" || test -d "${snapDir}/etc/matrix-synapse"`;
+      await runActiveServerCommand(activeConn, verifySnapCmd);
 
+      let restoreSnapCmd = "";
+      if (scope === "synapse") {
+        restoreSnapCmd = `[ -d "${snapDir}/etc/matrix-synapse" ] && cp -rf "${snapDir}/etc/matrix-synapse/." /etc/matrix-synapse/`;
+      } else if (scope === "element") {
+        restoreSnapCmd = `[ -d "${snapDir}/var/www/element" ] && cp -rf "${snapDir}/var/www/element/." /var/www/element/`;
+      } else {
+        restoreSnapCmd = `
+          [ -d "${snapDir}/var/www/element" ] && cp -rf "${snapDir}/var/www/element/." /var/www/element/
+          [ -d "${snapDir}/etc/matrix-synapse" ] && cp -rf "${snapDir}/etc/matrix-synapse/." /etc/matrix-synapse/
+        `.trim();
+      }
+
+      await runActiveServerCommand(activeConn, restoreSnapCmd);
+      restored = true;
+      restoreDetails = `Restored recursive snapshot directory ${snapDir} with scope [${scope}].`;
+    }
+    // 3. If target is a .json backup file in /opt/matrix-element-Backup/
+    else if (cleanName.endsWith(".json")) {
+      const jsonContent = await readConfigContent(targetFile, "");
       if (jsonContent) {
         const parsed = JSON.parse(jsonContent);
         if (parsed.files) {
@@ -18063,7 +18093,7 @@ app.post("/api/matrix/config/rollback", authenticateToken, checkPermission(["Own
         }
       }
     } 
-    // 3. If target is legacy /etc/matrix-synapse/homeserver.yaml.bak_*
+    // 4. If target is legacy /etc/matrix-synapse/homeserver.yaml.bak_*
     else {
       restored = await rollbackHomeserverYaml(activeConn, targetFile);
       restoreDetails = `Restored homeserver.yaml from legacy snapshot ${targetFile}.`;
@@ -18090,12 +18120,11 @@ app.post("/api/matrix/config/rollback", authenticateToken, checkPermission(["Own
 
     res.json({
       success: true,
-      message: `Configuration restored (Scope: ${scope}) from ${path.basename(targetFile)} and Synapse service restarted successfully.`,
-      targetFile,
-      scope
+      message: `Configuration successfully restored from ${cleanName} (scope: ${scope}) and Matrix Synapse service restarted.`
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Rollback failed", message: err.message });
+    console.error("Rollback error:", err);
+    res.status(500).json({ error: "Rollback execution failed", message: err.message });
   }
 });
 
@@ -20385,18 +20414,41 @@ function getDirectoryFilesMap(targetDir: string, virtualPrefix: string): { [vPat
   return result;
 }
 
+const REMOTE_BACKUP_BASE_DIR = "/opt/matrix-element-Backup";
+
+async function runActiveServerCommand(activeConn: any, cmd: string, useSudo: boolean = true): Promise<string> {
+  if (activeConn && activeConn.id !== "local") {
+    const sudoPrefix = (useSudo && activeConn.username !== "root") ? "sudo " : "";
+    const fullCmd = `${sudoPrefix}${cmd}`;
+    if (activeConn.authType === "agent") {
+      return await executeRemoteAgentTask(activeConn.id, "execute_command", { command: fullCmd });
+    } else {
+      return await executeSSHCommand(activeConn, fullCmd);
+    }
+  } else {
+    try {
+      const output = execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+      return output;
+    } catch (err: any) {
+      const stderr = err.stderr ? err.stderr.toString() : "";
+      const stdout = err.stdout ? err.stdout.toString() : "";
+      throw new Error(stderr.trim() || stdout.trim() || err.message);
+    }
+  }
+}
+
 function getBackupDirectory() {
   const db = readDb();
   if (!db.backupSettings) {
     db.backupSettings = {
-      backupPath: "/opt/matrix-element-Backup",
+      backupPath: REMOTE_BACKUP_BASE_DIR,
       retentionDays: 30,
       dbSchedule: { enabled: false, cron: "0 2 * * *" },
       configSchedule: { enabled: false, cron: "0 3 * * *" }
     };
     writeDb(db);
   }
-  const backupPath = db.backupSettings.backupPath || "/opt/matrix-element-Backup";
+  const backupPath = db.backupSettings.backupPath || REMOTE_BACKUP_BASE_DIR;
   
   let targetPath = "";
   if (backupPath.startsWith("/sandbox")) {
@@ -20414,7 +20466,6 @@ function getBackupDirectory() {
       fs.mkdirSync(targetPath, { recursive: true });
     }
   } catch (_) {
-    // If permission denied for system root, fallback to sandbox real path
     const fallbackPath = getRealPath(backupPath);
     if (!fs.existsSync(fallbackPath)) {
       fs.mkdirSync(fallbackPath, { recursive: true });
@@ -20426,8 +20477,7 @@ function getBackupDirectory() {
 
 async function scanServerBackups(activeConn?: any): Promise<any[]> {
   const db = readDb();
-  const backupDirName = db.backupSettings?.backupPath || "/opt/matrix-element-Backup";
-  const defaultDir = "/opt/matrix-element-Backup";
+  const backupDirName = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
   const foundBackups: any[] = [];
   const existingMap = new Map<string, any>();
   
@@ -20438,92 +20488,79 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
     });
   }
 
-  // 1. Scan remote connected server if active
-  if (activeConn && activeConn.id !== "local") {
-    try {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      const scanCmd = `
-mkdir -p "${backupDirName}" "${defaultDir}" 2>/dev/null || true;
-for d in "${backupDirName}" "${defaultDir}"; do
-  if [ -d "$d" ]; then
-    ls -la --time-style=+%s "$d" 2>/dev/null || ls -la "$d" 2>/dev/null;
-  fi
-done
-`.trim();
+  // 1. Scan target backup directory on the active connection
+  try {
+    const scanCmd = `
+      mkdir -p "${backupDirName}" 2>/dev/null || true
+      if [ -d "${backupDirName}" ]; then
+        ls -la --time-style=+%s "${backupDirName}" 2>/dev/null || ls -la "${backupDirName}"
+      fi
+    `.trim();
 
-      let stdout = "";
-      if (activeConn.authType === "agent") {
-        stdout = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: scanCmd }) || "";
-      } else {
-        stdout = await executeSSHCommand(activeConn, `${sudoPrefix}bash -c '${scanCmd}'`);
-      }
-
-      const lines = stdout.split("\n");
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length >= 8 && !line.startsWith("total") && !line.startsWith("d")) {
-          const filename = parts[parts.length - 1];
-          if (!filename || filename === "." || filename === ".." || filename.startsWith(".")) continue;
+    const stdout = await runActiveServerCommand(activeConn, scanCmd, true);
+    const lines = stdout.split("\n");
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 7 && !line.startsWith("total")) {
+        const isDir = line.startsWith("d");
+        const filename = parts[parts.length - 1];
+        if (!filename || filename === "." || filename === ".." || filename.startsWith(".")) continue;
+        
+        if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.startsWith("snapshot-") || filename.includes(".bak_")) {
+          const rawSize = parseInt(parts[4], 10) || 0;
+          const rawTs = parseInt(parts[5], 10);
+          let timestamp = (!isNaN(rawTs) && rawTs > 1000000000) ? new Date(rawTs * 1000).toISOString() : new Date().toISOString();
           
-          if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.includes(".bak_")) {
-            const rawSize = parseInt(parts[4], 10) || 0;
-            const rawTs = parseInt(parts[5], 10);
-            let timestamp = (!isNaN(rawTs) && rawTs > 1000000000) ? new Date(rawTs * 1000).toISOString() : new Date().toISOString();
-            
-            const dateMatch = filename.match(/(\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})/);
-            if (dateMatch) {
-              const [_, y, m, d, h, min, s] = dateMatch;
-              timestamp = new Date(`${y}-${m}-${d}T${h}:${min}:${s}Z`).toISOString();
-            }
+          const dateMatch = filename.match(/(\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})/);
+          if (dateMatch) {
+            const [_, y, m, d, h, min, s] = dateMatch;
+            timestamp = new Date(`${y}-${m}-${d}T${h}:${min}:${s}Z`).toISOString();
+          }
 
-            const isDb = filename.includes("database") || filename.includes("db-backup");
-            const isConfig = filename.includes("config") || filename.includes("synapse") || filename.includes("element");
-            const existing = existingMap.get(filename);
+          const isDb = filename.includes("database") || filename.includes("db-backup");
+          const isConfig = filename.includes("config") || filename.includes("synapse") || filename.includes("element") || filename.startsWith("snapshot-");
+          const existing = existingMap.get(filename);
 
-            if (!foundBackups.some(f => f.filename === filename)) {
-              foundBackups.push({
-                id: existing?.id || `bak-${Buffer.from(filename).toString("hex").substring(0, 12)}`,
-                filename,
-                path: path.join(backupDirName, filename),
-                size: existing?.size || formatBytes(rawSize),
-                timestamp: existing?.timestamp || timestamp,
-                hasSSL: existing?.hasSSL || filename.includes("ssl") || false,
-                type: existing?.type || (isDb ? "database" : "config"),
-                coveredPaths: existing?.coveredPaths || (isConfig ? ["/var/www/element", "/etc/matrix-synapse"] : ["database"])
-              });
-            }
+          if (!foundBackups.some(f => f.filename === filename)) {
+            foundBackups.push({
+              id: existing?.id || `bak-${Buffer.from(filename).toString("hex").substring(0, 12)}`,
+              filename,
+              path: path.join(backupDirName, filename),
+              size: isDir ? "Snapshot Directory" : (existing?.size || formatBytes(rawSize)),
+              timestamp: existing?.timestamp || timestamp,
+              hasSSL: existing?.hasSSL || filename.includes("ssl") || false,
+              type: existing?.type || (isDb ? "database" : "config"),
+              coveredPaths: existing?.coveredPaths || (isConfig ? ["/var/www/element", "/etc/matrix-synapse"] : ["database"])
+            });
           }
         }
       }
-    } catch (err) {
-      console.warn("Failed to scan remote backup directory:", err);
     }
+  } catch (scanErr) {
+    console.warn("[BACKUP] Scan warning on active connection:", scanErr);
   }
 
-  // 2. Local / Sandbox scanning
-  const localDirsToScan = [
-    backupDirName,
-    defaultDir,
-    getRealPath(backupDirName),
-    getRealPath(defaultDir),
-    getBackupDirectory()
-  ];
-
-  const scannedSet = new Set<string>();
-  for (const dir of localDirsToScan) {
-    if (!dir || scannedSet.has(dir)) continue;
-    scannedSet.add(dir);
-    try {
-      if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir);
-        for (const filename of files) {
-          if (filename.startsWith(".") || foundBackups.some(b => b.filename === filename)) continue;
-          if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.includes(".bak_")) {
-            const filePath = path.join(dir, filename);
-            const stat = fs.statSync(filePath);
-            if (stat.isFile()) {
+  // 2. Also check local sandbox if connection is local
+  if (!activeConn || activeConn.id === "local") {
+    const localDirs = [
+      backupDirName,
+      getRealPath(backupDirName),
+      getBackupDirectory()
+    ];
+    const scannedSet = new Set<string>();
+    for (const dir of localDirs) {
+      if (!dir || scannedSet.has(dir)) continue;
+      scannedSet.add(dir);
+      try {
+        if (fs.existsSync(dir)) {
+          const files = fs.readdirSync(dir);
+          for (const filename of files) {
+            if (filename.startsWith(".") || foundBackups.some(b => b.filename === filename)) continue;
+            if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.startsWith("snapshot-") || filename.includes(".bak_")) {
+              const filePath = path.join(dir, filename);
+              const stat = fs.statSync(filePath);
               const isDb = filename.includes("database") || filename.includes("db-backup");
-              const isConfig = filename.includes("config") || filename.includes("synapse") || filename.includes("element");
+              const isConfig = filename.includes("config") || filename.includes("synapse") || filename.includes("element") || filename.startsWith("snapshot-");
               const existing = existingMap.get(filename);
 
               let timestamp = stat.mtime.toISOString();
@@ -20537,7 +20574,7 @@ done
                 id: existing?.id || `bak-${stat.mtimeMs.toFixed(0)}`,
                 filename,
                 path: filePath,
-                size: existing?.size || formatBytes(stat.size),
+                size: stat.isDirectory() ? "Snapshot Directory" : (existing?.size || formatBytes(stat.size)),
                 timestamp: existing?.timestamp || timestamp,
                 hasSSL: existing?.hasSSL || filename.includes("ssl") || false,
                 type: existing?.type || (isDb ? "database" : "config"),
@@ -20546,8 +20583,8 @@ done
             }
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
   }
 
   // 3. Reconcile with db.backups
@@ -20560,7 +20597,6 @@ done
   }
 
   foundBackups.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
   db.backups = foundBackups;
   writeDb(db);
 
@@ -20583,7 +20619,7 @@ app.get("/api/backups/settings", authenticateToken, (req, res) => {
   const db = readDb();
   if (!db.backupSettings) {
     db.backupSettings = {
-      backupPath: "/opt/matrix-element-Backup",
+      backupPath: REMOTE_BACKUP_BASE_DIR,
       retentionDays: 30,
       dbSchedule: { enabled: false, cron: "0 2 * * *" },
       configSchedule: { enabled: false, cron: "0 3 * * *" }
@@ -20629,7 +20665,7 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
   const backupType = type || "config";
   const db = readDb();
   const activeConn = getActiveConnection();
-  const backupDirPath = db.backupSettings?.backupPath || "/opt/matrix-element-Backup";
+  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
 
   const timestamp = new Date().toISOString();
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -20638,263 +20674,155 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
   const jsonFilename = `${backupType}-backup-${dateStr}-${timeStr}.json`;
   const snapshotDirName = `snapshot-${dateStr}-${timeStr}`;
 
+  console.log(`[BACKUP] Starting remote ${backupType} backup`);
+  console.log(`[BACKUP] Active connection: ${activeConn?.name || 'Local'} (${activeConn?.host || 'localhost'}, ID: ${activeConn?.id || 'local'})`);
+
   try {
     let finalPath = path.join(backupDirPath, tarFilename);
     let formattedSize = "0 KB";
+    let rawSizeBytes = 0;
 
-    // 1. If connected to a Remote Server via SSH or Agent
-    if (activeConn && activeConn.id !== "local") {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      
-      if (backupType === "config") {
-        const createScript = `
-${sudoPrefix}mkdir -p "${backupDirPath}"
-${sudoPrefix}chmod 755 "${backupDirPath}" 2>/dev/null || true
+    // Step 1: Create destination backup directory on active server
+    console.log(`[BACKUP] Ensuring destination directory: ${backupDirPath}`);
+    await runActiveServerCommand(activeConn, `mkdir -p "${backupDirPath}" && chmod 755 "${backupDirPath}"`);
 
-TARGETS=""
-[ -e "/var/www/element" ] && TARGETS="$TARGETS var/www/element"
-[ -e "/etc/matrix-synapse" ] && TARGETS="$TARGETS etc/matrix-synapse"
-[ -e "/etc/matrix-stack.conf" ] && TARGETS="$TARGETS etc/matrix-stack.conf"
-[ -e "/etc/matrix-stack-ldap.conf" ] && TARGETS="$TARGETS etc/matrix-stack-ldap.conf"
-[ -e "/etc/nginx/sites-available/matrix.conf" ] && TARGETS="$TARGETS etc/nginx/sites-available/matrix.conf"
-[ -e "/etc/matrix-pgadmin/servers.json" ] && TARGETS="$TARGETS etc/matrix-pgadmin/servers.json"
+    if (backupType === "config") {
+      console.log(`[BACKUP] Source: /var/www/element`);
+      console.log(`[BACKUP] Source: /etc/matrix-synapse`);
+      console.log(`[BACKUP] Destination: ${backupDirPath}/${tarFilename}`);
 
-if [ -n "$TARGETS" ]; then
-  cd / && ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" --ignore-failed-read $TARGETS 2>/dev/null || \
-  cd / && ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" $TARGETS 2>/dev/null || true
+      // Step 2: Check existence of required source directories on active server
+      const checkSrcScript = `
+MISSING=""
+[ ! -d "/var/www/element" ] && MISSING="$MISSING /var/www/element"
+[ ! -d "/etc/matrix-synapse" ] && MISSING="$MISSING /etc/matrix-synapse"
+if [ -n "$MISSING" ]; then
+  echo "MISSING_SOURCES:$MISSING"
+  exit 1
 fi
-
-if [ ! -s "${backupDirPath}/${tarFilename}" ]; then
-  ${sudoPrefix}mkdir -p /tmp/syn_bak_tmp/etc/matrix-synapse /tmp/syn_bak_tmp/var/www/element
-  [ -d /etc/matrix-synapse ] && ${sudoPrefix}cp -rf /etc/matrix-synapse/. /tmp/syn_bak_tmp/etc/matrix-synapse/ 2>/dev/null || true
-  [ -d /var/www/element ] && ${sudoPrefix}cp -rf /var/www/element/. /tmp/syn_bak_tmp/var/www/element/ 2>/dev/null || true
-  cd /tmp/syn_bak_tmp && ${sudoPrefix}tar -czf "${backupDirPath}/${tarFilename}" . 2>/dev/null || true
-  ${sudoPrefix}rm -rf /tmp/syn_bak_tmp
-fi
-
-SNAP_DIR="${backupDirPath}/${snapshotDirName}"
-${sudoPrefix}mkdir -p "$SNAP_DIR/var/www/element" "$SNAP_DIR/etc/matrix-synapse"
-[ -d "/var/www/element" ] && ${sudoPrefix}cp -rf /var/www/element/. "$SNAP_DIR/var/www/element/" 2>/dev/null || true
-[ -d "/etc/matrix-synapse" ] && ${sudoPrefix}cp -rf /etc/matrix-synapse/. "$SNAP_DIR/etc/matrix-synapse/" 2>/dev/null || true
-[ -f "/etc/matrix-stack.conf" ] && ${sudoPrefix}cp -f /etc/matrix-stack.conf "$SNAP_DIR/" 2>/dev/null || true
-[ -f "/etc/matrix-stack-ldap.conf" ] && ${sudoPrefix}cp -f /etc/matrix-stack-ldap.conf "$SNAP_DIR/" 2>/dev/null || true
-[ -f "/etc/nginx/sites-available/matrix.conf" ] && ${sudoPrefix}cp -f /etc/nginx/sites-available/matrix.conf "$SNAP_DIR/" 2>/dev/null || true
-
-${sudoPrefix}chmod -R 755 "${backupDirPath}" 2>/dev/null || true
 `.trim();
 
-        if (activeConn.authType === "agent") {
-          await executeRemoteAgentTask(activeConn.id, "execute_command", { command: createScript });
-        } else {
-          await executeSSHCommand(activeConn, `${sudoPrefix}bash -c '${createScript.replace(/'/g, "'\\''")}'`);
+      try {
+        await runActiveServerCommand(activeConn, checkSrcScript);
+      } catch (srcErr: any) {
+        let cleanMsg = "Required source directories do not exist on the server (/var/www/element or /etc/matrix-synapse).";
+        const errMsg = srcErr.message || "";
+        if (errMsg.includes("MISSING_SOURCES:")) {
+          const missingList = errMsg.split("MISSING_SOURCES:")[1]?.trim() || "";
+          cleanMsg = `Source directory not found on server: ${missingList}`;
         }
-
-        // Also build companion JSON archive
-        const elConfigJson = await readConfigContent("/var/www/element/config.json", "{}");
-        const hsYaml = await readConfigContent("/etc/matrix-synapse/homeserver.yaml", "");
-        const stackConf = await readConfigContent("/etc/matrix-stack.conf", "");
-        const ldapConf = await readConfigContent("/etc/matrix-stack-ldap.conf", "");
-        const nginxConf = await readConfigContent("/etc/nginx/sites-available/matrix.conf", "");
-
-        const payload = {
-          backupType: "config",
-          timestamp,
-          hasSSL: !!includeSSL,
-          coveredPaths: ["/var/www/element", "/etc/matrix-synapse"],
-          files: {
-            "/var/www/element/config.json": elConfigJson,
-            "/etc/matrix-synapse/homeserver.yaml": hsYaml,
-            "/etc/matrix-stack.conf": stackConf,
-            "/etc/matrix-stack-ldap.conf": ldapConf,
-            "/etc/nginx/sites-available/matrix.conf": nginxConf
-          }
-        };
-
-        const jsonB64 = Buffer.from(JSON.stringify(payload, null, 2)).toString("base64");
-        const writeJsonCmd = `${sudoPrefix}mkdir -p "${backupDirPath}" && echo "${jsonB64}" | ${sudoPrefix}base64 -d | ${sudoPrefix}tee "${backupDirPath}/${jsonFilename}" > /dev/null || true`;
-        if (activeConn.authType === "agent") {
-          await executeRemoteAgentTask(activeConn.id, "execute_command", { command: writeJsonCmd });
-        } else {
-          await executeSSHCommand(activeConn, writeJsonCmd);
-        }
-
-        // Get size
-        const sizeCmd = `${sudoPrefix}stat -c %s "${backupDirPath}/${tarFilename}" 2>/dev/null || wc -c < "${backupDirPath}/${tarFilename}" 2>/dev/null || echo 0`;
-        let sizeOut = "";
-        if (activeConn.authType === "agent") {
-          sizeOut = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: sizeCmd }) || "0";
-        } else {
-          sizeOut = await executeSSHCommand(activeConn, sizeCmd);
-        }
-        const rawBytes = parseInt(sizeOut.trim(), 10) || 1024 * 50;
-        formattedSize = formatBytes(rawBytes);
-      } else {
-        // Database Backup on Remote Server
-        const dbPayload = {
-          backupType: "database",
-          timestamp,
-          dbData: db
-        };
-        const dbB64 = Buffer.from(JSON.stringify(dbPayload, null, 2)).toString("base64");
-        const writeJsonCmd = `${sudoPrefix}mkdir -p "${backupDirPath}" && echo "${dbB64}" | ${sudoPrefix}base64 -d | ${sudoPrefix}tee "${backupDirPath}/${jsonFilename}" > /dev/null || true`;
-        if (activeConn.authType === "agent") {
-          await executeRemoteAgentTask(activeConn.id, "execute_command", { command: writeJsonCmd });
-        } else {
-          await executeSSHCommand(activeConn, writeJsonCmd);
-        }
-        finalPath = path.join(backupDirPath, jsonFilename);
-        formattedSize = formatBytes(Buffer.byteLength(JSON.stringify(dbPayload)));
-      }
-    } 
-    // 2. Local / Sandbox execution
-    else {
-      // Ensure target paths exist in BOTH /opt/matrix-element-Backup AND sandbox
-      const targetBackupDirs = [
-        "/opt/matrix-element-Backup",
-        getRealPath("/opt/matrix-element-Backup"),
-        getBackupDirectory()
-      ];
-
-      for (const d of targetBackupDirs) {
-        try {
-          if (!fs.existsSync(d)) {
-            fs.mkdirSync(d, { recursive: true });
-          }
-        } catch (_) {}
+        console.error(`[BACKUP] FAILED: ${cleanMsg}`);
+        return res.status(400).json({
+          success: false,
+          error: cleanMsg,
+          details: errMsg
+        });
       }
 
-      if (backupType === "config") {
-        // Collect all files from /var/www/element and /etc/matrix-synapse (checking both real & sandbox paths)
-        const elementRealFiles = getDirectoryFilesMap("/var/www/element", "/var/www/element");
-        const elementSandboxFiles = getDirectoryFilesMap(getRealPath("/var/www/element"), "/var/www/element");
-        const synapseRealFiles = getDirectoryFilesMap("/etc/matrix-synapse", "/etc/matrix-synapse");
-        const synapseSandboxFiles = getDirectoryFilesMap(getRealPath("/etc/matrix-synapse"), "/etc/matrix-synapse");
-
-        const stackConf = readSandboxFile("/etc/matrix-stack.conf", "");
-        const stackLdapConf = readSandboxFile("/etc/matrix-stack-ldap.conf", "");
-        const hsYaml = readSandboxFile("/etc/matrix-synapse/homeserver.yaml", "");
-        const elConfig = readSandboxFile("/var/www/element/config.json", "");
-        const pgServers = readSandboxFile("/etc/matrix-pgadmin/servers.json", "");
-        const nginxConf = readSandboxFile("/etc/nginx/sites-available/matrix.conf", "");
-
-        const allFiles: { [path: string]: string } = {
-          ...elementRealFiles,
-          ...elementSandboxFiles,
-          ...synapseRealFiles,
-          ...synapseSandboxFiles,
-          "/etc/matrix-stack.conf": stackConf,
-          "/etc/matrix-stack-ldap.conf": stackLdapConf,
-          "/etc/matrix-synapse/homeserver.yaml": hsYaml,
-          "/var/www/element/config.json": elConfig,
-          "/etc/matrix-pgadmin/servers.json": pgServers,
-          "/etc/nginx/sites-available/matrix.conf": nginxConf
-        };
-
-        const payload = {
-          backupType: "config",
-          timestamp,
-          hasSSL: !!includeSSL,
-          coveredPaths: ["/var/www/element", "/etc/matrix-synapse"],
-          files: allFiles
-        };
-
-        const jsonStr = JSON.stringify(payload, null, 2);
-
-        // Copy source directory contents to snapshots in /opt/matrix-element-Backup/snapshot-YYYYMMDD-HHMMSS
-        for (const baseDir of targetBackupDirs) {
-          try {
-            const snapDir = path.join(baseDir, snapshotDirName);
-            const elDest = path.join(snapDir, "var/www/element");
-            const synDest = path.join(snapDir, "etc/matrix-synapse");
-            fs.mkdirSync(elDest, { recursive: true });
-            fs.mkdirSync(synDest, { recursive: true });
-
-            copyDirRecursiveSync("/var/www/element", elDest);
-            copyDirRecursiveSync(getRealPath("/var/www/element"), elDest);
-            copyDirRecursiveSync("/etc/matrix-synapse", synDest);
-            copyDirRecursiveSync(getRealPath("/etc/matrix-synapse"), synDest);
-
-            // Write individual key files
-            fs.writeFileSync(path.join(snapDir, "matrix-stack.conf"), stackConf, "utf8");
-            fs.writeFileSync(path.join(snapDir, "matrix-stack-ldap.conf"), stackLdapConf, "utf8");
-            fs.writeFileSync(path.join(snapDir, "matrix-nginx.conf"), nginxConf, "utf8");
-
-            // Write JSON manifest to directory
-            fs.writeFileSync(path.join(baseDir, jsonFilename), jsonStr, "utf8");
-          } catch (_) {}
-        }
-
-        // Create genuine .tar.gz bundle
-        let tarCreated = false;
-        try {
-          const tempTarDir = path.join(os.tmpdir(), `matrix_tar_${Date.now()}`);
-          fs.mkdirSync(tempTarDir, { recursive: true });
-          
-          const tempElDir = path.join(tempTarDir, "var/www/element");
-          const tempSynDir = path.join(tempTarDir, "etc/matrix-synapse");
-          fs.mkdirSync(tempElDir, { recursive: true });
-          fs.mkdirSync(tempSynDir, { recursive: true });
-
-          copyDirRecursiveSync("/var/www/element", tempElDir);
-          copyDirRecursiveSync(getRealPath("/var/www/element"), tempElDir);
-          copyDirRecursiveSync("/etc/matrix-synapse", tempSynDir);
-          copyDirRecursiveSync(getRealPath("/etc/matrix-synapse"), tempSynDir);
-
-          for (const [vPath, content] of Object.entries(allFiles)) {
-            try {
-              const rel = vPath.startsWith("/") ? vPath.slice(1) : vPath;
-              const target = path.join(tempTarDir, rel);
-              fs.mkdirSync(path.dirname(target), { recursive: true });
-              fs.writeFileSync(target, content, "utf8");
-            } catch (_) {}
-          }
-
-          for (const baseDir of targetBackupDirs) {
-            try {
-              const tarDest = path.join(baseDir, tarFilename);
-              execSync(`tar -czf "${tarDest}" -C "${tempTarDir}" .`, { stdio: "ignore" });
-              tarCreated = true;
-            } catch (_) {}
-          }
-
-          // Clean up temp directory
-          try {
-            fs.rmSync(tempTarDir, { recursive: true, force: true });
-          } catch (_) {}
-        } catch (_) {}
-
-        // Fallback: If tar command didn't run, write compressed gzip JSON
-        if (!tarCreated) {
-          const gzipped = zlib.gzipSync(Buffer.from(jsonStr, "utf8"));
-          for (const baseDir of targetBackupDirs) {
-            try {
-              fs.writeFileSync(path.join(baseDir, tarFilename), gzipped);
-            } catch (_) {}
-          }
-        }
-
-        const primaryPath = path.join("/opt/matrix-element-Backup", tarFilename);
-        finalPath = fs.existsSync(primaryPath) ? primaryPath : path.join(getBackupDirectory(), tarFilename);
-        const fileSize = fs.existsSync(finalPath) ? fs.statSync(finalPath).size : Buffer.byteLength(jsonStr);
-        formattedSize = formatBytes(fileSize);
-      } else {
-        // Database Backup
-        const payload = {
-          backupType: "database",
-          timestamp,
-          dbData: db
-        };
-        const jsonStr = JSON.stringify(payload, null, 2);
-        for (const baseDir of targetBackupDirs) {
-          try {
-            fs.writeFileSync(path.join(baseDir, jsonFilename), jsonStr, "utf8");
-          } catch (_) {}
-        }
-        finalPath = path.join("/opt/matrix-element-Backup", jsonFilename);
-        formattedSize = formatBytes(Buffer.byteLength(jsonStr));
+      // Step 3: Create tar.gz archive on active server preserving var/www/element and etc/matrix-synapse
+      const createTarCmd = `cd / && tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matrix-synapse`;
+      try {
+        await runActiveServerCommand(activeConn, createTarCmd);
+      } catch (tarErr: any) {
+        console.error(`[BACKUP] FAILED: Archive creation command failed: ${tarErr.message}`);
+        return res.status(500).json({
+          success: false,
+          error: `Failed to create tar archive on server: ${tarErr.message}`
+        });
       }
+
+      // Step 4: Strict verification of created archive on active server
+      const verifyCmd = `test -f "${backupDirPath}/${tarFilename}" && test -s "${backupDirPath}/${tarFilename}" && tar -tzf "${backupDirPath}/${tarFilename}" >/dev/null`;
+      try {
+        await runActiveServerCommand(activeConn, verifyCmd);
+        console.log(`[BACKUP] Archive created`);
+        console.log(`[BACKUP] Archive verification: OK`);
+      } catch (vErr: any) {
+        console.error(`[BACKUP] FAILED: Archive verification failed on server: ${vErr.message}`);
+        return res.status(500).json({
+          success: false,
+          error: `Archive verification failed on server: The created backup file is missing, empty, or corrupted (${vErr.message})`
+        });
+      }
+
+      // Step 5: Get exact size from active server
+      const statCmd = `stat -c %s "${backupDirPath}/${tarFilename}" 2>/dev/null || wc -c < "${backupDirPath}/${tarFilename}"`;
+      try {
+        const sizeOut = await runActiveServerCommand(activeConn, statCmd);
+        rawSizeBytes = parseInt(sizeOut.trim(), 10) || 0;
+      } catch (statErr: any) {
+        console.warn("[BACKUP] stat command failed:", statErr);
+      }
+
+      if (rawSizeBytes <= 0) {
+        console.error("[BACKUP] FAILED: Archive file size is 0 bytes.");
+        return res.status(500).json({
+          success: false,
+          error: "Archive file size is 0 bytes on server."
+        });
+      }
+      formattedSize = formatBytes(rawSizeBytes);
+      console.log(`[BACKUP] Archive size: ${formattedSize} (${rawSizeBytes} bytes)`);
+
+      // Step 6: Create Snapshot directory on active server
+      const snapDir = `${backupDirPath}/${snapshotDirName}`;
+      const snapCmd = `
+        mkdir -p "${snapDir}/var/www/element" "${snapDir}/etc/matrix-synapse" &&
+        cp -rf /var/www/element/. "${snapDir}/var/www/element/" &&
+        cp -rf /etc/matrix-synapse/. "${snapDir}/etc/matrix-synapse/" &&
+        test -d "${snapDir}/var/www/element" &&
+        test -d "${snapDir}/etc/matrix-synapse"
+      `.trim();
+      try {
+        await runActiveServerCommand(activeConn, snapCmd);
+        console.log(`[BACKUP] Snapshot directory created: ${snapDir}`);
+      } catch (snapErr: any) {
+        console.warn(`[BACKUP] Warning creating snapshot directory: ${snapErr.message}`);
+      }
+
+      // Step 7: Write companion JSON manifest on active server
+      const manifest = {
+        type: "config",
+        timestamp,
+        hasSSL: !!includeSSL,
+        connection: activeConn?.name || "local",
+        archiveFilename: tarFilename,
+        snapshotDir: snapshotDirName,
+        archiveSize: formattedSize,
+        archiveSizeBytes: rawSizeBytes,
+        pathsIncluded: ["/var/www/element/**", "/etc/matrix-synapse/**"]
+      };
+      const manifestB64 = Buffer.from(JSON.stringify(manifest, null, 2), "utf8").toString("base64");
+      const writeManifestCmd = `echo "${manifestB64}" | base64 -d > "${backupDirPath}/${jsonFilename}" && chmod 644 "${backupDirPath}/${jsonFilename}"`;
+      try {
+        await runActiveServerCommand(activeConn, writeManifestCmd);
+      } catch (_) {}
+    } else {
+      // Database Backup
+      console.log(`[BACKUP] Starting database backup`);
+      const dbPayload = {
+        type: "database",
+        timestamp,
+        connection: activeConn?.name || "local",
+        dbData: db
+      };
+      const jsonStr = JSON.stringify(dbPayload, null, 2);
+      const dbB64 = Buffer.from(jsonStr, "utf8").toString("base64");
+      const writeDbCmd = `echo "${dbB64}" | base64 -d > "${backupDirPath}/${jsonFilename}" && chmod 644 "${backupDirPath}/${jsonFilename}"`;
+      await runActiveServerCommand(activeConn, writeDbCmd);
+
+      // Verify DB backup on server
+      const verifyDbCmd = `test -f "${backupDirPath}/${jsonFilename}" && test -s "${backupDirPath}/${jsonFilename}"`;
+      await runActiveServerCommand(activeConn, verifyDbCmd);
+
+      const sizeCmd = `stat -c %s "${backupDirPath}/${jsonFilename}" 2>/dev/null || wc -c < "${backupDirPath}/${jsonFilename}"`;
+      const sizeOut = await runActiveServerCommand(activeConn, sizeCmd);
+      rawSizeBytes = parseInt(sizeOut.trim(), 10) || Buffer.byteLength(jsonStr);
+      formattedSize = formatBytes(rawSizeBytes);
+      finalPath = path.join(backupDirPath, jsonFilename);
     }
 
+    // Step 8: Only register verified backup in db.backups
     const newBackup = {
       id: `bak-${Date.now()}`,
       filename: backupType === "config" ? tarFilename : jsonFilename,
@@ -20912,7 +20840,6 @@ ${sudoPrefix}chmod -R 755 "${backupDirPath}" 2>/dev/null || true
     // Apply Retention policy
     const retentionDays = db.backupSettings?.retentionDays || 30;
     const expirationTime = Date.now() - retentionDays * 24 * 3600 * 1000;
-    
     db.backups = db.backups.filter((b: any) => {
       const bTime = new Date(b.timestamp).getTime();
       return bTime >= expirationTime;
@@ -20927,14 +20854,18 @@ ${sudoPrefix}chmod -R 755 "${backupDirPath}" 2>/dev/null || true
       action: "Create Backup",
       target: newBackup.filename,
       status: "success",
-      details: `Created full ${backupType} backup of [/var/www/element, /etc/matrix-synapse] in /opt/matrix-element-Backup/${newBackup.filename}`
+      details: `Created verified full ${backupType} backup in ${backupDirPath}/${newBackup.filename} (${formattedSize})`
     });
     writeDb(db);
 
-    res.status(201).json(newBackup);
+    res.status(201).json({
+      success: true,
+      backup: newBackup,
+      ...newBackup
+    });
   } catch (err: any) {
-    console.error("Failed to create backup in /opt/matrix-element-Backup:", err);
-    res.status(500).json({ error: "Failed to create backup: " + err.message });
+    console.error(`[BACKUP] FAILED: ${err.message}`);
+    res.status(500).json({ success: false, error: "Failed to create backup: " + err.message });
   }
 });
 
@@ -20947,41 +20878,36 @@ app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Sup
   if (idx === -1) return res.status(404).json({ error: "Backup not found" });
 
   const backup = db.backups[idx];
-  const filename = backup.filename;
-  const backupDirPath = db.backupSettings?.backupPath || "/opt/matrix-element-Backup";
-  
-  // Delete physical file on remote server if applicable
-  if (activeConn && activeConn.id !== "local") {
-    try {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      const delCmd = `${sudoPrefix}rm -f "${backupDirPath}/${filename}" "${backupDirPath}/${filename.replace('.tar.gz', '.json')}" 2>/dev/null || true`;
-      if (activeConn.authType === "agent") {
-        await executeRemoteAgentTask(activeConn.id, "execute_command", { command: delCmd });
-      } else {
-        await executeSSHCommand(activeConn, delCmd);
-      }
-    } catch (err) {
-      console.warn("Failed to delete remote backup file:", err);
-    }
+  const rawFilename = backup.filename || id;
+  const cleanFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
+    return res.status(400).json({ error: "Invalid backup filename." });
   }
 
-  // Delete physical file on local filesystem
+  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  
+  // Delete file/snapshot directory strictly inside backupDirPath on active connection
   try {
-    const backupDir = getBackupDirectory();
+    const delCmd = `rm -rf "${backupDirPath}/${cleanFilename}" "${backupDirPath}/${cleanFilename.replace('.tar.gz', '.json')}"`;
+    await runActiveServerCommand(activeConn, delCmd, true);
+  } catch (err) {
+    console.warn("Failed to delete backup file on server:", err);
+  }
+
+  // Delete physical file on local filesystem if exists
+  try {
     const localPaths = [
       backup.path,
-      path.join(backupDir, filename),
-      path.join("/opt/matrix-element-Backup", filename),
-      path.join(getRealPath("/opt/matrix-element-Backup"), filename)
+      path.join(getBackupDirectory(), cleanFilename),
+      path.join(REMOTE_BACKUP_BASE_DIR, cleanFilename),
+      path.join(getRealPath(REMOTE_BACKUP_BASE_DIR), cleanFilename)
     ];
     for (const p of localPaths) {
       if (p && fs.existsSync(p)) {
-        try { fs.unlinkSync(p); } catch (_) {}
+        try { fs.rmSync(p, { recursive: true, force: true }); } catch (_) {}
       }
     }
-  } catch (err) {
-    console.warn("Failed to delete local backup file:", err);
-  }
+  } catch (_) {}
 
   db.backups.splice(idx, 1);
   writeDb(db);
@@ -20991,13 +20917,13 @@ app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Sup
     timestamp: new Date().toISOString(),
     username: req.user.username,
     action: "Delete Backup",
-    target: filename,
+    target: cleanFilename,
     status: "success",
-    details: `Deleted archived backup ${filename} from /opt/matrix-element-Backup.`
+    details: `Deleted archived backup ${cleanFilename} from ${backupDirPath}.`
   });
   writeDb(db);
 
-  res.json({ message: "Backup deleted" });
+  res.json({ success: true, message: "Backup deleted successfully" });
 });
 
 // Download Single Backup from /opt/matrix-element-Backup
@@ -21008,14 +20934,20 @@ app.get("/api/backups/download/:id", authenticateToken, async (req, res) => {
   const backup = (db.backups || []).find((b: any) => b.id === id || b.filename === id);
   if (!backup) return res.status(404).json({ error: "Backup not found in catalog" });
 
-  const filename = backup.filename;
-  const backupDirPath = db.backupSettings?.backupPath || "/opt/matrix-element-Backup";
+  const rawFilename = backup.filename || id;
+  const cleanFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
+    return res.status(400).json({ error: "Invalid backup filename." });
+  }
+
+  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  const targetFile = `${backupDirPath}/${cleanFilename}`;
 
   // If remote connected server
   if (activeConn && activeConn.id !== "local") {
     try {
       const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      const readCmd = `${sudoPrefix}base64 -w 0 "${backupDirPath}/${filename}" 2>/dev/null || ${sudoPrefix}cat "${backupDirPath}/${filename}" | base64`;
+      const readCmd = `${sudoPrefix}base64 -w 0 "${targetFile}" 2>/dev/null || ${sudoPrefix}cat "${targetFile}" | base64`;
       let b64 = "";
       if (activeConn.authType === "agent") {
         b64 = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: readCmd }) || "";
@@ -21025,8 +20957,8 @@ app.get("/api/backups/download/:id", authenticateToken, async (req, res) => {
 
       if (b64 && b64.trim()) {
         const buffer = Buffer.from(b64.trim(), "base64");
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.setHeader("Content-Type", filename.endsWith(".tar.gz") ? "application/gzip" : "application/json");
+        res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}"`);
+        res.setHeader("Content-Type", cleanFilename.endsWith(".tar.gz") ? "application/gzip" : "application/json");
         return res.send(buffer);
       }
     } catch (err: any) {
@@ -21036,12 +20968,11 @@ app.get("/api/backups/download/:id", authenticateToken, async (req, res) => {
 
   // Local / Sandbox download
   try {
-    const backupDir = getBackupDirectory();
     const candidatePaths = [
       backup.path,
-      path.join(backupDir, filename),
-      path.join("/opt/matrix-element-Backup", filename),
-      path.join(getRealPath("/opt/matrix-element-Backup"), filename)
+      path.join(getBackupDirectory(), cleanFilename),
+      path.join(REMOTE_BACKUP_BASE_DIR, cleanFilename),
+      path.join(getRealPath(REMOTE_BACKUP_BASE_DIR), cleanFilename)
     ];
 
     let foundPath = "";
@@ -21056,8 +20987,8 @@ app.get("/api/backups/download/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Physical backup file not found on server" });
     }
 
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Content-Type", filename.endsWith(".tar.gz") ? "application/gzip" : "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}"`);
+    res.setHeader("Content-Type", cleanFilename.endsWith(".tar.gz") ? "application/gzip" : "application/json");
     const fileStream = fs.createReadStream(foundPath);
     fileStream.pipe(res);
   } catch (err: any) {
@@ -21083,16 +21014,17 @@ app.post("/api/backups/download-bulk", authenticateToken, (req, res) => {
     };
 
     for (const b of matchedBackups) {
-      const filePath = b.path || path.join(backupDir, b.filename);
+      const cleanName = (b.filename || "").replace(/[^a-zA-Z0-9._-]/g, "");
+      const filePath = b.path || path.join(backupDir, cleanName);
       if (fs.existsSync(filePath)) {
         try {
           const content = fs.readFileSync(filePath, "utf8");
           compoundPackage.backups.push({
-            filename: b.filename,
+            filename: cleanName,
             type: b.type,
             hasSSL: b.hasSSL,
             timestamp: b.timestamp,
-            content: b.filename.endsWith(".json") ? JSON.parse(content) : content
+            content: cleanName.endsWith(".json") ? JSON.parse(content) : content
           });
         } catch (_) {}
       }
@@ -21107,37 +21039,48 @@ app.post("/api/backups/download-bulk", authenticateToken, (req, res) => {
 });
 
 // Upload Backup File
-app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { filename, content, type } = req.body;
   if (!filename || !content) return res.status(400).json({ error: "Filename and file content are required" });
 
-  try {
-    const backupDir = getBackupDirectory();
-    const filePath = path.join(backupDir, filename);
+  const cleanFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
+    return res.status(400).json({ error: "Invalid backup filename" });
+  }
 
-    // Write file to server
-    fs.writeFileSync(filePath, content, "utf8");
-    const fileSize = fs.statSync(filePath).size;
+  try {
+    const activeConn = getActiveConnection();
+    const backupDirPath = REMOTE_BACKUP_BASE_DIR;
+    const targetPath = `${backupDirPath}/${cleanFilename}`;
+
+    // Write file to remote or local server
+    const b64 = Buffer.from(content, "utf8").toString("base64");
+    const writeCmd = `mkdir -p "${backupDirPath}" && echo "${b64}" | base64 -d > "${targetPath}" && chmod 644 "${targetPath}"`;
+    await runActiveServerCommand(activeConn, writeCmd);
+
+    const sizeCmd = `stat -c %s "${targetPath}" 2>/dev/null || wc -c < "${targetPath}"`;
+    const sizeOut = await runActiveServerCommand(activeConn, sizeCmd);
+    const fileSize = parseInt(sizeOut.trim(), 10) || Buffer.byteLength(content);
     const formattedSize = formatBytes(fileSize);
 
     // Try parsing type from content
     let detectedType = type || "config";
     try {
       const parsed = JSON.parse(content);
-      if (parsed.backupType) {
-        detectedType = parsed.backupType;
+      if (parsed.backupType || parsed.type) {
+        detectedType = parsed.backupType || parsed.type;
       }
     } catch (e) {}
 
     const db = readDb();
     const newBackup = {
       id: `bak-${Date.now()}`,
-      filename,
+      filename: cleanFilename,
       size: formattedSize,
       timestamp: new Date().toISOString(),
-      hasSSL: filename.includes("ssl") || false,
+      hasSSL: cleanFilename.includes("ssl") || false,
       type: detectedType,
-      path: filePath,
+      path: targetPath,
       coveredPaths: detectedType === "config" ? ["/var/www/element", "/etc/matrix-synapse"] : ["database"]
     };
 
@@ -21150,9 +21093,9 @@ app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Su
       timestamp: new Date().toISOString(),
       username: req.user.username,
       action: "Upload Backup",
-      target: filename,
+      target: cleanFilename,
       status: "success",
-      details: `Uploaded custom backup file to: ${filePath}. Detected type: ${detectedType}`
+      details: `Uploaded custom backup file to: ${targetPath}. Detected type: ${detectedType}`
     });
     writeDb(db);
 
@@ -21171,116 +21114,100 @@ app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner"
   const backup = (db.backups || []).find((b: any) => b.id === id || b.filename === id);
   if (!backup) return res.status(404).json({ error: "Backup not found in catalog" });
 
-  const filename = backup.filename;
-  const backupDirPath = db.backupSettings?.backupPath || "/opt/matrix-element-Backup";
+  const rawFilename = backup.filename || id;
+  const cleanFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
+    return res.status(400).json({ error: "Invalid backup filename." });
+  }
+
+  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  const targetFile = `${backupDirPath}/${cleanFilename}`;
   const scope = targetScope || "all";
 
   try {
-    // 1. If connected to a Remote Server via SSH / Agent
-    if (activeConn && activeConn.id !== "local") {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      
-      if (filename.endsWith(".tar.gz")) {
-        let extractScope = "";
-        if (scope === "synapse") extractScope = "etc/matrix-synapse";
-        else if (scope === "element") extractScope = "var/www/element";
-        else extractScope = "var/www/element etc/matrix-synapse";
+    if (cleanFilename.endsWith(".tar.gz")) {
+      // 1. Verify archive integrity
+      const verifyCmd = `test -f "${targetFile}" && test -s "${targetFile}" && tar -tzf "${targetFile}" >/dev/null`;
+      await runActiveServerCommand(activeConn, verifyCmd);
 
-        const extractCmd = `${sudoPrefix}tar -xzf "${backupDirPath}/${filename}" -C / ${extractScope} 2>/dev/null || ${sudoPrefix}tar -xzf "${backupDirPath}/${filename}" -C /`;
-        if (activeConn.authType === "agent") {
-          await executeRemoteAgentTask(activeConn.id, "execute_command", { command: extractCmd });
-        } else {
-          await executeSSHCommand(activeConn, extractCmd);
-        }
-      } else if (filename.endsWith(".json")) {
-        const jsonContent = await readConfigContent(`${backupDirPath}/${filename}`);
-        if (jsonContent) {
-          const payload = JSON.parse(jsonContent);
-          if (payload.files) {
-            for (const [vPath, content] of Object.entries(payload.files)) {
-              if (scope === "synapse" && !vPath.startsWith("/etc/matrix-synapse")) continue;
-              if (scope === "element" && !vPath.startsWith("/var/www/element")) continue;
-              await writeConfigContent(vPath, content as string);
-            }
-          } else if (payload.dbData) {
-            writeDb(payload.dbData);
-          }
-        }
-      }
-
-      await restartSynapseService(activeConn);
-
-      db.auditLogs.unshift({
-        id: `log-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        username: req.user.username,
-        action: "Restore Backup Archive",
-        target: filename,
-        status: "success",
-        details: `Restored backup ${filename} from /opt/matrix-element-Backup to host targets [${scope}]. Synapse service restarted.`
-      });
-      writeDb(db);
-
-      return res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup (${scope}) and restarted Synapse.` });
-    }
-
-    // 2. Local / Sandbox restoration
-    const backupDir = getBackupDirectory();
-    const candidatePaths = [
-      backup.path,
-      path.join(backupDir, filename),
-      path.join("/opt/matrix-element-Backup", filename),
-      path.join(getRealPath("/opt/matrix-element-Backup"), filename)
-    ];
-
-    let foundPath = "";
-    for (const p of candidatePaths) {
-      if (p && fs.existsSync(p)) {
-        foundPath = p;
-        break;
-      }
-    }
-
-    if (!foundPath) {
-      return res.status(404).json({ error: "Physical backup file not found on server" });
-    }
-
-    if (foundPath.endsWith(".tar.gz")) {
+      // 2. Verify security paths inside archive (no path traversal)
       try {
-        execSync(`tar -xzf "${foundPath}" -C / 2>/dev/null || true`);
-      } catch (_) {}
-    } else {
-      const fileContent = fs.readFileSync(foundPath, "utf8");
-      const payload = JSON.parse(fileContent);
+        const listArchiveCmd = `tar -tf "${targetFile}"`;
+        const archiveList = await runActiveServerCommand(activeConn, listArchiveCmd);
+        const illegalEntries = archiveList.split("\n").map(s => s.trim()).filter(Boolean).filter(entry => {
+          if (entry.startsWith("/") || entry.includes("..")) return true;
+          if (!entry.startsWith("var/www/element") && !entry.startsWith("etc/matrix-synapse") && !entry.startsWith("etc/matrix-stack") && !entry.startsWith("etc/nginx")) {
+            return true;
+          }
+          return false;
+        });
 
-      if (payload.backupType === "config" || payload.files) {
+        if (illegalEntries.length > 0) {
+          return res.status(403).json({
+            error: "Security validation error",
+            message: `Archive contains unauthorized target paths outside Matrix/Element configuration: ${illegalEntries.slice(0, 3).join(", ")}`
+          });
+        }
+      } catch (checkErr: any) {
+        console.warn("[RESTORE] Archive list check warning:", checkErr);
+      }
+
+      let extractScope = "";
+      if (scope === "synapse") extractScope = "etc/matrix-synapse";
+      else if (scope === "element") extractScope = "var/www/element";
+      else extractScope = "var/www/element etc/matrix-synapse";
+
+      const extractCmd = `cd / && tar -xzf "${targetFile}" -C / ${extractScope}`;
+      await runActiveServerCommand(activeConn, extractCmd);
+    } else if (cleanFilename.startsWith("snapshot-")) {
+      const snapDir = `${backupDirPath}/${cleanFilename}`;
+      const verifySnapCmd = `test -d "${snapDir}/var/www/element" || test -d "${snapDir}/etc/matrix-synapse"`;
+      await runActiveServerCommand(activeConn, verifySnapCmd);
+
+      let restoreSnapCmd = "";
+      if (scope === "synapse") {
+        restoreSnapCmd = `[ -d "${snapDir}/etc/matrix-synapse" ] && cp -rf "${snapDir}/etc/matrix-synapse/." /etc/matrix-synapse/`;
+      } else if (scope === "element") {
+        restoreSnapCmd = `[ -d "${snapDir}/var/www/element" ] && cp -rf "${snapDir}/var/www/element/." /var/www/element/`;
+      } else {
+        restoreSnapCmd = `
+          [ -d "${snapDir}/var/www/element" ] && cp -rf "${snapDir}/var/www/element/." /var/www/element/
+          [ -d "${snapDir}/etc/matrix-synapse" ] && cp -rf "${snapDir}/etc/matrix-synapse/." /etc/matrix-synapse/
+        `.trim();
+      }
+      await runActiveServerCommand(activeConn, restoreSnapCmd);
+    } else if (cleanFilename.endsWith(".json")) {
+      const jsonContent = await readConfigContent(targetFile, "");
+      if (jsonContent) {
+        const payload = JSON.parse(jsonContent);
         if (payload.files) {
-          for (const [vPath, fileContentData] of Object.entries(payload.files)) {
+          for (const [vPath, content] of Object.entries(payload.files)) {
             if (scope === "synapse" && !vPath.startsWith("/etc/matrix-synapse")) continue;
             if (scope === "element" && !vPath.startsWith("/var/www/element")) continue;
-            writeSandboxFile(vPath, fileContentData as string);
+            await writeConfigContent(vPath, content as string);
           }
-        }
-      } else if (payload.backupType === "database" || payload.dbData) {
-        if (payload.dbData) {
+        } else if (payload.dbData) {
           writeDb(payload.dbData);
         }
       }
     }
+
+    await restartSynapseService(activeConn);
 
     db.auditLogs.unshift({
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString(),
       username: req.user.username,
       action: "Restore Backup Archive",
-      target: filename,
+      target: cleanFilename,
       status: "success",
-      details: `Successfully restored ${filename} from /opt/matrix-element-Backup.`
+      details: `Restored backup ${cleanFilename} from ${backupDirPath} to host targets [${scope}]. Synapse service restarted.`
     });
     writeDb(db);
 
-    res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup (${scope})` });
+    return res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup (${scope}) and restarted Synapse.` });
   } catch (err: any) {
+    console.error("Restore failed:", err);
     res.status(500).json({ error: "Restore failed: " + err.message });
   }
 });

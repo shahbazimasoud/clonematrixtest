@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.25.1** (Released: 2026-08-20)
+## Current Panel Version: **v2.25.2** (Released: 2026-08-20)
 
 ### Changelog History
+
+#### **v2.25.2** - 2026-08-20
+- **Remote-First Architecture & Strict Multi-Path Archive Verification for /opt/matrix-element-Backup**:
+  - **Remote-First Execution Enforcement**: All backup creation, listing, and restore procedures execute exclusively on the remote server via the active SSH/Agent connection profile.
+  - **Strict Archive Verification**: Eliminated silent error handling (`|| true`, `2>/dev/null`); backups are verified via remote filesystem checks (`test -f`, `test -s`, `tar -tzf`) and exact byte size verification before returning success.
+  - **Path Traversal Protection**: Enforced strict boundary checks during restoration to ensure archives contain only authorized Matrix Synapse and Element configuration targets.
+  - **Companion Manifest & Detailed Toast Reporting**: Guaranteed companion JSON manifest generation on remote target paths and surfaced explicit remote failure messages to the UI.
 
 #### **v2.25.1** - 2026-08-20
 - **Fix Backup Delivery & Direct Multi-Path Storage in /opt/matrix-element-Backup**:

@@ -1481,15 +1481,17 @@ export default function ConfigForms({
         },
         body: JSON.stringify({ type, includeSSL })
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
         if (showToast) showToast('success', `${type === 'config' ? (lang === 'fa' ? 'نسخه پشتیبان تنظیمات' : 'Configuration') : (lang === 'fa' ? 'نسخه پشتیبان دیتابیس' : 'Database')} ${lang === 'fa' ? 'با موفقیت ایجاد شد' : 'backup created successfully'}`);
         fetchBackups();
         if (onCreateBackup) onCreateBackup(includeSSL);
       } else {
-        if (showToast) showToast('error', lang === 'fa' ? 'خطا در ایجاد نسخه پشتیبان' : 'Error creating backup');
+        const errorMsg = data.error || data.message || (lang === 'fa' ? 'خطا در ایجاد نسخه پشتیبان' : 'Error creating backup');
+        if (showToast) showToast('error', errorMsg);
       }
-    } catch (err) {
-      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Server connection error');
+    } catch (err: any) {
+      if (showToast) showToast('error', err?.message || (lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Server connection error'));
     } finally {
       setIsTriggeringBackup(false);
     }

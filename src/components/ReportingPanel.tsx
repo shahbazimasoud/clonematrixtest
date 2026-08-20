@@ -1767,14 +1767,16 @@ export default function ReportingPanel({
         },
         body: JSON.stringify({ type, includeSSL })
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
         showToast('success', `${type === 'config' ? 'Configuration' : 'Database'} backup created successfully`);
         onCreateBackup(includeSSL); // Trigger refresh in parent
       } else {
-        showToast('error', 'Error creating backup');
+        const errorMsg = data.error || data.message || 'Error creating backup';
+        showToast('error', errorMsg);
       }
-    } catch (err) {
-      showToast('error', 'Server connection error');
+    } catch (err: any) {
+      showToast('error', err?.message || 'Server connection error');
     } finally {
       setIsTriggeringBackup(false);
     }
