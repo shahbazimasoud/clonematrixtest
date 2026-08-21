@@ -20526,10 +20526,105 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
   return foundBackups;
 }
 
+// Helper function to scan backup files specifically in the Scheduler storage path
+async function scanSchedulerBackups(activeConn: any, customPath?: string): Promise<any[]> {
+  const db = readDb();
+  const rawPath = customPath || db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
+  const schedulerDir = rawPath.trim();
+  const isRemote = activeConn && activeConn.id !== "local";
+  const found: any[] = [];
+
+  if (isRemote) {
+    try {
+      const scanCmd = `
+        mkdir -p "${schedulerDir}" 2>/dev/null || true
+        if [ -d "${schedulerDir}" ]; then
+          find "${schedulerDir}" -maxdepth 1 -type f -exec ls -la --time-style=+%s {} + 2>/dev/null || ls -la "${schedulerDir}"
+        fi
+      `.trim();
+
+      const stdout = await runActiveServerCommand(activeConn, scanCmd, true);
+      const lines = stdout.split("\n");
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 7 && !line.startsWith("total")) {
+          const fullPath = parts[parts.length - 1];
+          if (!fullPath || fullPath === "." || fullPath === ".." || fullPath.startsWith(".")) continue;
+          
+          const filename = fullPath.split("/").pop() || fullPath;
+          if (!filename || filename.startsWith(".")) continue;
+
+          if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.endsWith(".sql.gz") || filename.endsWith(".sql")) {
+            const rawSize = parseInt(parts[4], 10) || 0;
+            const rawTs = parseInt(parts[5], 10);
+            let timestamp = (!isNaN(rawTs) && rawTs > 1000000000) ? new Date(rawTs * 1000).toISOString() : new Date().toISOString();
+            
+            const dateMatch = filename.match(/(\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})/);
+            if (dateMatch) {
+              const [_, y, m, d, h, min, s] = dateMatch;
+              timestamp = new Date(`${y}-${m}-${d}T${h}:${min}:${s}Z`).toISOString();
+            }
+
+            const isDb = filename.startsWith("database_backup") || filename.includes("database") || filename.includes("db-backup") || filename.endsWith(".sql.gz") || filename.endsWith(".sql");
+            const isConfig = !isDb && (filename.includes("config") || filename.includes("matrix-backup") || filename.endsWith(".tar.gz"));
+
+            if (!found.some(f => f.filename === filename)) {
+              found.push({
+                id: `sched-${Buffer.from(filename).toString("hex").substring(0, 12)}`,
+                filename,
+                path: fullPath.startsWith("/") ? fullPath : `${schedulerDir}/${filename}`,
+                size: formatBytes(rawSize),
+                rawSizeBytes: rawSize,
+                timestamp,
+                type: isDb ? "database" : (isConfig ? "config" : "other"),
+                isDatabase: isDb,
+                isConfig: isConfig,
+                source: "scheduler"
+              });
+            }
+          }
+        }
+      }
+    } catch (scanErr) {
+      console.warn("[SCHEDULER SCAN] Warning scanning remote scheduler directory:", scanErr);
+    }
+  } else {
+    // Local sandbox fallback
+    try {
+      const localDir = path.join(process.cwd(), "sandbox", "backups", "scheduler");
+      if (fs.existsSync(localDir)) {
+        const files = fs.readdirSync(localDir);
+        for (const filename of files) {
+          const filePath = path.join(localDir, filename);
+          const stat = fs.statSync(filePath);
+          if (stat.isFile()) {
+            const isDb = filename.startsWith("database_backup") || filename.endsWith(".sql.gz") || filename.endsWith(".sql");
+            found.push({
+              id: `sched-${Buffer.from(filename).toString("hex").substring(0, 12)}`,
+              filename,
+              path: filePath,
+              size: formatBytes(stat.size),
+              rawSizeBytes: stat.size,
+              timestamp: stat.mtime.toISOString(),
+              type: isDb ? "database" : "config",
+              isDatabase: isDb,
+              isConfig: !isDb,
+              source: "scheduler"
+            });
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  found.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return found;
+}
+
 // Function to synchronize remote server crontab for automated backups
 async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise<{ success: boolean; details: string; installedCrons: string[] }> {
   if (!activeConn || activeConn.id === "local") {
-    return { success: false, details: "No active remote server connected", installedCrons: [] };
+    return { success: true, details: "Settings saved for local environment (no remote SSH host connected).", installedCrons: [] };
   }
 
   const rawPath = (settings.backupPath || "").trim();
@@ -20551,7 +20646,7 @@ async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise
   const scriptDir = `${REMOTE_BACKUP_BASE_DIR}/scripts`;
 
   try {
-    // 1. Ensure target storage and script directories exist
+    // 1. Ensure target storage and script directories exist with executable permissions
     await runActiveServerCommand(activeConn, `mkdir -p "${backupPath}" "${scriptDir}" && chmod 755 "${backupPath}" "${scriptDir}"`);
 
     // 2. Generate and write Database automated backup script
@@ -20570,6 +20665,10 @@ PGPASSWORD='${escapedPass}' pg_dump -h 127.0.0.1 -p '${dbPort}' -U '${escapedUse
 sudo -u postgres pg_dump -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET" || \\
 sudo pg_dump -U '${escapedUser}' -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET"
 
+if [ -s "$TARGET" ]; then
+  chmod 644 "$TARGET"
+fi
+
 if [ "$RETENTION_DAYS" -gt 0 ]; then
   find "$BACKUP_DIR" -maxdepth 1 -name "database_backup_*.sql.gz" -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
 fi
@@ -20577,7 +20676,7 @@ fi
 
     const dbScriptPath = `${scriptDir}/matrix_auto_db_backup.sh`;
     const b64DbScript = Buffer.from(dbScriptContent).toString("base64");
-    await runActiveServerCommand(activeConn, `echo "${b64DbScript}" | base64 -d > "${dbScriptPath}" && chmod +x "${dbScriptPath}"`);
+    await runActiveServerCommand(activeConn, `echo "${b64DbScript}" | base64 -d > "${dbScriptPath}" && chmod 755 "${dbScriptPath}"`);
 
     // 3. Generate and write Configuration automated backup script
     const configScriptContent = `#!/bin/bash
@@ -20600,6 +20699,10 @@ if [ -n "$DIRS_TO_BACKUP" ]; then
   cd / && tar -czf "$TARGET" $DIRS_TO_BACKUP 2>/dev/null || true
 fi
 
+if [ -s "$TARGET" ]; then
+  chmod 644 "$TARGET"
+fi
+
 if [ "$RETENTION_DAYS" -gt 0 ]; then
   find "$BACKUP_DIR" -maxdepth 1 -name "matrix-backup-*.tar.gz" -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
 fi
@@ -20607,37 +20710,52 @@ fi
 
     const configScriptPath = `${scriptDir}/matrix_auto_config_backup.sh`;
     const b64ConfigScript = Buffer.from(configScriptContent).toString("base64");
-    await runActiveServerCommand(activeConn, `echo "${b64ConfigScript}" | base64 -d > "${configScriptPath}" && chmod +x "${configScriptPath}"`);
+    await runActiveServerCommand(activeConn, `echo "${b64ConfigScript}" | base64 -d > "${configScriptPath}" && chmod 755 "${configScriptPath}"`);
 
-    // 4. Build Cron configuration
-    const cronLines: string[] = [];
-    cronLines.push("# MATRIX_PANEL_CRON_START - AUTOMATED MATRIX BACKUP SCHEDULER");
-    cronLines.push("SHELL=/bin/bash");
-    cronLines.push("PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin");
+    // 4. Build Cron configuration for user crontab and /etc/cron.d
+    const userCronLines: string[] = [];
+    const systemCronLines: string[] = [];
 
-    if (dbSchedule.enabled && dbSchedule.cron) {
-      cronLines.push(`${dbSchedule.cron.trim()} /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_DB_BACKUP`);
+    const dbCronClean = (dbSchedule.cron || "0 2 * * *").trim();
+    const configCronClean = (configSchedule.cron || "0 3 * * *").trim();
+
+    systemCronLines.push("# MATRIX_PANEL_CRON_START - AUTOMATED MATRIX BACKUP SCHEDULER");
+    systemCronLines.push("SHELL=/bin/bash");
+    systemCronLines.push("PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin");
+
+    if (dbSchedule.enabled && dbCronClean) {
+      userCronLines.push(`${dbCronClean} /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_DB_BACKUP`);
+      systemCronLines.push(`${dbCronClean} root /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_DB_BACKUP`);
     }
-    if (configSchedule.enabled && configSchedule.cron) {
-      cronLines.push(`${configSchedule.cron.trim()} /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
+    if (configSchedule.enabled && configCronClean) {
+      userCronLines.push(`${configCronClean} /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
+      systemCronLines.push(`${configCronClean} root /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
     }
-    cronLines.push("# MATRIX_PANEL_CRON_END");
+    systemCronLines.push("# MATRIX_PANEL_CRON_END");
 
-    const cronText = cronLines.join("\n") + "\n";
-    const b64Cron = Buffer.from(cronText).toString("base64");
+    const systemCronText = systemCronLines.join("\n") + "\n";
+    const b64SystemCron = Buffer.from(systemCronText).toString("base64");
+
+    const userCronText = userCronLines.length > 0 ? (userCronLines.join("\n") + "\n") : "";
+    const b64UserCron = Buffer.from(userCronText).toString("base64");
 
     const cronApplyCmd = `
-      echo "${b64Cron}" | base64 -d > /tmp/matrix_cron.tmp
+      echo "${b64SystemCron}" | base64 -d > /tmp/matrix_cron.tmp
       if [ -d "/etc/cron.d" ]; then
-        cp /tmp/matrix_cron.tmp /etc/cron.d/matrix-backup-scheduler 2>/dev/null && chmod 644 /etc/cron.d/matrix-backup-scheduler || true
+        if [ "${userCronLines.length}" -gt 0 ]; then
+          cp /tmp/matrix_cron.tmp /etc/cron.d/matrix-backup-scheduler 2>/dev/null && chmod 644 /etc/cron.d/matrix-backup-scheduler || true
+        else
+          rm -f /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true
+        fi
       fi
       
+      echo "${b64UserCron}" | base64 -d > /tmp/matrix_user_cron.tmp
       crontab -l 2>/dev/null | grep -v "MATRIX_PANEL_CRON" | grep -v "matrix_auto_db_backup" | grep -v "matrix_auto_config_backup" > /tmp/current_crontab.tmp || true
-      if [ -s /tmp/matrix_cron.tmp ]; then
-        cat /tmp/matrix_cron.tmp >> /tmp/current_crontab.tmp
+      if [ -s /tmp/matrix_user_cron.tmp ]; then
+        cat /tmp/matrix_user_cron.tmp >> /tmp/current_crontab.tmp
       fi
       crontab /tmp/current_crontab.tmp 2>/dev/null || true
-      rm -f /tmp/matrix_cron.tmp /tmp/current_crontab.tmp
+      rm -f /tmp/matrix_cron.tmp /tmp/matrix_user_cron.tmp /tmp/current_crontab.tmp
     `;
 
     await runActiveServerCommand(activeConn, cronApplyCmd);
@@ -20645,13 +20763,13 @@ fi
     let installedCrons: string[] = [];
     try {
       const checkCronCmd = `crontab -l 2>/dev/null || cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
-      const cronOut = await runActiveServerCommand(activeConn, checkCronCmd);
+      const cronOut = await runActiveServerCommand(activeConn, checkCronCmd, false);
       installedCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_"));
     } catch (_) {}
 
     return {
       success: true,
-      details: `Crontab successfully updated on remote server. ${installedCrons.length} cron schedule(s) active.`,
+      details: `Crontab successfully updated on remote server (${installedCrons.length} active schedule(s)).`,
       installedCrons
     };
   } catch (err: any) {
@@ -20693,7 +20811,7 @@ app.get("/api/backups/settings", authenticateToken, (req, res) => {
   res.json(db.backupSettings);
 });
 
-// Endpoint to fetch active server backup schedules (cron jobs)
+// Endpoint to fetch active server backup schedules (cron jobs) with live remote crontab introspection
 app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => {
   const db = readDb();
   const settings = db.backupSettings || {
@@ -20707,16 +20825,17 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
   const isRemote = activeConn && activeConn.id !== "local";
 
   let serverCrons: string[] = [];
-  let isInstalled = false;
 
   if (isRemote) {
     try {
-      const checkCronCmd = `crontab -l 2>/dev/null || cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
+      const checkCronCmd = `crontab -l 2>/dev/null; cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
       const cronOut = await runActiveServerCommand(activeConn, checkCronCmd, false);
       serverCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_"));
-      isInstalled = serverCrons.length > 0;
     } catch (_) {}
   }
+
+  const isDbInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_db_backup")) : (settings.dbSchedule?.enabled || false);
+  const isConfigInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_config_backup")) : (settings.configSchedule?.enabled || false);
 
   const schedules = [
     {
@@ -20729,8 +20848,8 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
       targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
       scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_db_backup.sh`,
       retentionDays: settings.retentionDays || 30,
-      installedOnServer: isRemote ? serverCrons.some(c => c.includes("matrix_auto_db_backup")) : false,
-      lastStatus: isRemote ? (settings.dbSchedule?.enabled ? "active" : "disabled") : "no_server"
+      installedOnServer: isDbInstalled,
+      lastStatus: isRemote ? (settings.dbSchedule?.enabled && isDbInstalled ? "active" : (settings.dbSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.dbSchedule?.enabled ? "active_local" : "disabled")
     },
     {
       id: "config-schedule",
@@ -20742,8 +20861,8 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
       targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
       scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_config_backup.sh`,
       retentionDays: settings.retentionDays || 30,
-      installedOnServer: isRemote ? serverCrons.some(c => c.includes("matrix_auto_config_backup")) : false,
-      lastStatus: isRemote ? (settings.configSchedule?.enabled ? "active" : "disabled") : "no_server"
+      installedOnServer: isConfigInstalled,
+      lastStatus: isRemote ? (settings.configSchedule?.enabled && isConfigInstalled ? "active" : (settings.configSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.configSchedule?.enabled ? "active_local" : "disabled")
     }
   ];
 
@@ -20756,6 +20875,355 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
     schedules,
     rawCrontabEntries: serverCrons
   });
+});
+
+// Endpoint to list backup files strictly located in the Scheduler Backup Storage Path
+app.get("/api/backups/scheduler/files", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    const db = readDb();
+    const backupPath = db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
+    const backups = await scanSchedulerBackups(activeConn, backupPath);
+    res.json({
+      success: true,
+      backupPath,
+      totalCount: backups.length,
+      backups
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, backups: [] });
+  }
+});
+
+// Endpoint to delete a backup file strictly from the Scheduler storage path
+app.delete("/api/backups/scheduler/files/:filename", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { filename } = req.params;
+  const db = readDb();
+  const activeConn = getActiveConnection();
+  const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+
+  const cleanFilename = String(filename || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
+    return res.status(400).json({ error: "Invalid backup filename." });
+  }
+
+  const targetFile = `${backupPath}/${cleanFilename}`;
+
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const delCmd = `rm -f "${targetFile}"`;
+      await runActiveServerCommand(activeConn, delCmd, true);
+    } catch (err: any) {
+      console.warn("Failed to delete scheduler backup file on remote server:", err);
+      return res.status(500).json({ error: "Failed to delete file from remote server: " + err.message });
+    }
+  } else {
+    try {
+      const localFile = path.join(process.cwd(), "sandbox", "backups", "scheduler", cleanFilename);
+      if (fs.existsSync(localFile)) {
+        fs.unlinkSync(localFile);
+      }
+    } catch (_) {}
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Delete Scheduler Backup File",
+    target: cleanFilename,
+    status: "success",
+    details: `Deleted automated scheduler backup ${cleanFilename} from ${backupPath}.`
+  });
+  writeDb(db);
+
+  res.json({ success: true, message: `Backup file ${cleanFilename} deleted successfully.` });
+});
+
+// Endpoint to download a backup file strictly from the Scheduler storage path
+app.get("/api/backups/scheduler/download/:filename", authenticateToken, async (req, res) => {
+  const { filename } = req.params;
+  const db = readDb();
+  const activeConn = getActiveConnection();
+  const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+
+  const cleanFilename = String(filename || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
+    return res.status(400).json({ error: "Invalid backup filename." });
+  }
+
+  const targetFile = `${backupPath}/${cleanFilename}`;
+
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const readCmd = `base64 -w 0 "${targetFile}" 2>/dev/null || cat "${targetFile}" | base64`;
+      const b64 = await runActiveServerCommand(activeConn, readCmd, true);
+
+      if (!b64 || !b64.trim()) {
+        return res.status(404).json({ error: "Backup file is empty or not found on destination server." });
+      }
+
+      const buffer = Buffer.from(b64.trim(), "base64");
+      res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}"`);
+      res.setHeader("Content-Type", cleanFilename.endsWith(".tar.gz") ? "application/gzip" : (cleanFilename.endsWith(".sql.gz") ? "application/gzip" : "application/octet-stream"));
+      return res.send(buffer);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Download failed from remote server: " + err.message });
+    }
+  } else {
+    try {
+      const localFile = path.join(process.cwd(), "sandbox", "backups", "scheduler", cleanFilename);
+      if (fs.existsSync(localFile)) {
+        res.download(localFile, cleanFilename);
+      } else {
+        res.status(404).json({ error: "File not found in local scheduler directory" });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to download local backup: " + err.message });
+    }
+  }
+});
+
+// Endpoint to restore a backup file from the Scheduler storage path (PostgreSQL database or Matrix configuration)
+app.post("/api/backups/scheduler/restore", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { filename, targetScope } = req.body;
+  const db = readDb();
+  const activeConn = getActiveConnection();
+  const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+
+  if (!activeConn || activeConn.id === "local") {
+    return res.status(400).json({ error: "No active remote destination server connected." });
+  }
+
+  const cleanFilename = String(filename || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
+    return res.status(400).json({ error: "Invalid backup filename." });
+  }
+
+  const targetFile = `${backupPath}/${cleanFilename}`;
+  const isDb = cleanFilename.startsWith("database_backup") || cleanFilename.endsWith(".sql.gz") || cleanFilename.endsWith(".sql");
+
+  try {
+    if (isDb) {
+      // Database restore logic
+      const dbUser = (activeConn.dbUser || "synapse_user").trim();
+      const dbPass = (activeConn.dbPass || "").trim();
+      const dbName = (activeConn.dbName || "synapse").trim();
+      const dbHost = (activeConn.dbHost || "localhost").trim();
+      const dbPort = activeConn.dbPort || 5432;
+
+      const escapedPass = dbPass.replace(/'/g, "'\\''");
+      const escapedUser = dbUser.replace(/'/g, "'\\''");
+      const escapedDb = dbName.replace(/'/g, "'\\''");
+      const escapedHost = dbHost.replace(/'/g, "'\\''");
+
+      const dbRestoreCmd = `
+        set -e
+        TARGET="${targetFile}"
+        if [ ! -f "$TARGET" ]; then
+          echo "ERR_NOT_FOUND: Database backup file does not exist at $TARGET"
+          exit 1
+        fi
+
+        RESTORE_SUCCESS=0
+        if [[ "$TARGET" == *.gz ]]; then
+          if [ -n "${escapedPass}" ] && [ -n "${escapedUser}" ]; then
+            gunzip -c "$TARGET" | PGPASSWORD='${escapedPass}' psql -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+            if [ $RESTORE_SUCCESS -eq 0 ]; then
+              gunzip -c "$TARGET" | PGPASSWORD='${escapedPass}' psql -h '127.0.0.1' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+            fi
+          fi
+          if [ $RESTORE_SUCCESS -eq 0 ]; then
+            gunzip -c "$TARGET" | sudo -u postgres psql -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+          if [ $RESTORE_SUCCESS -eq 0 ]; then
+            gunzip -c "$TARGET" | sudo psql -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+        else
+          if [ -n "${escapedPass}" ] && [ -n "${escapedUser}" ]; then
+            PGPASSWORD='${escapedPass}' psql -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' < "$TARGET" 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+          if [ $RESTORE_SUCCESS -eq 0 ]; then
+            sudo -u postgres psql -d '${escapedDb}' < "$TARGET" 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+        fi
+
+        if [ $RESTORE_SUCCESS -eq 0 ]; then
+          echo "ERR_RESTORE: Database restoration failed on PostgreSQL"
+          exit 1
+        fi
+      `.trim();
+
+      await runActiveServerCommand(activeConn, dbRestoreCmd);
+    } else {
+      // Configuration restore logic (.tar.gz)
+      const verifyCmd = `test -f "${targetFile}" && test -s "${targetFile}" && tar -tzf "${targetFile}" >/dev/null`;
+      await runActiveServerCommand(activeConn, verifyCmd);
+
+      const scope = targetScope || "all";
+      let extractScope = "";
+      if (scope === "synapse") extractScope = "etc/matrix-synapse";
+      else if (scope === "element") extractScope = "var/www/element";
+      else extractScope = "";
+
+      const extractCmd = `cd / && tar -xzf "${targetFile}" -C / ${extractScope}`.trim();
+      await runActiveServerCommand(activeConn, extractCmd);
+    }
+
+    await restartSynapseService(activeConn);
+
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Restore Scheduler Backup",
+      target: cleanFilename,
+      status: "success",
+      details: `Restored ${isDb ? "Database" : "Configuration"} scheduler backup ${cleanFilename} from ${backupPath} and restarted Synapse.`
+    });
+    writeDb(db);
+
+    return res.json({ 
+      success: true, 
+      message: `Successfully restored scheduler ${isDb ? "database" : "configuration"} backup (${cleanFilename}) and restarted Synapse.` 
+    });
+  } catch (err: any) {
+    console.error("Scheduler restore failed:", err);
+    res.status(500).json({ error: "Restore failed: " + err.message });
+  }
+});
+
+// Endpoint to delete/disable a cron schedule directly from server crontab and settings
+app.delete("/api/backups/scheduler/cron/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { id } = req.params;
+  const db = readDb();
+  if (!db.backupSettings) db.backupSettings = {};
+
+  if (id === "db-schedule" || id === "database") {
+    if (db.backupSettings.dbSchedule) {
+      db.backupSettings.dbSchedule.enabled = false;
+    }
+  } else if (id === "config-schedule" || id === "config") {
+    if (db.backupSettings.configSchedule) {
+      db.backupSettings.configSchedule.enabled = false;
+    }
+  }
+
+  writeDb(db);
+
+  const activeConn = getActiveConnection();
+  let syncResult: any = { success: true, details: "Disabled in local settings" };
+  if (activeConn && activeConn.id !== "local") {
+    syncResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Delete/Disable Backup Cron Schedule",
+    target: id,
+    status: syncResult.success ? "success" : "warning",
+    details: `Disabled backup schedule ${id} and synchronized server crontab.`
+  });
+  writeDb(db);
+
+  res.json({
+    success: true,
+    message: `Schedule ${id} disabled and removed from server crontab.`,
+    settings: db.backupSettings,
+    syncResult
+  });
+});
+
+// Endpoint to update a specific cron schedule directly (e.g. from the Active Schedules card)
+app.post("/api/backups/scheduler/cron-update", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { id, enabled, cron } = req.body;
+  const db = readDb();
+  if (!db.backupSettings) db.backupSettings = {};
+
+  if (id === "db-schedule" || id === "database") {
+    db.backupSettings.dbSchedule = {
+      enabled: Boolean(enabled),
+      cron: (cron || "0 2 * * *").trim()
+    };
+  } else if (id === "config-schedule" || id === "config") {
+    db.backupSettings.configSchedule = {
+      enabled: Boolean(enabled),
+      cron: (cron || "0 3 * * *").trim()
+    };
+  }
+
+  writeDb(db);
+
+  const activeConn = getActiveConnection();
+  let syncResult: any = { success: true, details: "Saved in settings" };
+  if (activeConn && activeConn.id !== "local") {
+    syncResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Update Backup Cron Schedule",
+    target: id,
+    status: syncResult.success ? "success" : "warning",
+    details: `Updated backup schedule ${id} to cron '${cron}', enabled: ${enabled}.`
+  });
+  writeDb(db);
+
+  res.json({
+    success: true,
+    message: `Schedule ${id} updated and synced to server crontab.`,
+    settings: db.backupSettings,
+    syncResult
+  });
+});
+
+// Endpoint to trigger manual execution of the scheduler backup script on demand
+app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { type } = req.body; // 'database' | 'config'
+  const activeConn = getActiveConnection();
+  const db = readDb();
+  const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+
+  if (!activeConn || activeConn.id === "local") {
+    return res.status(400).json({ error: "No active remote server connected to trigger backup script." });
+  }
+
+  const scriptName = type === "database" ? "matrix_auto_db_backup.sh" : "matrix_auto_config_backup.sh";
+  const scriptPath = `${REMOTE_BACKUP_BASE_DIR}/scripts/${scriptName}`;
+
+  try {
+    // Ensure scripts exist by running sync first
+    await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
+
+    const execCmd = `/bin/bash "${scriptPath}"`;
+    const output = await runActiveServerCommand(activeConn, execCmd, true);
+
+    const scanned = await scanSchedulerBackups(activeConn, backupPath);
+
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: `Trigger Automated ${type === "database" ? "Database" : "Config"} Backup`,
+      target: scriptName,
+      status: "success",
+      details: `Executed ${scriptName} on destination server. Total backups in scheduler directory: ${scanned.length}.`
+    });
+    writeDb(db);
+
+    res.json({
+      success: true,
+      message: `Automated ${type === "database" ? "database" : "configuration"} backup script executed successfully.`,
+      output,
+      backups: scanned
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to execute backup script on server: " + err.message });
+  }
 });
 
 app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {

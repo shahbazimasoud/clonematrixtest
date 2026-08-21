@@ -1448,6 +1448,33 @@ export default function ConfigForms({
   const [loadingServerSchedules, setLoadingServerSchedules] = useState<boolean>(false);
   const [cronHelpModal, setCronHelpModal] = useState<{ open: boolean; target: 'db' | 'config' | null }>({ open: false, target: null });
 
+  // Scheduler Backup Files State
+  const [schedulerBackupsList, setSchedulerBackupsList] = useState<Array<{
+    id: string;
+    filename: string;
+    path: string;
+    size: string;
+    rawSizeBytes: number;
+    timestamp: string;
+    type: string;
+    isDatabase: boolean;
+    isConfig: boolean;
+    source?: string;
+  }>>([]);
+  const [loadingSchedulerBackups, setLoadingSchedulerBackups] = useState<boolean>(false);
+  const [schedulerBackupFilter, setSchedulerBackupFilter] = useState<'all' | 'database' | 'config'>('all');
+  const [schedulerSearchQuery, setSchedulerSearchQuery] = useState<string>('');
+  const [schedulerRestoreModal, setSchedulerRestoreModal] = useState<{ filename: string; isDatabase: boolean; isConfig: boolean } | null>(null);
+  const [schedulerRestoreScope, setSchedulerRestoreScope] = useState<'all' | 'synapse' | 'element'>('all');
+  const [isRestoringScheduler, setIsRestoringScheduler] = useState<boolean>(false);
+  const [schedulerDeleteModal, setSchedulerDeleteModal] = useState<{ filename: string } | null>(null);
+  const [isDeletingScheduler, setIsDeletingScheduler] = useState<boolean>(false);
+  const [triggeringManualCron, setTriggeringManualCron] = useState<'database' | 'config' | null>(null);
+  const [editingCronItem, setEditingCronItem] = useState<{ id: string; title: string; cron: string; enabled: boolean } | null>(null);
+  const [savingCronEdit, setSavingCronEdit] = useState<boolean>(false);
+  const [deleteCronModal, setDeleteCronModal] = useState<{ id: string; title: string } | null>(null);
+  const [isDeletingCron, setIsDeletingCron] = useState<boolean>(false);
+
   const [includeSSL, setIncludeSSL] = useState(false);
   const [selectedBackupIds, setSelectedBackupIds] = useState<string[]>([]);
   const [isTriggeringBackup, setIsTriggeringBackup] = useState<boolean>(false);
@@ -1491,12 +1518,31 @@ export default function ConfigForms({
     }
   };
 
+  const fetchSchedulerBackups = async () => {
+    if (!authToken) return;
+    setLoadingSchedulerBackups(true);
+    try {
+      const res = await fetch('/api/backups/scheduler/files', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSchedulerBackupsList(data.backups || []);
+      }
+    } catch (err) {
+      console.error('Error fetching scheduler backups', err);
+    } finally {
+      setLoadingSchedulerBackups(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'backups') {
       fetchBackupSettings();
       fetchBackups();
       fetchDbBackups();
       fetchServerSchedules();
+      fetchSchedulerBackups();
     }
   }, [activeTab, authToken]);
 
@@ -1523,6 +1569,7 @@ export default function ConfigForms({
         }
         fetchBackupSettings();
         fetchServerSchedules();
+        fetchSchedulerBackups();
       } else {
         if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در ذخیره‌سازی تنظیمات' : 'Error saving backup settings'));
       }
@@ -1530,6 +1577,166 @@ export default function ConfigForms({
       if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Server connection error');
     } finally {
       setSavingBackupSettings(false);
+    }
+  };
+
+  const handleDownloadSchedulerBackup = (filename: string) => {
+    if (!authToken) return;
+    fetch(`/api/backups/scheduler/download/${encodeURIComponent(filename)}`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Download failed');
+      return res.blob();
+    })
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (showToast) showToast('success', lang === 'fa' ? `فایل ${filename} با موفقیت دانلود شد` : `Downloaded ${filename} successfully`);
+    })
+    .catch(() => {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در دانلود فایل پشتیبان از سرور' : 'Error downloading backup file from server');
+    });
+  };
+
+  const handleSchedulerDelete = async () => {
+    if (!schedulerDeleteModal || !authToken) return;
+    setIsDeletingScheduler(true);
+    try {
+      const res = await fetch(`/api/backups/scheduler/files/${encodeURIComponent(schedulerDeleteModal.filename)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', lang === 'fa' ? `فایل ${schedulerDeleteModal.filename} با موفقیت از سرور حذف شد` : `Deleted ${schedulerDeleteModal.filename} successfully`);
+        setSchedulerDeleteModal(null);
+        fetchSchedulerBackups();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در حذف فایل پشتیبان' : 'Error deleting backup file'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در برقراری ارتباط با سرور' : 'Error communicating with server');
+    } finally {
+      setIsDeletingScheduler(false);
+    }
+  };
+
+  const handleSchedulerRestore = async () => {
+    if (!schedulerRestoreModal || !authToken) return;
+    setIsRestoringScheduler(true);
+    try {
+      const res = await fetch('/api/backups/scheduler/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          filename: schedulerRestoreModal.filename,
+          targetScope: schedulerRestoreScope
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', data.message || (lang === 'fa' ? 'بازیابی نسخه پشتیبان زمان‌بندی با موفقیت انجام شد' : 'Scheduler backup restored successfully'));
+        setSchedulerRestoreModal(null);
+        fetchSchedulerBackups();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در بازیابی نسخه پشتیبان' : 'Error restoring backup'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error connecting to server');
+    } finally {
+      setIsRestoringScheduler(false);
+    }
+  };
+
+  const handleTriggerManualCron = async (type: 'database' | 'config') => {
+    if (!authToken) return;
+    setTriggeringManualCron(type);
+    try {
+      const res = await fetch('/api/backups/scheduler/trigger', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ type })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', data.message || (lang === 'fa' ? `پشتیبان‌گیری خودکار ${type === 'database' ? 'دیتابیس' : 'تنظیمات'} با موفقیت روی سرور اجرا شد` : `Automated ${type} backup triggered successfully`));
+        if (data.backups) setSchedulerBackupsList(data.backups);
+        else fetchSchedulerBackups();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در اجرای اسکریپت پشتیبان‌گیری خودکار' : 'Error triggering backup script'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error communicating with server');
+    } finally {
+      setTriggeringManualCron(null);
+    }
+  };
+
+  const handleDeleteCron = async () => {
+    if (!deleteCronModal || !authToken) return;
+    setIsDeletingCron(true);
+    try {
+      const res = await fetch(`/api/backups/scheduler/cron/${deleteCronModal.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', data.message || (lang === 'fa' ? 'زمان‌بندی کرون با موفقیت از سرور حذف و غیرفعال شد' : 'Cron schedule deleted and disabled'));
+        setDeleteCronModal(null);
+        fetchBackupSettings();
+        fetchServerSchedules();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در حذف زمان‌بندی' : 'Error deleting schedule'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error communicating with server');
+    } finally {
+      setIsDeletingCron(false);
+    }
+  };
+
+  const handleSaveCronEdit = async () => {
+    if (!editingCronItem || !authToken) return;
+    setSavingCronEdit(true);
+    try {
+      const res = await fetch('/api/backups/scheduler/cron-update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          id: editingCronItem.id,
+          cron: editingCronItem.cron,
+          enabled: editingCronItem.enabled
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', data.message || (lang === 'fa' ? 'زمان‌بندی کرون با موفقیت ذخیره و روی سرور اعمال شد' : 'Schedule updated and applied to server'));
+        setEditingCronItem(null);
+        fetchBackupSettings();
+        fetchServerSchedules();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در بروزرسانی زمان‌بندی' : 'Error updating schedule'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error communicating with server');
+    } finally {
+      setSavingCronEdit(false);
     }
   };
 
@@ -6471,17 +6678,20 @@ export default function ConfigForms({
                       <Clock className="w-4 h-4 text-cyan-400" />
                       <div>
                         <h4 className="text-sm font-bold text-white">
-                          {lang === 'fa' ? 'وضعیت زمان‌بندی‌های تعریف شده روی سرور (Active Server Cron Schedules)' : 'Active Server Schedules & Daemon Status'}
+                          {lang === 'fa' ? 'وضعیت زمان‌بندی‌های فعال روی سرور (Active Server Cron Schedules)' : 'Active Server Schedules & Daemon Status'}
                         </h4>
                         <p className="text-[10px] text-slate-400">
-                          {lang === 'fa' ? 'لیست تسک‌های زمان‌بندی شده در Crontab سرور مقصد' : 'List of registered cron jobs in the remote server crontab'}
+                          {lang === 'fa' ? 'لیست تسک‌های زمان‌بندی شده در Crontab سرور مقصد بر اساس داده‌های زنده سرور' : 'Real-time registered cron jobs in destination server crontab'}
                         </p>
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={fetchServerSchedules}
-                      disabled={loadingServerSchedules}
+                      onClick={() => {
+                        fetchServerSchedules();
+                        fetchSchedulerBackups();
+                      }}
+                      disabled={loadingServerSchedules || loadingSchedulerBackups}
                       className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-medium border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3 h-3 ${loadingServerSchedules ? 'animate-spin text-amber-400' : ''}`} />
@@ -6490,84 +6700,320 @@ export default function ConfigForms({
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Database Cron Schedule Status */}
-                    <div className="bg-black/30 rounded-xl p-4 border border-white/5 space-y-3">
-                      <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                        <span className="text-xs font-bold text-white flex items-center gap-2">
-                          <Database className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>{lang === 'fa' ? 'پشتیبان‌گیری پایگاه داده (DB Backup)' : 'Database Backup Daemon'}</span>
-                        </span>
-                        {backupSettings.dbSchedule?.enabled ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span>{lang === 'fa' ? 'فعال در کرون‌تب' : 'Active'}</span>
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 text-[10px] font-medium">
-                            {lang === 'fa' ? 'غیرفعال' : 'Disabled'}
-                          </span>
-                        )}
-                      </div>
+                    {(serverSchedulesData?.schedules || [
+                      {
+                        id: "db-schedule",
+                        title: "Automated Database Backup (PostgreSQL)",
+                        titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
+                        type: "database",
+                        enabled: backupSettings.dbSchedule?.enabled || false,
+                        cron: backupSettings.dbSchedule?.cron || "0 2 * * *",
+                        targetPath: backupSettings.backupPath || "/opt/matrix-element-Backup/scheduler/",
+                        scriptPath: "/opt/matrix-element-Backup/scripts/matrix_auto_db_backup.sh",
+                        retentionDays: backupSettings.retentionDays || 30,
+                        installedOnServer: backupSettings.dbSchedule?.enabled || false,
+                        lastStatus: backupSettings.dbSchedule?.enabled ? "active" : "disabled"
+                      },
+                      {
+                        id: "config-schedule",
+                        title: "Automated Configuration Backup (Matrix & Element)",
+                        titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
+                        type: "config",
+                        enabled: backupSettings.configSchedule?.enabled || false,
+                        cron: backupSettings.configSchedule?.cron || "0 3 * * *",
+                        targetPath: backupSettings.backupPath || "/opt/matrix-element-Backup/scheduler/",
+                        scriptPath: "/opt/matrix-element-Backup/scripts/matrix_auto_config_backup.sh",
+                        retentionDays: backupSettings.retentionDays || 30,
+                        installedOnServer: backupSettings.configSchedule?.enabled || false,
+                        lastStatus: backupSettings.configSchedule?.enabled ? "active" : "disabled"
+                      }
+                    ]).map((sched) => {
+                      const isDb = sched.type === "database";
+                      const isInstalled = sched.installedOnServer || (sched.enabled && sched.lastStatus === "active");
 
-                      <div className="space-y-1 text-[11px] text-slate-300 font-mono">
-                        <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'عبارت کرون:' : 'Cron Spec:'}</span>
-                          <span className="text-cyan-300 font-bold">{backupSettings.dbSchedule?.cron || '0 2 * * *'}</span>
+                      return (
+                        <div key={sched.id} className="bg-black/30 rounded-xl p-4 border border-white/5 space-y-3 flex flex-col justify-between">
+                          <div className="space-y-3">
+                            <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                              <span className="text-xs font-bold text-white flex items-center gap-2">
+                                {isDb ? <Database className="w-3.5 h-3.5 text-cyan-400" /> : <FileJson className="w-3.5 h-3.5 text-amber-400" />}
+                                <span>{lang === 'fa' ? sched.titleFa : sched.title}</span>
+                              </span>
+                              {sched.enabled && isInstalled ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  <span>{lang === 'fa' ? 'فعال در کرون‌تب' : 'Active'}</span>
+                                </span>
+                              ) : sched.enabled ? (
+                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
+                                  <span>{lang === 'fa' ? 'در انتظار همگام‌سازی' : 'Pending Sync'}</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 text-[10px] font-medium">
+                                  {lang === 'fa' ? 'غیرفعال' : 'Disabled'}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1 text-[11px] text-slate-300 font-mono">
+                              <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                <span className="text-slate-500">{lang === 'fa' ? 'عبارت کرون:' : 'Cron Spec:'}</span>
+                                <span className={`${isDb ? 'text-cyan-300' : 'text-amber-300'} font-bold`}>{sched.cron || '0 2 * * *'}</span>
+                              </div>
+                              <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                <span className="text-slate-500">{lang === 'fa' ? 'مسیر مقصد:' : 'Target Dir:'}</span>
+                                <span className="text-slate-300 select-all">{sched.targetPath || backupSettings.backupPath || '/opt/matrix-element-Backup/scheduler/'}</span>
+                              </div>
+                              <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                <span className="text-slate-500">{lang === 'fa' ? 'اسکریپت اجراکننده:' : 'Script:'}</span>
+                                <span className="text-slate-400 text-[10px] select-all">{sched.scriptPath}</span>
+                              </div>
+                              <div className={`flex justify-between py-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                <span className="text-slate-500">{lang === 'fa' ? 'دوره نگهداری:' : 'Retention:'}</span>
+                                <span className="text-amber-400">{sched.retentionDays || backupSettings.retentionDays || 30} {lang === 'fa' ? 'روز' : 'Days'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Controls for this Schedule */}
+                          <div className={`flex items-center gap-2 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-end'}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleTriggerManualCron(isDb ? 'database' : 'config')}
+                              disabled={isReadOnly || triggeringManualCron !== null}
+                              className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                              title={lang === 'fa' ? 'اجرای فوری اسکریپت پشتیبان‌گیری همین حالا' : 'Run backup script right now'}
+                            >
+                              {triggeringManualCron === (isDb ? 'database' : 'config') ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Play className="w-3 h-3" />
+                              )}
+                              <span>{lang === 'fa' ? 'اجرای فوری' : 'Run Now'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setEditingCronItem({
+                                id: sched.id,
+                                title: lang === 'fa' ? sched.titleFa : sched.title,
+                                cron: sched.cron,
+                                enabled: sched.enabled
+                              })}
+                              disabled={isReadOnly}
+                              className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer"
+                              title={lang === 'fa' ? 'ویرایش عبارت زمان‌بندی کرون' : 'Edit cron expression'}
+                            >
+                              <Clock className="w-3 h-3 text-amber-400" />
+                              <span>{lang === 'fa' ? 'ویرایش کرون' : 'Edit'}</span>
+                            </button>
+
+                            {sched.enabled && (
+                              <button
+                                type="button"
+                                onClick={() => setDeleteCronModal({
+                                  id: sched.id,
+                                  title: lang === 'fa' ? sched.titleFa : sched.title
+                                })}
+                                disabled={isReadOnly}
+                                className="px-2 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer"
+                                title={lang === 'fa' ? 'حذف و غیرفعال‌سازی این زمان‌بندی از سرور' : 'Disable & remove schedule from crontab'}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>{lang === 'fa' ? 'حذف' : 'Delete'}</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'مسیر مقصد:' : 'Target Dir:'}</span>
-                          <span className="text-slate-300 select-all">{backupSettings.backupPath || '/opt/matrix-element-Backup/scheduler/'}</span>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Automated Scheduler Backup Storage Archives List */}
+                <div className={`spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 space-y-4 ${isRtl ? 'text-right' : 'text-left'}`}>
+                  <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/5 ${isRtl ? 'sm:flex-row-reverse' : ''}`}>
+                    <div className="flex items-center gap-2.5">
+                      <FolderOpen className="w-4 h-4 text-amber-400" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-white">
+                            {lang === 'fa' ? 'فایل‌های پشتیبان پوشه زمان‌بندی خودکار سرور' : 'Automated Scheduler Backup Archives'}
+                          </h4>
+                          <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full text-[10px] font-mono font-bold">
+                            {schedulerBackupsList.length} {lang === 'fa' ? 'فایل' : 'files'}
+                          </span>
                         </div>
-                        <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'اسکریپت اجراکننده:' : 'Script:'}</span>
-                          <span className="text-slate-400 text-[10px] select-all">/opt/matrix-element-Backup/scripts/matrix_auto_db_backup.sh</span>
-                        </div>
-                        <div className={`flex justify-between py-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'دوره نگهداری:' : 'Retention:'}</span>
-                          <span className="text-amber-400">{backupSettings.retentionDays || 30} {lang === 'fa' ? 'روز' : 'Days'}</span>
-                        </div>
+                        <p className="text-[10px] text-slate-400 select-all font-mono mt-0.5">
+                          {backupSettings.backupPath || '/opt/matrix-element-Backup/scheduler/'}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Config Cron Schedule Status */}
-                    <div className="bg-black/30 rounded-xl p-4 border border-white/5 space-y-3">
-                      <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                        <span className="text-xs font-bold text-white flex items-center gap-2">
-                          <FileJson className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{lang === 'fa' ? 'پشتیبان‌گیری تنظیمات (Config Backup)' : 'Config & Stack Backup Daemon'}</span>
-                        </span>
-                        {backupSettings.configSchedule?.enabled ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span>{lang === 'fa' ? 'فعال در کرون‌تب' : 'Active'}</span>
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 text-[10px] font-medium">
-                            {lang === 'fa' ? 'غیرفعال' : 'Disabled'}
-                          </span>
-                        )}
+                    <div className={`flex items-center gap-2 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      {/* Filter Tabs */}
+                      <div className="flex items-center bg-black/40 p-1 rounded-xl border border-white/10 text-[10px] font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setSchedulerBackupFilter('all')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${schedulerBackupFilter === 'all' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'}`}
+                        >
+                          {lang === 'fa' ? 'همه' : 'All'} ({schedulerBackupsList.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSchedulerBackupFilter('database')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${schedulerBackupFilter === 'database' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'}`}
+                        >
+                          {lang === 'fa' ? 'دیتابیس' : 'Database'} ({schedulerBackupsList.filter(b => b.isDatabase).length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSchedulerBackupFilter('config')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${schedulerBackupFilter === 'config' ? 'bg-purple-500 text-white font-bold' : 'text-slate-400 hover:text-white'}`}
+                        >
+                          {lang === 'fa' ? 'تنظیمات' : 'Config'} ({schedulerBackupsList.filter(b => b.isConfig).length})
+                        </button>
                       </div>
 
-                      <div className="space-y-1 text-[11px] text-slate-300 font-mono">
-                        <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'عبارت کرون:' : 'Cron Spec:'}</span>
-                          <span className="text-amber-300 font-bold">{backupSettings.configSchedule?.cron || '0 3 * * *'}</span>
-                        </div>
-                        <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'مسیر مقصد:' : 'Target Dir:'}</span>
-                          <span className="text-slate-300 select-all">{backupSettings.backupPath || '/opt/matrix-element-Backup/scheduler/'}</span>
-                        </div>
-                        <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'اسکریپت اجراکننده:' : 'Script:'}</span>
-                          <span className="text-slate-400 text-[10px] select-all">/opt/matrix-element-Backup/scripts/matrix_auto_config_backup.sh</span>
-                        </div>
-                        <div className={`flex justify-between py-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <span className="text-slate-500">{lang === 'fa' ? 'دوره نگهداری:' : 'Retention:'}</span>
-                          <span className="text-amber-400">{backupSettings.retentionDays || 30} {lang === 'fa' ? 'روز' : 'Days'}</span>
-                        </div>
+                      {/* Search Input */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={schedulerSearchQuery}
+                          onChange={(e) => setSchedulerSearchQuery(e.target.value)}
+                          placeholder={lang === 'fa' ? 'جستجوی فایل...' : 'Search files...'}
+                          className={`bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50 w-36 sm:w-44 ${isRtl ? 'text-right pr-7' : 'text-left pl-7'}`}
+                        />
+                        <Search className={`w-3.5 h-3.5 text-slate-400 absolute top-2 ${isRtl ? 'right-2.5' : 'left-2.5'}`} />
                       </div>
+
+                      {/* Refresh Button */}
+                      <button
+                        type="button"
+                        onClick={fetchSchedulerBackups}
+                        disabled={loadingSchedulerBackups}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-medium border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                        title={lang === 'fa' ? 'اسکن مجدد فایل‌های پوشه زمان‌بندی' : 'Rescan scheduler storage directory'}
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingSchedulerBackups ? 'animate-spin text-amber-400' : ''}`} />
+                        <span className="hidden sm:inline">{lang === 'fa' ? 'اسکن مجدد' : 'Rescan'}</span>
+                      </button>
                     </div>
                   </div>
+
+                  {/* Backups List Table */}
+                  {loadingSchedulerBackups && schedulerBackupsList.length === 0 ? (
+                    <div className="p-8 text-center space-y-3 bg-black/20 rounded-xl border border-white/5">
+                      <RefreshCw className="w-6 h-6 animate-spin text-amber-400 mx-auto" />
+                      <p className="text-xs text-slate-400">
+                        {lang === 'fa' ? 'در حال بررسی و اسکن فایل‌های پشتیبان روی سرور...' : 'Scanning scheduler backup directory on server...'}
+                      </p>
+                    </div>
+                  ) : schedulerBackupsList.length === 0 ? (
+                    <div className="p-8 text-center space-y-3 bg-black/20 rounded-xl border border-white/5">
+                      <HardDrive className="w-8 h-8 text-slate-600 mx-auto" />
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-300">
+                          {lang === 'fa' ? 'هیچ فایل پشتیبانی در مسیر زمان‌بندی یافت نشد' : 'No scheduler backup files found in this path'}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {lang === 'fa' 
+                            ? 'برای ایجاد نسخه اولیه، روی دکمه "اجرای فوری" در بخش بالا کلیک کنید یا منتظر زمان تعیین شده کرون بمانید.' 
+                            : 'Click "Run Now" in the section above to trigger a backup immediately, or wait for the scheduled cron job.'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {schedulerBackupsList
+                        .filter(item => {
+                          if (schedulerBackupFilter === 'database') return item.isDatabase;
+                          if (schedulerBackupFilter === 'config') return item.isConfig;
+                          return true;
+                        })
+                        .filter(item => {
+                          if (!schedulerSearchQuery.trim()) return true;
+                          return item.filename.toLowerCase().includes(schedulerSearchQuery.toLowerCase());
+                        })
+                        .map((backup) => {
+                          const isDb = backup.isDatabase;
+                          return (
+                            <div
+                              key={backup.id || backup.filename}
+                              className={`bg-black/30 hover:bg-black/40 border border-white/5 rounded-xl p-3 flex items-center justify-between transition-all gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}
+                            >
+                              <div className={`flex items-center gap-3 min-w-0 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                                  isDb 
+                                    ? 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400' 
+                                    : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
+                                }`}>
+                                  {isDb ? <Database className="w-4 h-4" /> : <FileJson className="w-4 h-4" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-mono font-bold text-white truncate max-w-xs sm:max-w-md md:max-w-lg select-all" title={backup.filename}>
+                                      {backup.filename}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                                      isDb 
+                                        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' 
+                                        : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                    }`}>
+                                      {isDb ? 'Database (PostgreSQL)' : 'Config (.tar.gz)'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1">
+                                    <span className="font-medium text-slate-300">{backup.size}</span>
+                                    <span>•</span>
+                                    <span>{new Date(backup.timestamp).toLocaleString(lang === 'fa' ? 'fa-IR' : 'en-US')}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Action Buttons for this file */}
+                              <div className={`flex items-center gap-1.5 flex-shrink-0 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSchedulerRestoreModal({
+                                    filename: backup.filename,
+                                    isDatabase: backup.isDatabase,
+                                    isConfig: backup.isConfig
+                                  })}
+                                  disabled={isReadOnly}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                  title={lang === 'fa' ? 'بازیابی این نسخه پشتیبان روی سرور' : 'Restore backup to server'}
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>{lang === 'fa' ? 'بازیابی' : 'Restore'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadSchedulerBackup(backup.filename)}
+                                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs transition-all cursor-pointer"
+                                  title={lang === 'fa' ? 'دانلود فایل پشتیبان' : 'Download backup file'}
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSchedulerDeleteModal({ filename: backup.filename })}
+                                    className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs transition-all cursor-pointer"
+                                    title={lang === 'fa' ? 'حذف فایل پشتیبان از سرور' : 'Delete backup file from server'}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
 
                 {!isReadOnly && (
@@ -6583,6 +7029,268 @@ export default function ConfigForms({
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Modal to Edit Specific Cron Schedule */}
+            {editingCronItem && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up bg-slate-900 border border-white/10 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
+                  <div className={`flex items-center justify-between pb-3 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">
+                          {lang === 'fa' ? `ویرایش زمان‌بندی: ${editingCronItem.title}` : `Edit Schedule: ${editingCronItem.title}`}
+                        </h3>
+                        <p className="text-[10px] text-slate-400">
+                          {lang === 'fa' ? 'تنظیم عبارت کرون و همگام‌سازی فوری با سرور مقصد' : 'Set cron expression and sync with server crontab'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCronItem(null)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs cursor-pointer transition-all"
+                    >
+                      <XCircle className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <input
+                          type="checkbox"
+                          id="edit-cron-enabled"
+                          checked={editingCronItem.enabled}
+                          onChange={(e) => setEditingCronItem(prev => prev ? ({ ...prev, enabled: e.target.checked }) : null)}
+                          className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 w-4 h-4 cursor-pointer"
+                        />
+                        <label htmlFor="edit-cron-enabled" className="text-xs font-bold text-white cursor-pointer">
+                          {lang === 'fa' ? 'فعال بودن این زمان‌بندی در کرون‌تب' : 'Enable this schedule in Crontab'}
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-300">
+                        {lang === 'fa' ? 'عبارت زمان‌بندی کرون (Cron Expression)' : 'Cron Expression'}
+                      </label>
+                      <input
+                        type="text"
+                        value={editingCronItem.cron}
+                        onChange={(e) => setEditingCronItem(prev => prev ? ({ ...prev, cron: e.target.value }) : null)}
+                        disabled={!editingCronItem.enabled}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
+                        placeholder="0 2 * * *"
+                      />
+                    </div>
+
+                    {/* Quick Preset Selector */}
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-semibold text-slate-400 block">
+                        {lang === 'fa' ? 'الگوهای سریع:' : 'Quick Presets:'}
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                        {[
+                          { labelFa: 'هر روز ساعت ۲:۰۰ بامداد', labelEn: 'Daily at 2:00 AM', cron: '0 2 * * *' },
+                          { labelFa: 'هر روز ساعت ۳:۰۰ بامداد', labelEn: 'Daily at 3:00 AM', cron: '0 3 * * *' },
+                          { labelFa: 'هر ۶ ساعت یک‌بار', labelEn: 'Every 6 hours', cron: '0 */6 * * *' },
+                          { labelFa: 'هر ۱۲ ساعت یک‌بار', labelEn: 'Every 12 hours', cron: '0 */12 * * *' },
+                          { labelFa: 'هفتگی (یکشنبه‌ها ۳:۰۰)', labelEn: 'Weekly on Sun 3 AM', cron: '0 3 * * 0' }
+                        ].map((p, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setEditingCronItem(prev => prev ? ({ ...prev, cron: p.cron, enabled: true }) : null)}
+                            className="bg-black/30 hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/20 rounded-lg p-2 text-left transition-all text-slate-300 hover:text-amber-300 flex items-center justify-between"
+                          >
+                            <span>{lang === 'fa' ? p.labelFa : p.labelEn}</span>
+                            <span className="font-mono text-slate-500 text-[9px]">{p.cron}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-center justify-end gap-2 pt-3 border-t border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCronItem(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveCronEdit}
+                      disabled={savingCronEdit}
+                      className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {savingCronEdit ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'ذخیره و اعمال روی سرور' : 'Save & Sync to Server'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal to Confirm Deletion of Cron Schedule */}
+            {deleteCronModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up bg-slate-900 border border-red-500/20 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
+                  <div className={`flex items-center gap-3 text-red-400 pb-2 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <AlertTriangle className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white">
+                        {lang === 'fa' ? 'حذف و غیرفعال‌سازی زمان‌بندی کرون' : 'Delete & Disable Cron Schedule'}
+                      </h3>
+                      <p className="text-[10px] text-slate-400">{deleteCronModal.title}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {lang === 'fa' 
+                      ? 'آیا از حذف این زمان‌بندی خودکار از Crontab سرور اطمینان دارید؟ با تایید این مورد، اسکریپت پشتیبان‌گیری دیگر به صورت خودکار اجرا نخواهد شد.' 
+                      : 'Are you sure you want to disable and remove this scheduled backup from the server crontab?'}
+                  </p>
+
+                  <div className={`flex items-center justify-end gap-2 pt-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteCronModal(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteCron}
+                      disabled={isDeletingCron}
+                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isDeletingCron ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'حذف از کرون‌تب' : 'Delete from Crontab'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal to Confirm Restore of Scheduler Backup */}
+            {schedulerRestoreModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up bg-slate-900 border border-amber-500/20 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
+                  <div className={`flex items-center gap-3 text-amber-400 pb-3 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <AlertTriangle className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white">
+                        {lang === 'fa' ? 'تایید بازیابی نسخه پشتیبان زمان‌بندی' : 'Confirm Scheduler Backup Restore'}
+                      </h3>
+                      <p className="text-[10px] text-slate-400">
+                        {schedulerRestoreModal.isDatabase 
+                          ? (lang === 'fa' ? 'بازیابی مستقیم دیتابیس پستگرس و راه‌اندازی مجدد سیناپس' : 'PostgreSQL Database Restoration') 
+                          : (lang === 'fa' ? 'استخراج تنظیمات و راه‌اندازی مجدد سرویس' : 'Configuration Archive Extraction')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {lang === 'fa' ? (
+                        <span>آیا از بازیابی فایل پشتیبان <strong className="text-amber-400 font-mono select-all break-all">{schedulerRestoreModal.filename}</strong> اطمینان کامل دارید؟</span>
+                      ) : (
+                        <span>Are you sure you want to restore <strong className="text-amber-400 font-mono select-all break-all">{schedulerRestoreModal.filename}</strong>?</span>
+                      )}
+                    </p>
+
+                    {schedulerRestoreModal.isConfig && (
+                      <div className="space-y-1.5 bg-black/30 p-3 rounded-xl border border-white/5">
+                        <label className="block text-xs font-semibold text-slate-300">
+                          {lang === 'fa' ? 'محدوده استخراج و بازیابی:' : 'Restoration Scope:'}
+                        </label>
+                        <select
+                          value={schedulerRestoreScope}
+                          onChange={(e: any) => setSchedulerRestoreScope(e.target.value)}
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                        >
+                          <option value="all">{lang === 'fa' ? 'همه بخش‌ها (سیناپس + کلاینت المنت + پیکربندی Nginx)' : 'All (Synapse + Element Web + Nginx)'}</option>
+                          <option value="synapse">{lang === 'fa' ? 'فقط سرور سیناپس (/etc/matrix-synapse)' : 'Synapse Only (/etc/matrix-synapse)'}</option>
+                          <option value="element">{lang === 'fa' ? 'فقط کلاینت المنت (/var/www/element)' : 'Element Web Only (/var/www/element)'}</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] text-red-300 space-y-1">
+                      <p className="font-bold">{lang === 'fa' ? '⚠️ توجه مهم:' : '⚠️ Important Notice:'}</p>
+                      <p>{lang === 'fa' ? 'این عملیات داده‌ها یا تنظیمات فعلی را بازنویسی کرده و سرویس Matrix Synapse را مجدداً راه‌اندازی می‌کند.' : 'This operation overwrites current state and automatically restarts the Matrix Synapse service.'}</p>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-center justify-end gap-2 pt-3 border-t border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setSchedulerRestoreModal(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSchedulerRestore}
+                      disabled={isRestoringScheduler}
+                      className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isRestoringScheduler ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'شروع بازیابی سرور' : 'Start Restore'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal to Confirm Deletion of Scheduler Backup File */}
+            {schedulerDeleteModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up bg-slate-900 border border-red-500/20 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
+                  <div className={`flex items-center gap-3 text-red-400 pb-2 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <Trash2 className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white">
+                        {lang === 'fa' ? 'حذف فایل پشتیبان از سرور' : 'Delete Backup File from Server'}
+                      </h3>
+                      <p className="text-[10px] text-slate-400">{schedulerDeleteModal.filename}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {lang === 'fa' 
+                      ? 'آیا از حذف دائمی این فایل پشتیبان از مسیر ذخیره‌سازی سرور اطمینان دارید؟ این عملیات غیرقابل بازگشت است.' 
+                      : 'Are you sure you want to permanently delete this backup file from the server storage?'}
+                  </p>
+
+                  <div className={`flex items-center justify-end gap-2 pt-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setSchedulerDeleteModal(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSchedulerDelete}
+                      disabled={isDeletingScheduler}
+                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isDeletingScheduler ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'حذف قطعی' : 'Delete Permanently'}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
