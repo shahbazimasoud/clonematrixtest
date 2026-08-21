@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.37.3";
+export const PANEL_VERSION = "2.37.4";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.37.4",
+    date: "2026-08-21",
+    title: "Harmonized Light Mode Theme & Toggle Buttons for Media & Video Conferencing",
+    changes: [
+      "Light Mode Theming for Media & Video Conferencing: Corrected container cards, inputs, labels, and borders under the Media & Video Conferencing tab to be fully compatible with Light Mode.",
+      "Fixed Disabled (Click to Enable) Button State: Adapted the Disabled toggle button styling under Light Mode to use clean, high-contrast slate surfaces (slate-100 / border-slate-300 / slate-700 text) with clear rose/red status icons.",
+      "Multilingual Localization: Integrated full multi-language translations across Persian, English, Spanish, Arabic, German, and Russian for all video settings controls and actions."
+    ]
+  },
   {
     version: "2.37.3",
     date: "2026-08-21",

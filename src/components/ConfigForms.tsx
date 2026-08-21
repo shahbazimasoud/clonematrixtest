@@ -8286,40 +8286,57 @@ export default function ConfigForms({
         {/* VIEW 8: MEDIA & VIDEO CALLING CONFS */}
         {activeTab === 'video' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-white/5">
+            <div className={`flex items-center justify-between pb-4 border-b ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
               <div className="flex items-center gap-3">
-                <Video className="w-6 h-6 text-amber-400" />
+                <Video className="w-6 h-6 text-amber-500" />
                 <div>
-                  <h2 className="text-xl font-display font-bold text-white">
-                    {lang === 'fa' ? 'پیکربندی رسانه و ویدیو کنفرانس' : 'Media & Video Conferencing'}
+                  <h2 className={`text-xl font-display font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                    {loc('پیکربندی رسانه و ویدیو کنفرانس', 'Media & Video Conferencing', 'Configuración de Medios y Videoconferencias', 'تكوين الوسائط ومؤتمرات الفيديو', 'Medien- & Videokonferenz-Konfiguration', 'Конфигурация медиа и видеоконференций')}
                   </h2>
-                  <p className="text-xs text-slate-400 font-sans">
-                    {lang === 'fa' 
-                      ? 'تنظیم دامنه جیتسی (Preferred Jitsi Domain) و قابلیت اتاق‌های ویدیویی گروهی برای Element Web' 
-                      : 'Point Element Web at self-hosted Jitsi or Element Call instances.'}
+                  <p className={`text-xs font-sans ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {loc(
+                      'تنظیم دامنه جیتسی (Preferred Jitsi Domain) و قابلیت اتاق‌های ویدیویی گروهی برای Element Web',
+                      'Point Element Web at self-hosted Jitsi or Element Call instances.',
+                      'Apunta Element Web a instancias de Jitsi o Element Call.',
+                      'توجيه Element Web إلى خوادم Jitsi أو Element Call.',
+                      'Element Web auf selbst gehostete Jitsi- oder Element Call-Instanzen ausrichten.',
+                      'Направьте Element Web на собственные инстансы Jitsi или Element Call.'
+                    )}
                   </p>
                 </div>
               </div>
               {loadingVideoSettings && (
-                <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl">
+                <div className={`flex items-center gap-2 text-xs border px-3 py-1.5 rounded-xl ${
+                  isLightMode
+                    ? 'text-amber-700 bg-amber-50 border-amber-200 shadow-sm'
+                    : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                }`}>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>{lang === 'fa' ? 'در حال بارگذاری...' : 'Loading settings...'}</span>
+                  <span>{loc('در حال بارگذاری...', 'Loading settings...', 'Cargando...', 'جاري التحميل...', 'Laden...', 'Загрузка...')}</span>
                 </div>
               )}
             </div>
 
             <div className="space-y-5">
               {/* Preferred Jitsi Domain Input Card */}
-              <div className="p-5 rounded-2xl bg-black/30 border border-white/10 space-y-4">
+              <div className={`p-5 rounded-2xl border space-y-4 transition-colors ${
+                isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-black/30 border-white/10 text-white'
+              }`}>
                 <div>
-                  <label htmlFor="jitsi-input" className="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-1.5">
-                    {lang === 'fa' ? 'دامنه ترجیحی جیتسی (Preferred Jitsi Domain)' : 'Preferred Jitsi Domain'}
+                  <label htmlFor="jitsi-input" className={`text-xs font-semibold uppercase tracking-wider block mb-1.5 ${
+                    isLightMode ? 'text-slate-700' : 'text-slate-300'
+                  }`}>
+                    {loc('دامنه ترجیحی جیتسی (Preferred Jitsi Domain)', 'Preferred Jitsi Domain', 'Dominio Preferido de Jitsi', 'نطاق Jitsi المفضل', 'Bevorzugte Jitsi-Domain', 'Предпочитаемый домен Jitsi')}
                   </label>
                   <div className="flex flex-col sm:flex-row gap-3">
                     <input
                       id="jitsi-input"
                       type="text"
-                      className="flex-1 bg-black/50 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500/60 transition-all font-mono"
+                      className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-mono outline-none transition-all ${
+                        isLightMode
+                          ? 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
+                          : 'bg-black/50 border border-white/15 text-slate-100 placeholder-slate-500 focus:border-amber-500/60'
+                      }`}
                       value={jitsiDomain}
                       onChange={(e) => setJitsiDomain(e.target.value)}
                       placeholder="e.g. meet.jit.si or jitsi.company.local"
@@ -8329,34 +8346,48 @@ export default function ConfigForms({
                       type="button"
                       onClick={() => saveVideoSettings()}
                       disabled={savingVideoSettings || loadingVideoSettings || isReadOnly || isModerator}
-                      className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+                      className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
                     >
                       {savingVideoSettings ? (
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <Save className="w-3.5 h-3.5" />
                       )}
-                      <span>{lang === 'fa' ? 'ذخیره دامنه جیتسی' : 'Save Jitsi Domain'}</span>
+                      <span>{loc('ذخیره دامنه جیتسی', 'Save Jitsi Domain', 'Guardar Dominio de Jitsi', 'حفظ نطاق Jitsi', 'Jitsi-Domain speichern', 'Сохранить домен Jitsi')}</span>
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-sans">
-                    {lang === 'fa'
-                      ? 'سرور جیتسی که المنت وب برای تماس‌های صوتی و تصویری از آن استفاده می‌کند. به طور پیش‌فرض meet.jit.si است.'
-                      : 'The Jitsi meet server domain integrated into Element Web for calls. Defaults to meet.jit.si.'}
+                  <p className={`text-[11px] mt-2 leading-relaxed font-sans ${
+                    isLightMode ? 'text-slate-500' : 'text-slate-400'
+                  }`}>
+                    {loc(
+                      'سرور جیتسی که المنت وب برای تماس‌های صوتی و تصویری از آن استفاده می‌کند. به طور پیش‌فرض meet.jit.si است.',
+                      'The Jitsi meet server domain integrated into Element Web for calls. Defaults to meet.jit.si.',
+                      'El servidor Jitsi que Element Web utiliza para llamadas. El valor predeterminado es meet.jit.si.',
+                      'خادم Jitsi الذي يستخدمه Element Web للمكالمات. الافتراضي هو meet.jit.si.',
+                      'Der Jitsi-Server, den Element Web für Anrufe verwendet. Standard ist meet.jit.si.',
+                      'Сервер Jitsi, который Element Web использует для звонков. По умолчанию meet.jit.si.'
+                    )}
                   </p>
                 </div>
               </div>
 
               {/* Allow Group Video Rooms / Screenshare */}
-              <div className="p-5 rounded-2xl bg-black/30 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${
+                isLightMode ? 'bg-white border-slate-200 shadow-sm text-slate-800' : 'bg-black/30 border-white/10 text-white'
+              }`}>
                 <div>
-                  <h4 className="text-sm font-semibold text-white font-sans">
-                    {lang === 'fa' ? 'فعال‌سازی اتاق‌های ویدیویی گروهی و اشتراک صفحه‌نمایش' : 'Allow Group Video Rooms / Screenshare'}
+                  <h4 className={`text-sm font-semibold font-sans ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                    {loc('فعال‌سازی اتاق‌های ویدیویی گروهی و اشتراک صفحه‌نمایش', 'Allow Group Video Rooms / Screenshare', 'Permitir Salas de Video Grupales / Compartir Pantalla', 'السماح بغرف الفيديو الجماعية / مشاركة الشاشة', 'Gruppen-Videoräume / Bildschirmfreigabe zulassen', 'Разрешить групповые видеокомнаты / демонстрацию экрана')}
                   </h4>
-                  <p className="text-xs text-slate-400 mt-1 font-sans">
-                    {lang === 'fa'
-                      ? 'پیکربندی پرچم‌های فچر اتاق‌های ویدیویی تجربی در Element Web (feature_video_rooms)'
-                      : 'Configures experimental Element Web video rooms capability flag.'}
+                  <p className={`text-xs mt-1 font-sans ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {loc(
+                      'پیکربندی پرچم‌های فچر اتاق‌های ویدیویی تجربی در Element Web (feature_video_rooms)',
+                      'Configures experimental Element Web video rooms capability flag.',
+                      'Configura el indicador de funcionalidad de salas de video experimentales en Element Web.',
+                      'تكوين مؤشر غرف الفيديو التجريبية في Element Web.',
+                      'Konfiguriert experimentelle Element Web Video-Räume.',
+                      'Настраивает флаг экспериментальных видеокомнат в Element Web.'
+                    )}
                   </p>
                 </div>
                 <button
@@ -8365,8 +8396,12 @@ export default function ConfigForms({
                   disabled={savingVideoSettings || loadingVideoSettings || isReadOnly || isModerator}
                   className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 shrink-0 cursor-pointer ${
                     screenshareEnabled
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10'
+                      ? (isLightMode
+                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 border border-emerald-600'
+                          : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 border border-emerald-400/30 shadow-emerald-500/20')
+                      : (isLightMode
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 shadow-sm hover:text-slate-900'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10')
                   }`}
                 >
                   {savingVideoSettings ? (
@@ -8374,12 +8409,12 @@ export default function ConfigForms({
                   ) : screenshareEnabled ? (
                     <CheckCircle className="w-3.5 h-3.5" />
                   ) : (
-                    <XCircle className="w-3.5 h-3.5" />
+                    <XCircle className={`w-3.5 h-3.5 ${isLightMode ? 'text-rose-500' : 'text-rose-400'}`} />
                   )}
                   <span>
                     {screenshareEnabled
-                      ? (lang === 'fa' ? 'فعال (غیرفعال‌سازی)' : 'Enabled (Click to Disable)')
-                      : (lang === 'fa' ? 'غیرفعال (فعال‌سازی)' : 'Disabled (Click to Enable)')}
+                      ? loc('فعال (غیرفعال‌سازی)', 'Enabled (Click to Disable)', 'Habilitado (Clic para Desactivar)', 'مفعل (انقر للتعطيل)', 'Aktiviert (Klicken zum Deaktivieren)', 'Включено (Нажмите для отключения)')
+                      : loc('غیرفعال (فعال‌سازی)', 'Disabled (Click to Enable)', 'Deshabilitado (Clic para Activar)', 'معطل (انقر للتفعيل)', 'Deaktiviert (Klicken zum Aktivieren)', 'Отключено (Нажмите для включения)')}
                   </span>
                 </button>
               </div>

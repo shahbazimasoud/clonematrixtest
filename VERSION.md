@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.37.3** (Released: 2026-08-21)
+## Current Panel Version: **v2.37.4** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.37.4** - 2026-08-21
+- **Harmonized Light Mode Theme & Toggle Buttons for Media & Video Conferencing**:
+  - **Light Mode Theming for Media & Video Conferencing**: Corrected container cards, inputs, labels, and borders under the Media & Video Conferencing tab to be fully compatible with Light Mode.
+  - **Fixed Disabled (Click to Enable) Button State**: Adapted the Disabled toggle button styling under Light Mode to use clean, high-contrast slate surfaces (`slate-100` / `border-slate-300` / `slate-700` text) with clear rose/red status icons.
+  - **Multilingual Localization**: Integrated full multi-language translations across Persian, English, Spanish, Arabic, German, and Russian for all video settings controls and actions.
 
 #### **v2.37.3** - 2026-08-21
 - **Harmonized Light Mode Theme & Modern Mac-Style Header for Active Terminal Modals**:
