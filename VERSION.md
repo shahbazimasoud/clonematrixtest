@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.37.1** (Released: 2026-08-21)
+## Current Panel Version: **v2.37.2** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.37.2** - 2026-08-21
+- **Element Brand Title & Assets Synchronization in `/var/www/element/index.html`**:
+  - **Synchronized HTML `<title>`**: When modifying the "Element Brand Title" in Element Login Config & Wallpaper, the system locates `/var/www/element/index.html` (and candidate paths) and replaces `<title>...</title>` and OpenGraph/Twitter meta titles with the new brand name.
+  - **DOM & Favicon Asset Sync**: Injects runtime title updates and custom favicon tags into Element Web HTML head with complete fallback behavior.
+  - **Hardened Error Handling**: Full try/catch boundaries and candidate path fallback to ensure smooth operation without blocking branding persistence.
 
 #### **v2.37.1** - 2026-08-21
 - **Backend API Implementation for Date, Time, Timezone & NTP System Operations**:

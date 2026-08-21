@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.37.1";
+export const PANEL_VERSION = "2.37.2";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.37.2",
+    date: "2026-08-21",
+    title: "Element Brand Title & Assets Synchronization in /var/www/element/index.html",
+    changes: [
+      "Synchronized Element Brand Title with HTML <title>: Changing Element Brand Title in Element Login Config & Wallpaper now automatically locates /var/www/element/index.html (and candidate paths) and updates <title>...</title> along with OpenGraph and Twitter meta tags.",
+      "Comprehensive Asset & Favicon DOM Integration: Added real-time dynamic sync of brand title, favicon links, and branding overrides across local and remote server environments.",
+      "Resilient Error Handling: Wrapped file discovery, regex replacement, and server writing logic with comprehensive error handling to ensure seamless fallback without interrupting other branding saves."
+    ]
+  },
   {
     version: "2.37.1",
     date: "2026-08-21",

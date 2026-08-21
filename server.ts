@@ -23159,7 +23159,7 @@ print("__WALLPAPERS_JSON_START__" + json.dumps(results) + "__WALLPAPERS_JSON_END
   return { wallpapers, remoteScanned: false };
 }
 
-// Helper to inject or clean CSS and DOM overrides for Element Web Branding (Footer, Forgot Password, Create Account, Logo Cursor, Login Dropdown Options, and Favicon)
+// Helper to inject or clean CSS and DOM overrides for Element Web Branding (Footer, Forgot Password, Create Account, Logo Cursor, Login Dropdown Options, Favicon, Brand Name / HTML Title)
 async function syncElementBrandingDom(
   optionsOrFooter: boolean | {
     showAuthFooter?: boolean;
@@ -23169,6 +23169,7 @@ async function syncElementBrandingDom(
     loginFields?: { allowMxid?: boolean; allowEmail?: boolean; allowPhone?: boolean };
     disable3pidLogin?: boolean;
     faviconUrl?: string;
+    brandName?: string;
   },
   logoClickUrlOrConn?: any,
   loginFieldsOrConn?: any,
@@ -23182,6 +23183,7 @@ async function syncElementBrandingDom(
     let loginFields: { allowMxid?: boolean; allowEmail?: boolean; allowPhone?: boolean } = { allowMxid: true, allowEmail: true, allowPhone: true };
     let disable3pidLogin = false;
     let faviconUrl = "";
+    let brandName = "";
     let activeConn = maybeConn;
 
     if (typeof optionsOrFooter === 'object' && optionsOrFooter !== null) {
@@ -23192,6 +23194,7 @@ async function syncElementBrandingDom(
       if (optionsOrFooter.loginFields) loginFields = { ...loginFields, ...optionsOrFooter.loginFields };
       if (optionsOrFooter.disable3pidLogin !== undefined) disable3pidLogin = optionsOrFooter.disable3pidLogin === true;
       if (optionsOrFooter.faviconUrl !== undefined) faviconUrl = optionsOrFooter.faviconUrl || "";
+      if (optionsOrFooter.brandName !== undefined) brandName = optionsOrFooter.brandName || "";
       if (logoClickUrlOrConn && typeof logoClickUrlOrConn === 'object') activeConn = logoClickUrlOrConn;
     } else {
       showAuthFooter = optionsOrFooter !== false;
@@ -23207,6 +23210,7 @@ async function syncElementBrandingDom(
           if (loginFieldsOrConn.loginFields) loginFields = { ...loginFields, ...loginFieldsOrConn.loginFields };
           if (loginFieldsOrConn.disable3pidLogin !== undefined) disable3pidLogin = loginFieldsOrConn.disable3pidLogin === true;
           if (loginFieldsOrConn.faviconUrl !== undefined) faviconUrl = loginFieldsOrConn.faviconUrl || "";
+          if (loginFieldsOrConn.brandName !== undefined) brandName = loginFieldsOrConn.brandName || "";
         } else if (!activeConn && typeof loginFieldsOrConn === 'object') {
           activeConn = loginFieldsOrConn;
         }
@@ -23218,6 +23222,7 @@ async function syncElementBrandingDom(
     const allowEmail = !disable3pidLogin && loginFields.allowEmail !== false;
     const allowPhone = !disable3pidLogin && loginFields.allowPhone !== false;
     const cleanFaviconUrl = (faviconUrl || "").trim();
+    const cleanBrandName = (brandName || "").trim();
 
     // 1. Generate clean CSS override snippet (footer display, forgot password, create account, logo cursor, and login dropdown filters)
     const cssRules: string[] = [];
@@ -23258,7 +23263,7 @@ async function syncElementBrandingDom(
     const cssContent = cssRules.filter(Boolean).join("\n\n");
     const styleTag = `<style id="raven-branding-overrides">\n${cssContent}\n</style>`;
 
-    // 2. Generate DOM script for option filtering, element visibility, and runtime favicon sync in Element Web
+    // 2. Generate DOM script for option filtering, element visibility, and runtime favicon / title sync in Element Web
     const scriptTag = `<script id="raven-login-fields-sync">
 (function() {
   var ALLOW_MXID = ${allowMxid};
@@ -23268,32 +23273,40 @@ async function syncElementBrandingDom(
   var ALLOW_FORGOT_PW = ${showForgotPassword};
   var ALLOW_CREATE_ACC = ${showCreateAccount};
   var TARGET_FAVICON = ${JSON.stringify(cleanFaviconUrl)};
+  var TARGET_BRAND_TITLE = ${JSON.stringify(cleanBrandName)};
 
-  function syncFavicon() {
-    if (!TARGET_FAVICON) return;
+  function syncFaviconAndTitle() {
     try {
-      var head = document.head || document.getElementsByTagName('head')[0];
-      if (!head) return;
-      var existingFavicons = head.querySelectorAll('link[rel*="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
-      if (existingFavicons && existingFavicons.length > 0) {
-        existingFavicons.forEach(function(el) {
-          if (el.getAttribute('href') !== TARGET_FAVICON) {
-            el.setAttribute('href', TARGET_FAVICON);
+      if (TARGET_BRAND_TITLE && TARGET_BRAND_TITLE.trim()) {
+        if (document.title !== TARGET_BRAND_TITLE && !document.title.includes(TARGET_BRAND_TITLE)) {
+          document.title = TARGET_BRAND_TITLE;
+        }
+      }
+      if (TARGET_FAVICON) {
+        var head = document.head || document.getElementsByTagName('head')[0];
+        if (head) {
+          var existingFavicons = head.querySelectorAll('link[rel*="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
+          if (existingFavicons && existingFavicons.length > 0) {
+            existingFavicons.forEach(function(el) {
+              if (el.getAttribute('href') !== TARGET_FAVICON) {
+                el.setAttribute('href', TARGET_FAVICON);
+              }
+            });
+          } else {
+            var link = document.createElement('link');
+            link.rel = 'shortcut icon';
+            link.type = 'image/x-icon';
+            link.href = TARGET_FAVICON;
+            head.appendChild(link);
           }
-        });
-      } else {
-        var link = document.createElement('link');
-        link.rel = 'shortcut icon';
-        link.type = 'image/x-icon';
-        link.href = TARGET_FAVICON;
-        head.appendChild(link);
+        }
       }
     } catch(e) {}
   }
 
   function filterLoginOptions() {
     try {
-      syncFavicon();
+      syncFaviconAndTitle();
       var selects = document.querySelectorAll('select[id*="mx_Field_"], select.mx_Field_select, select#mx_Field_1');
       selects.forEach(function(sel) {
         if (DISABLE_3PID) {
@@ -23406,6 +23419,25 @@ async function syncElementBrandingDom(
       html = html.replace(/<style id="raven-branding-overrides">[\s\S]*?<\/style>/gi, '');
       html = html.replace(/<script id="raven-login-fields-sync">[\s\S]*?<\/script>/gi, '');
       html = html.replace(/<script id="raven-logo-redirect">[\s\S]*?<\/script>/gi, '');
+
+      // Update <title> tag and OpenGraph/Meta title tags with brandName
+      if (cleanBrandName) {
+        if (/<title\b[^>]*>[\s\S]*?<\/title>/i.test(html)) {
+          html = html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/gi, `<title>${cleanBrandName}</title>`);
+        } else if (html.includes('</head>')) {
+          html = html.replace('</head>', `  <title>${cleanBrandName}</title>\n</head>`);
+        } else if (html.includes('<head>')) {
+          html = html.replace('<head>', `<head>\n  <title>${cleanBrandName}</title>`);
+        }
+
+        // Also synchronize meta title tags if present
+        if (/<meta\b[^>]*property=["']og:title["'][^>]*>/i.test(html)) {
+          html = html.replace(/<meta\b[^>]*property=["']og:title["'][^>]*content=["'][^"']*["'][^>]*>/gi, `<meta property="og:title" content="${cleanBrandName}">`);
+        }
+        if (/<meta\b[^>]*name=["']twitter:title["'][^>]*>/i.test(html)) {
+          html = html.replace(/<meta\b[^>]*name=["']twitter:title["'][^>]*content=["'][^"']*["'][^>]*>/gi, `<meta name="twitter:title" content="${cleanBrandName}">`);
+        }
+      }
 
       // Update or inject Favicon in HTML head
       if (cleanFaviconUrl) {
@@ -24201,7 +24233,7 @@ app.post("/api/matrix/wallpaper/set-logo", authenticateToken, checkPermission(["
       diffSummary: cleanFileName ? `Set Element active logo to ${cleanFileName}` : "Reset Element logo to default"
     });
 
-    // Synchronize DOM overrides (Footer & Logo Click Link)
+    // Synchronize DOM overrides (Footer, Logo Click Link, Brand Name, Favicon)
     const effectiveFooterState = (
       elConfig.branding?.hide_auth_footer === true ||
       elConfig.branding?.show_auth_footer === false ||
@@ -24211,7 +24243,12 @@ app.post("/api/matrix/wallpaper/set-logo", authenticateToken, checkPermission(["
       elConfig.hide_powered_by === true
     ) ? false : true;
     const effectiveLogoClick = elConfig.branding?.logo_link_url || elConfig.branding?.logoLinkUrl || elConfig.branding?.welcome_logo_target_url || elConfig.branding?.auth_header_logo_target_url || elConfig.branding?.logo_target_url || "";
-    await syncElementBrandingDom(effectiveFooterState, effectiveLogoClick, activeConn);
+    await syncElementBrandingDom({
+      showAuthFooter: effectiveFooterState,
+      logoClickUrl: effectiveLogoClick,
+      faviconUrl: elConfig.branding?.favicon || "/favicon.ico",
+      brandName: elConfig.brand || "Element"
+    }, activeConn);
 
     const db = readDb();
     db.auditLogs.unshift({
@@ -24960,7 +24997,8 @@ app.post("/api/matrix/branding/save", authenticateToken, checkPermission(["Owner
       logoClickUrl: effectiveLogoClick,
       loginFields: loginFieldOptions,
       disable3pidLogin: elConfig.disable_3pid_login === true,
-      faviconUrl: elConfig.branding.favicon || "/favicon.ico"
+      faviconUrl: elConfig.branding.favicon || "/favicon.ico",
+      brandName: elConfig.brand || "Element"
     }, activeConn);
 
     // 9. Synchronize Password & Authentication Policy (/etc/matrix-synapse/conf.d/password.yaml) if supplied
