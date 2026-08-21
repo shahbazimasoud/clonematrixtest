@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.27.0";
+export const PANEL_VERSION = "2.28.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.28.0",
+    date: "2026-08-21",
+    title: "Light Mode Modal Harmonization & Dedicated Cron Schedule Creator",
+    changes: [
+      "Moved the Save & Sync Scheduler button directly below the Automated Backup Daemon Configuration card for streamlined UX.",
+      "Added 'New' cron schedule creator with dedicated modal, preset selectors, and immediate server crontab installation.",
+      "Completely purged mock cards from Active Server Schedules & Daemon Status, displaying only verified active cron jobs from the server with empty state handling.",
+      "Harmonized all scheduler modals (New Cron, Edit Cron, Delete Cron, Restore Confirmation, File Deletion, and Cron Syntax Guide) with full Light and Dark theme palette support."
+    ]
+  },
   {
     version: "2.27.0",
     date: "2026-08-21",

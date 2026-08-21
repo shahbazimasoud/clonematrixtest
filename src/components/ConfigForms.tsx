@@ -1474,6 +1474,18 @@ export default function ConfigForms({
   const [savingCronEdit, setSavingCronEdit] = useState<boolean>(false);
   const [deleteCronModal, setDeleteCronModal] = useState<{ id: string; title: string } | null>(null);
   const [isDeletingCron, setIsDeletingCron] = useState<boolean>(false);
+  const [newCronModal, setNewCronModal] = useState<{
+    open: boolean;
+    type: 'database' | 'config';
+    cron: string;
+    enabled: boolean;
+  }>({
+    open: false,
+    type: 'database',
+    cron: '0 2 * * *',
+    enabled: true
+  });
+  const [savingNewCron, setSavingNewCron] = useState<boolean>(false);
 
   const [includeSSL, setIncludeSSL] = useState(false);
   const [selectedBackupIds, setSelectedBackupIds] = useState<string[]>([]);
@@ -1737,6 +1749,38 @@ export default function ConfigForms({
       if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error communicating with server');
     } finally {
       setSavingCronEdit(false);
+    }
+  };
+
+  const handleSaveNewCron = async () => {
+    if (!authToken) return;
+    setSavingNewCron(true);
+    try {
+      const res = await fetch('/api/backups/scheduler/cron-new', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          type: newCronModal.type,
+          cron: newCronModal.cron,
+          enabled: newCronModal.enabled
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', data.message || (lang === 'fa' ? 'زمان‌بندی جدید با موفقیت ایجاد و روی سرور اعمال شد' : 'New cron schedule created and applied'));
+        setNewCronModal(prev => ({ ...prev, open: false }));
+        fetchBackupSettings();
+        fetchServerSchedules();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در ایجاد زمان‌بندی جدید' : 'Error creating new schedule'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error communicating with server');
+    } finally {
+      setSavingNewCron(false);
     }
   };
 
@@ -6553,127 +6597,175 @@ export default function ConfigForms({
                   </div>
 
                   {/* Right Column: Schedulers */}
-                  <div className={`spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 space-y-5 ${isRtl ? 'text-right' : 'text-left'}`}>
-                    <h4 className="text-sm font-bold text-white pb-3 border-b border-white/5 flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-cyan-400" />
-                        <span>{lang === 'fa' ? 'پیکربندی هوشمند زمان‌بندی (Cron Jobs)' : 'Automated Backup Daemon Configuration'}</span>
-                      </span>
-                    </h4>
-
-                    {/* Database Cron */}
-                    <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
-                      <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                        <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <input
-                            type="checkbox"
-                            id="db-sched-toggle"
-                            checked={backupSettings.dbSchedule?.enabled || false}
-                            onChange={(e) => setBackupSettings(prev => ({
-                              ...prev,
-                              dbSchedule: { ...prev.dbSchedule, enabled: e.target.checked }
-                            }))}
-                            disabled={isReadOnly}
-                            className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
-                          />
-                          <label htmlFor="db-sched-toggle" className="text-xs font-bold text-white cursor-pointer">
-                            {lang === 'fa' ? 'پشتیبان‌گیری خودکار دیتابیس (Cron Job)' : 'Automated Database Backup Schedule (Cron Job)'}
-                          </label>
-                        </div>
-                        <Database className="w-4 h-4 text-cyan-400" />
+                  <div className={`spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 space-y-5 flex flex-col justify-between ${isRtl ? 'text-right' : 'text-left'}`}>
+                    <div className="space-y-5">
+                      <div className={`flex items-center justify-between pb-3 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-cyan-400" />
+                          <span>{lang === 'fa' ? 'پیکربندی هوشمند زمان‌بندی (Cron Jobs)' : 'Automated Backup Daemon Configuration'}</span>
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewCronModal({
+                              open: true,
+                              type: 'database',
+                              cron: '0 2 * * *',
+                              enabled: true
+                            });
+                          }}
+                          disabled={isReadOnly}
+                          className="px-2.5 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>{lang === 'fa' ? 'جدید (New)' : 'New'}</span>
+                        </button>
                       </div>
-                      <div className="space-y-1.5">
+
+                      {/* Database Cron */}
+                      <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
                         <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <label className="block text-[10px] text-slate-400">
-                            {lang === 'fa' ? 'عبارت زمان‌بندی کرون (Cron Expression)' : 'Cron Expression'}
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => setCronHelpModal({ open: true, target: 'db' })}
-                            className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 hover:underline cursor-pointer"
-                          >
-                            <HelpCircle className="w-3 h-3" />
-                            <span>{lang === 'fa' ? 'راهنمای کرون و الگوها' : 'Cron Syntax Guide'}</span>
-                          </button>
+                          <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                            <input
+                              type="checkbox"
+                              id="db-sched-toggle"
+                              checked={backupSettings.dbSchedule?.enabled || false}
+                              onChange={(e) => setBackupSettings(prev => ({
+                                ...prev,
+                                dbSchedule: { ...prev.dbSchedule, enabled: e.target.checked }
+                              }))}
+                              disabled={isReadOnly}
+                              className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+                            />
+                            <label htmlFor="db-sched-toggle" className="text-xs font-bold text-white cursor-pointer">
+                              {lang === 'fa' ? 'پشتیبان‌گیری خودکار دیتابیس (Cron Job)' : 'Automated Database Backup Schedule (Cron Job)'}
+                            </label>
+                          </div>
+                          <Database className="w-4 h-4 text-cyan-400" />
                         </div>
-                        <div className={`flex gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <input
-                            type="text"
-                            value={backupSettings.dbSchedule?.cron || '0 2 * * *'}
-                            onChange={(e) => setBackupSettings(prev => ({
-                              ...prev,
-                              dbSchedule: { ...prev.dbSchedule, cron: e.target.value }
-                            }))}
-                            disabled={isReadOnly || !backupSettings.dbSchedule?.enabled}
-                            className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-cyan-500/50 text-left disabled:opacity-50"
-                            placeholder="0 2 * * *"
-                          />
+                        <div className="space-y-1.5">
+                          <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                            <label className="block text-[10px] text-slate-400">
+                              {lang === 'fa' ? 'عبارت زمان‌بندی کرون (Cron Expression)' : 'Cron Expression'}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setCronHelpModal({ open: true, target: 'db' })}
+                              className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 hover:underline cursor-pointer"
+                            >
+                              <HelpCircle className="w-3 h-3" />
+                              <span>{lang === 'fa' ? 'راهنمای کرون و الگوها' : 'Cron Syntax Guide'}</span>
+                            </button>
+                          </div>
+                          <div className={`flex gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                            <input
+                              type="text"
+                              value={backupSettings.dbSchedule?.cron || '0 2 * * *'}
+                              onChange={(e) => setBackupSettings(prev => ({
+                                ...prev,
+                                dbSchedule: { ...prev.dbSchedule, cron: e.target.value }
+                              }))}
+                              disabled={isReadOnly || !backupSettings.dbSchedule?.enabled}
+                              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-cyan-500/50 text-left disabled:opacity-50"
+                              placeholder="0 2 * * *"
+                            />
+                          </div>
+                          <span className={`text-[9px] text-slate-400 block ${isRtl ? 'text-right' : 'text-left'}`}>
+                            {lang === 'fa' ? '💡 پیش‌فرض: 0 2 * * * (هر روز ساعت ۲:۰۰ بامداد)' : '💡 Default: 0 2 * * * (Every day at 2:00 AM)'}
+                          </span>
                         </div>
-                        <span className={`text-[9px] text-slate-400 block ${isRtl ? 'text-right' : 'text-left'}`}>
-                          {lang === 'fa' ? '💡 پیش‌فرض: 0 2 * * * (هر روز ساعت ۲:۰۰ بامداد)' : '💡 Default: 0 2 * * * (Every day at 2:00 AM)'}
-                        </span>
+                      </div>
+
+                      {/* Config Cron */}
+                      <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
+                        <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                            <input
+                              type="checkbox"
+                              id="cfg-sched-toggle"
+                              checked={backupSettings.configSchedule?.enabled || false}
+                              onChange={(e) => setBackupSettings(prev => ({
+                                ...prev,
+                                configSchedule: { ...prev.configSchedule, enabled: e.target.checked }
+                              }))}
+                              disabled={isReadOnly}
+                              className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
+                            />
+                            <label htmlFor="cfg-sched-toggle" className="text-xs font-bold text-white cursor-pointer">
+                              {lang === 'fa' ? 'پشتیبان‌گیری خودکار تنظیمات سرور (Cron Job)' : 'Automated Configuration Backup Schedule'}
+                            </label>
+                          </div>
+                          <Calendar className="w-4 h-4 text-amber-400" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                            <label className="block text-[10px] text-slate-400">
+                              {lang === 'fa' ? 'عبارت زمان‌بندی کرون (Cron Expression)' : 'Cron Expression'}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setCronHelpModal({ open: true, target: 'config' })}
+                              className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1 hover:underline cursor-pointer"
+                            >
+                              <HelpCircle className="w-3 h-3" />
+                              <span>{lang === 'fa' ? 'راهنمای کرون و الگوها' : 'Cron Syntax Guide'}</span>
+                            </button>
+                          </div>
+                          <div className={`flex gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                            <input
+                              type="text"
+                              value={backupSettings.configSchedule?.cron || '0 3 * * *'}
+                              onChange={(e) => setBackupSettings(prev => ({
+                                ...prev,
+                                configSchedule: { ...prev.configSchedule, cron: e.target.value }
+                              }))}
+                              disabled={isReadOnly || !backupSettings.configSchedule?.enabled}
+                              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
+                              placeholder="0 3 * * *"
+                            />
+                          </div>
+                          <span className={`text-[9px] text-slate-400 block ${isRtl ? 'text-right' : 'text-left'}`}>
+                            {lang === 'fa' ? '💡 پیش‌فرض: 0 3 * * * (هر روز ساعت ۳:۰۰ بامداد)' : '💡 Default: 0 3 * * * (Every day at 3:00 AM)'}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Config Cron */}
-                    <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
-                      <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                        <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <input
-                            type="checkbox"
-                            id="cfg-sched-toggle"
-                            checked={backupSettings.configSchedule?.enabled || false}
-                            onChange={(e) => setBackupSettings(prev => ({
-                              ...prev,
-                              configSchedule: { ...prev.configSchedule, enabled: e.target.checked }
-                            }))}
-                            disabled={isReadOnly}
-                            className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
-                          />
-                          <label htmlFor="cfg-sched-toggle" className="text-xs font-bold text-white cursor-pointer">
-                            {lang === 'fa' ? 'پشتیبان‌گیری خودکار تنظیمات سرور (Cron Job)' : 'Automated Configuration Backup Schedule'}
-                          </label>
-                        </div>
-                        <Calendar className="w-4 h-4 text-amber-400" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <label className="block text-[10px] text-slate-400">
-                            {lang === 'fa' ? 'عبارت زمان‌بندی کرون (Cron Expression)' : 'Cron Expression'}
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => setCronHelpModal({ open: true, target: 'config' })}
-                            className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1 hover:underline cursor-pointer"
-                          >
-                            <HelpCircle className="w-3 h-3" />
-                            <span>{lang === 'fa' ? 'راهنمای کرون و الگوها' : 'Cron Syntax Guide'}</span>
-                          </button>
-                        </div>
-                        <div className={`flex gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <input
-                            type="text"
-                            value={backupSettings.configSchedule?.cron || '0 3 * * *'}
-                            onChange={(e) => setBackupSettings(prev => ({
-                              ...prev,
-                              configSchedule: { ...prev.configSchedule, cron: e.target.value }
-                            }))}
-                            disabled={isReadOnly || !backupSettings.configSchedule?.enabled}
-                            className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
-                            placeholder="0 3 * * *"
-                          />
-                        </div>
-                        <span className={`text-[9px] text-slate-400 block ${isRtl ? 'text-right' : 'text-left'}`}>
-                          {lang === 'fa' ? '💡 پیش‌فرض: 0 3 * * * (هر روز ساعت ۳:۰۰ بامداد)' : '💡 Default: 0 3 * * * (Every day at 3:00 AM)'}
-                        </span>
-                      </div>
+                    {/* Action Buttons at the bottom of the Configuration Card */}
+                    <div className={`flex items-center justify-between gap-2 pt-4 border-t border-white/5 mt-4 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewCronModal({
+                            open: true,
+                            type: 'database',
+                            cron: '0 2 * * *',
+                            enabled: true
+                          });
+                        }}
+                        disabled={isReadOnly}
+                        className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{lang === 'fa' ? 'تعریف کرون جدید (New)' : 'New Cron'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={saveBackupSettings}
+                        disabled={savingBackupSettings || isReadOnly}
+                        className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {savingBackupSettings ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        <span>{lang === 'fa' ? 'ذخیره و اعمال کرون روی سرور' : 'Save & Sync Scheduler to Server'}</span>
+                      </button>
                     </div>
                   </div>
                 </div>
 
                 {/* Active Server Schedules & Crontab Status Section */}
                 <div className={`spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 space-y-4 ${isRtl ? 'text-right' : 'text-left'}`}>
-                  <div className={`flex items-center justify-between pb-3 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/5 ${isRtl ? 'sm:flex-row-reverse' : ''}`}>
                     <div className="flex items-center gap-2.5">
                       <Clock className="w-4 h-4 text-cyan-400" />
                       <div>
@@ -6685,149 +6777,196 @@ export default function ConfigForms({
                         </p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        fetchServerSchedules();
-                        fetchSchedulerBackups();
-                      }}
-                      disabled={loadingServerSchedules || loadingSchedulerBackups}
-                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-medium border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${loadingServerSchedules ? 'animate-spin text-amber-400' : ''}`} />
-                      <span>{lang === 'fa' ? 'بروزرسانی وضعیت سرور' : 'Sync Crontab Status'}</span>
-                    </button>
+
+                    <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewCronModal({
+                            open: true,
+                            type: 'database',
+                            cron: '0 2 * * *',
+                            enabled: true
+                          });
+                        }}
+                        disabled={isReadOnly}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{lang === 'fa' ? 'تعریف کرون جدید (New)' : 'New Cron'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          fetchServerSchedules();
+                          fetchSchedulerBackups();
+                        }}
+                        disabled={loadingServerSchedules || loadingSchedulerBackups}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-medium border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${loadingServerSchedules ? 'animate-spin text-amber-400' : ''}`} />
+                        <span>{lang === 'fa' ? 'بروزرسانی وضعیت سرور' : 'Sync Crontab Status'}</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {(serverSchedulesData?.schedules || [
-                      {
-                        id: "db-schedule",
-                        title: "Automated Database Backup (PostgreSQL)",
-                        titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
-                        type: "database",
-                        enabled: backupSettings.dbSchedule?.enabled || false,
-                        cron: backupSettings.dbSchedule?.cron || "0 2 * * *",
-                        targetPath: backupSettings.backupPath || "/opt/matrix-element-Backup/scheduler/",
-                        scriptPath: "/opt/matrix-element-Backup/scripts/matrix_auto_db_backup.sh",
-                        retentionDays: backupSettings.retentionDays || 30,
-                        installedOnServer: backupSettings.dbSchedule?.enabled || false,
-                        lastStatus: backupSettings.dbSchedule?.enabled ? "active" : "disabled"
-                      },
-                      {
-                        id: "config-schedule",
-                        title: "Automated Configuration Backup (Matrix & Element)",
-                        titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
-                        type: "config",
-                        enabled: backupSettings.configSchedule?.enabled || false,
-                        cron: backupSettings.configSchedule?.cron || "0 3 * * *",
-                        targetPath: backupSettings.backupPath || "/opt/matrix-element-Backup/scheduler/",
-                        scriptPath: "/opt/matrix-element-Backup/scripts/matrix_auto_config_backup.sh",
-                        retentionDays: backupSettings.retentionDays || 30,
-                        installedOnServer: backupSettings.configSchedule?.enabled || false,
-                        lastStatus: backupSettings.configSchedule?.enabled ? "active" : "disabled"
-                      }
-                    ]).map((sched) => {
-                      const isDb = sched.type === "database";
-                      const isInstalled = sched.installedOnServer || (sched.enabled && sched.lastStatus === "active");
+                  {/* Render dynamic active/installed schedules or empty state without any mock cards */}
+                  {(() => {
+                    const activeSchedules = (serverSchedulesData?.schedules || []).filter(sched => sched.enabled || sched.installedOnServer);
 
+                    if (loadingServerSchedules && activeSchedules.length === 0) {
                       return (
-                        <div key={sched.id} className="bg-black/30 rounded-xl p-4 border border-white/5 space-y-3 flex flex-col justify-between">
-                          <div className="space-y-3">
-                            <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                              <span className="text-xs font-bold text-white flex items-center gap-2">
-                                {isDb ? <Database className="w-3.5 h-3.5 text-cyan-400" /> : <FileJson className="w-3.5 h-3.5 text-amber-400" />}
-                                <span>{lang === 'fa' ? sched.titleFa : sched.title}</span>
-                              </span>
-                              {sched.enabled && isInstalled ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                  <span>{lang === 'fa' ? 'فعال در کرون‌تب' : 'Active'}</span>
-                                </span>
-                              ) : sched.enabled ? (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
-                                  <span>{lang === 'fa' ? 'در انتظار همگام‌سازی' : 'Pending Sync'}</span>
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 text-[10px] font-medium">
-                                  {lang === 'fa' ? 'غیرفعال' : 'Disabled'}
-                                </span>
-                              )}
-                            </div>
+                        <div className="p-8 text-center space-y-3 bg-black/20 rounded-xl border border-white/5">
+                          <RefreshCw className="w-6 h-6 animate-spin text-cyan-400 mx-auto" />
+                          <p className="text-xs text-slate-400">
+                            {lang === 'fa' ? 'در حال بررسی وضعیت Crontab روی سرور...' : 'Checking Crontab schedules on server...'}
+                          </p>
+                        </div>
+                      );
+                    }
 
-                            <div className="space-y-1 text-[11px] text-slate-300 font-mono">
-                              <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                                <span className="text-slate-500">{lang === 'fa' ? 'عبارت کرون:' : 'Cron Spec:'}</span>
-                                <span className={`${isDb ? 'text-cyan-300' : 'text-amber-300'} font-bold`}>{sched.cron || '0 2 * * *'}</span>
-                              </div>
-                              <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                                <span className="text-slate-500">{lang === 'fa' ? 'مسیر مقصد:' : 'Target Dir:'}</span>
-                                <span className="text-slate-300 select-all">{sched.targetPath || backupSettings.backupPath || '/opt/matrix-element-Backup/scheduler/'}</span>
-                              </div>
-                              <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                                <span className="text-slate-500">{lang === 'fa' ? 'اسکریپت اجراکننده:' : 'Script:'}</span>
-                                <span className="text-slate-400 text-[10px] select-all">{sched.scriptPath}</span>
-                              </div>
-                              <div className={`flex justify-between py-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                                <span className="text-slate-500">{lang === 'fa' ? 'دوره نگهداری:' : 'Retention:'}</span>
-                                <span className="text-amber-400">{sched.retentionDays || backupSettings.retentionDays || 30} {lang === 'fa' ? 'روز' : 'Days'}</span>
-                              </div>
-                            </div>
+                    if (activeSchedules.length === 0) {
+                      return (
+                        <div className="p-8 text-center space-y-3 bg-black/20 rounded-xl border border-white/5">
+                          <Clock className="w-8 h-8 text-slate-600 mx-auto" />
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-slate-300">
+                              {lang === 'fa' ? 'هیچ زمان‌بندی فعالی در کرون‌تب سرور ثبت نشده است' : 'No active cron jobs registered on server'}
+                            </p>
+                            <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                              {lang === 'fa'
+                                ? 'می‌توانید با فعال کردن تیک‌های بالا و کلیک روی دکمه "ذخیره و اعمال کرون روی سرور" یا دکمه "تعریف کرون جدید (New)"، زمان‌بندی خودکار را فعال نمایید.'
+                                : 'Enable the cron schedules in the configuration above and click Save & Sync, or click "New Cron" to define a new schedule.'}
+                            </p>
                           </div>
-
-                          {/* Action Controls for this Schedule */}
-                          <div className={`flex items-center gap-2 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-end'}`}>
+                          <div className="pt-2">
                             <button
                               type="button"
-                              onClick={() => handleTriggerManualCron(isDb ? 'database' : 'config')}
-                              disabled={isReadOnly || triggeringManualCron !== null}
-                              className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                              title={lang === 'fa' ? 'اجرای فوری اسکریپت پشتیبان‌گیری همین حالا' : 'Run backup script right now'}
-                            >
-                              {triggeringManualCron === (isDb ? 'database' : 'config') ? (
-                                <RefreshCw className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Play className="w-3 h-3" />
-                              )}
-                              <span>{lang === 'fa' ? 'اجرای فوری' : 'Run Now'}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setEditingCronItem({
-                                id: sched.id,
-                                title: lang === 'fa' ? sched.titleFa : sched.title,
-                                cron: sched.cron,
-                                enabled: sched.enabled
-                              })}
+                              onClick={() => {
+                                setNewCronModal({
+                                  open: true,
+                                  type: 'database',
+                                  cron: '0 2 * * *',
+                                  enabled: true
+                                });
+                              }}
                               disabled={isReadOnly}
-                              className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer"
-                              title={lang === 'fa' ? 'ویرایش عبارت زمان‌بندی کرون' : 'Edit cron expression'}
+                              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md transition-all inline-flex items-center gap-1.5 cursor-pointer"
                             >
-                              <Clock className="w-3 h-3 text-amber-400" />
-                              <span>{lang === 'fa' ? 'ویرایش کرون' : 'Edit'}</span>
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>{lang === 'fa' ? 'تعریف کرون جدید (New Schedule)' : 'Add New Cron Schedule'}</span>
                             </button>
-
-                            {sched.enabled && (
-                              <button
-                                type="button"
-                                onClick={() => setDeleteCronModal({
-                                  id: sched.id,
-                                  title: lang === 'fa' ? sched.titleFa : sched.title
-                                })}
-                                disabled={isReadOnly}
-                                className="px-2 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer"
-                                title={lang === 'fa' ? 'حذف و غیرفعال‌سازی این زمان‌بندی از سرور' : 'Disable & remove schedule from crontab'}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>{lang === 'fa' ? 'حذف' : 'Delete'}</span>
-                              </button>
-                            )}
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {activeSchedules.map((sched) => {
+                          const isDb = sched.type === "database";
+                          const isInstalled = sched.installedOnServer || (sched.enabled && sched.lastStatus === "active");
+
+                          return (
+                            <div key={sched.id} className="bg-black/30 rounded-xl p-4 border border-white/5 space-y-3 flex flex-col justify-between">
+                              <div className="space-y-3">
+                                <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                  <span className="text-xs font-bold text-white flex items-center gap-2">
+                                    {isDb ? <Database className="w-3.5 h-3.5 text-cyan-400" /> : <FileJson className="w-3.5 h-3.5 text-amber-400" />}
+                                    <span>{lang === 'fa' ? sched.titleFa : sched.title}</span>
+                                  </span>
+                                  {sched.enabled && isInstalled ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                      <span>{lang === 'fa' ? 'فعال در کرون‌تب' : 'Active'}</span>
+                                    </span>
+                                  ) : sched.enabled ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
+                                      <span>{lang === 'fa' ? 'در انتظار همگام‌سازی' : 'Pending Sync'}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 text-[10px] font-medium">
+                                      {lang === 'fa' ? 'غیرفعال' : 'Disabled'}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="space-y-1 text-[11px] text-slate-300 font-mono">
+                                  <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                    <span className="text-slate-500">{lang === 'fa' ? 'عبارت کرون:' : 'Cron Spec:'}</span>
+                                    <span className={`${isDb ? 'text-cyan-300' : 'text-amber-300'} font-bold`}>{sched.cron || '0 2 * * *'}</span>
+                                  </div>
+                                  <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                    <span className="text-slate-500">{lang === 'fa' ? 'مسیر مقصد:' : 'Target Dir:'}</span>
+                                    <span className="text-slate-300 select-all">{sched.targetPath || backupSettings.backupPath || '/opt/matrix-element-Backup/scheduler/'}</span>
+                                  </div>
+                                  <div className={`flex justify-between py-1 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                    <span className="text-slate-500">{lang === 'fa' ? 'اسکریپت اجراکننده:' : 'Script:'}</span>
+                                    <span className="text-slate-400 text-[10px] select-all">{sched.scriptPath}</span>
+                                  </div>
+                                  <div className={`flex justify-between py-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                    <span className="text-slate-500">{lang === 'fa' ? 'دوره نگهداری:' : 'Retention:'}</span>
+                                    <span className="text-amber-400">{sched.retentionDays || backupSettings.retentionDays || 30} {lang === 'fa' ? 'روز' : 'Days'}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Action Controls for this Schedule */}
+                              <div className={`flex items-center gap-2 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-end'}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTriggerManualCron(isDb ? 'database' : 'config')}
+                                  disabled={isReadOnly || triggeringManualCron !== null}
+                                  className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20 text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                                  title={lang === 'fa' ? 'اجرای فوری اسکریپت پشتیبان‌گیری همین حالا' : 'Run backup script right now'}
+                                >
+                                  {triggeringManualCron === (isDb ? 'database' : 'config') ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Play className="w-3 h-3" />
+                                  )}
+                                  <span>{lang === 'fa' ? 'اجرای فوری' : 'Run Now'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingCronItem({
+                                    id: sched.id,
+                                    title: lang === 'fa' ? sched.titleFa : sched.title,
+                                    cron: sched.cron,
+                                    enabled: sched.enabled
+                                  })}
+                                  disabled={isReadOnly}
+                                  className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer"
+                                  title={lang === 'fa' ? 'ویرایش عبارت زمان‌بندی کرون' : 'Edit cron expression'}
+                                >
+                                  <Clock className="w-3 h-3 text-amber-400" />
+                                  <span>{lang === 'fa' ? 'ویرایش کرون' : 'Edit'}</span>
+                                </button>
+
+                                {sched.enabled && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteCronModal({
+                                      id: sched.id,
+                                      title: lang === 'fa' ? sched.titleFa : sched.title
+                                    })}
+                                    disabled={isReadOnly}
+                                    className="px-2 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer"
+                                    title={lang === 'fa' ? 'حذف و غیرفعال‌سازی این زمان‌بندی از سرور' : 'Disable & remove schedule from crontab'}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>{lang === 'fa' ? 'حذف' : 'Delete'}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Automated Scheduler Backup Storage Archives List */}
@@ -7015,37 +7154,200 @@ export default function ConfigForms({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
 
-                {!isReadOnly && (
-                  <div className={`flex pt-4 border-t border-white/5 ${isRtl ? 'justify-start' : 'justify-end'}`}>
+            {/* Modal to Define New Cron Schedule */}
+            {newCronModal.open && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-slate-200 text-slate-900' 
+                    : 'bg-slate-900 border border-white/10 text-white'
+                }`}>
+                  <div className={`flex items-center justify-between pb-3 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isLightMode ? 'bg-amber-50 border border-amber-200 text-amber-600' : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'}`}>
+                        <Plus className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                          {lang === 'fa' ? 'تعریف زمان‌بندی کرون جدید (New Cron Schedule)' : 'Add New Cron Schedule'}
+                        </h3>
+                        <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {lang === 'fa' ? 'ایجاد تسک زمان‌بندی خودکار و نصب در کرون‌تب لینوکس سرور' : 'Create automated schedule and install in server crontab'}
+                        </p>
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      onClick={saveBackupSettings}
-                      disabled={savingBackupSettings}
-                      className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer hover:shadow-amber-500/10 disabled:opacity-50"
+                      onClick={() => setNewCronModal(prev => ({ ...prev, open: false }))}
+                      className={`p-1.5 rounded-lg text-xs cursor-pointer transition-all ${isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'}`}
                     >
-                      {savingBackupSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                      <span>{lang === 'fa' ? 'ذخیره و اعمال تنظیمات زمان‌بندی روی سرور' : 'Save & Sync Scheduler to Server'}</span>
+                      <XCircle className="w-5 h-5" />
                     </button>
                   </div>
-                )}
+
+                  <div className="space-y-4">
+                    {/* Target Backup Type */}
+                    <div className="space-y-1.5">
+                      <label className={`block text-xs font-semibold ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {lang === 'fa' ? 'نوع تسک پشتیبان‌گیری:' : 'Backup Task Type:'}
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setNewCronModal(prev => ({ ...prev, type: 'database', cron: '0 2 * * *' }))}
+                          className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                            newCronModal.type === 'database'
+                              ? isLightMode
+                                ? 'bg-cyan-50 border-cyan-400 text-cyan-800'
+                                : 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
+                              : isLightMode
+                                ? 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                : 'bg-black/20 border-white/5 text-slate-400 hover:bg-white/5'
+                          }`}
+                        >
+                          <Database className="w-4 h-4 text-cyan-500" />
+                          <span>{lang === 'fa' ? 'پایگاه داده (PostgreSQL)' : 'Database (PostgreSQL)'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setNewCronModal(prev => ({ ...prev, type: 'config', cron: '0 3 * * *' }))}
+                          className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                            newCronModal.type === 'config'
+                              ? isLightMode
+                                ? 'bg-amber-50 border-amber-400 text-amber-800'
+                                : 'bg-amber-500/20 border-amber-500 text-amber-300'
+                              : isLightMode
+                                ? 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                : 'bg-black/20 border-white/5 text-slate-400 hover:bg-white/5'
+                          }`}
+                        >
+                          <FileJson className="w-4 h-4 text-amber-500" />
+                          <span>{lang === 'fa' ? 'تنظیمات سرور (Config)' : 'Server Config'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Enable Toggle */}
+                    <div className="space-y-2">
+                      <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <input
+                          type="checkbox"
+                          id="new-cron-enabled"
+                          checked={newCronModal.enabled}
+                          onChange={(e) => setNewCronModal(prev => ({ ...prev, enabled: e.target.checked }))}
+                          className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 w-4 h-4 cursor-pointer"
+                        />
+                        <label htmlFor="new-cron-enabled" className={`text-xs font-bold cursor-pointer ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                          {lang === 'fa' ? 'فعال‌سازی بلافاصله در کرون‌تب سرور' : 'Enable immediately in Crontab'}
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Cron Expression */}
+                    <div className="space-y-1.5">
+                      <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <label className={`block text-xs font-semibold ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
+                          {lang === 'fa' ? 'عبارت زمان‌بندی کرون (Cron Expression)' : 'Cron Expression'}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setCronHelpModal({ open: true, target: newCronModal.type === 'database' ? 'db' : 'config' })}
+                          className="text-[10px] text-amber-500 hover:text-amber-600 flex items-center gap-1 hover:underline cursor-pointer"
+                        >
+                          <HelpCircle className="w-3 h-3" />
+                          <span>{lang === 'fa' ? 'راهنمای کرون' : 'Cron Guide'}</span>
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={newCronModal.cron}
+                        onChange={(e) => setNewCronModal(prev => ({ ...prev, cron: e.target.value }))}
+                        className={`w-full rounded-xl px-3 py-2.5 text-xs font-mono text-left focus:outline-none ${
+                          isLightMode
+                            ? 'bg-slate-50 border border-slate-200 text-slate-900 focus:border-amber-500'
+                            : 'bg-black/40 border border-white/10 text-cyan-300 focus:border-amber-500/50'
+                        }`}
+                        placeholder="0 2 * * *"
+                      />
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="space-y-1.5">
+                      <span className={`text-[11px] font-semibold block ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {lang === 'fa' ? 'الگوهای سریع:' : 'Quick Presets:'}
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                        {[
+                          { labelFa: 'هر روز ساعت ۲:۰۰ بامداد', labelEn: 'Daily at 2:00 AM', cron: '0 2 * * *' },
+                          { labelFa: 'هر روز ساعت ۳:۰۰ بامداد', labelEn: 'Daily at 3:00 AM', cron: '0 3 * * *' },
+                          { labelFa: 'هر ۶ ساعت یک‌بار', labelEn: 'Every 6 hours', cron: '0 */6 * * *' },
+                          { labelFa: 'هر ۱۲ ساعت یک‌بار', labelEn: 'Every 12 hours', cron: '0 */12 * * *' },
+                          { labelFa: 'هفتگی (یکشنبه‌ها ۳:۰۰)', labelEn: 'Weekly on Sun 3 AM', cron: '0 3 * * 0' }
+                        ].map((p, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setNewCronModal(prev => ({ ...prev, cron: p.cron, enabled: true }))}
+                            className={`p-2 rounded-lg text-left transition-all flex items-center justify-between border cursor-pointer ${
+                              isLightMode
+                                ? 'bg-slate-50 hover:bg-amber-50/80 border-slate-200 text-slate-700 hover:text-amber-900 hover:border-amber-300'
+                                : 'bg-black/30 hover:bg-amber-500/10 border-white/5 hover:border-amber-500/20 text-slate-300 hover:text-amber-300'
+                            }`}
+                          >
+                            <span>{lang === 'fa' ? p.labelFa : p.labelEn}</span>
+                            <span className={`font-mono text-[9px] ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{p.cron}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-center justify-end gap-2 pt-3 border-t ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setNewCronModal(prev => ({ ...prev, open: false }))}
+                      className={`px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveNewCron}
+                      disabled={savingNewCron}
+                      className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md"
+                    >
+                      {savingNewCron ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'ایجاد و ثبت در کرون‌تب سرور' : 'Create & Sync to Server'}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
             {/* Modal to Edit Specific Cron Schedule */}
             {editingCronItem && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
-                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up bg-slate-900 border border-white/10 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
-                  <div className={`flex items-center justify-between pb-3 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-slate-200 text-slate-900' 
+                    : 'bg-slate-900 border border-white/10 text-white'
+                }`}>
+                  <div className={`flex items-center justify-between pb-3 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isLightMode ? 'bg-amber-50 border border-amber-200 text-amber-600' : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'}`}>
                         <Clock className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-white">
+                        <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                           {lang === 'fa' ? `ویرایش زمان‌بندی: ${editingCronItem.title}` : `Edit Schedule: ${editingCronItem.title}`}
                         </h3>
-                        <p className="text-[10px] text-slate-400">
+                        <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                           {lang === 'fa' ? 'تنظیم عبارت کرون و همگام‌سازی فوری با سرور مقصد' : 'Set cron expression and sync with server crontab'}
                         </p>
                       </div>
@@ -7053,7 +7355,7 @@ export default function ConfigForms({
                     <button
                       type="button"
                       onClick={() => setEditingCronItem(null)}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs cursor-pointer transition-all"
+                      className={`p-1.5 rounded-lg text-xs cursor-pointer transition-all ${isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'}`}
                     >
                       <XCircle className="w-5 h-5" />
                     </button>
@@ -7069,14 +7371,14 @@ export default function ConfigForms({
                           onChange={(e) => setEditingCronItem(prev => prev ? ({ ...prev, enabled: e.target.checked }) : null)}
                           className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 w-4 h-4 cursor-pointer"
                         />
-                        <label htmlFor="edit-cron-enabled" className="text-xs font-bold text-white cursor-pointer">
+                        <label htmlFor="edit-cron-enabled" className={`text-xs font-bold cursor-pointer ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
                           {lang === 'fa' ? 'فعال بودن این زمان‌بندی در کرون‌تب' : 'Enable this schedule in Crontab'}
                         </label>
                       </div>
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold text-slate-300">
+                      <label className={`block text-xs font-semibold ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
                         {lang === 'fa' ? 'عبارت زمان‌بندی کرون (Cron Expression)' : 'Cron Expression'}
                       </label>
                       <input
@@ -7084,14 +7386,18 @@ export default function ConfigForms({
                         value={editingCronItem.cron}
                         onChange={(e) => setEditingCronItem(prev => prev ? ({ ...prev, cron: e.target.value }) : null)}
                         disabled={!editingCronItem.enabled}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
+                        className={`w-full rounded-xl px-3 py-2.5 text-xs font-mono text-left disabled:opacity-50 focus:outline-none ${
+                          isLightMode
+                            ? 'bg-slate-50 border border-slate-200 text-slate-900 focus:border-amber-500'
+                            : 'bg-black/40 border border-white/10 text-cyan-300 focus:border-amber-500/50'
+                        }`}
                         placeholder="0 2 * * *"
                       />
                     </div>
 
                     {/* Quick Preset Selector */}
                     <div className="space-y-1.5">
-                      <span className="text-[11px] font-semibold text-slate-400 block">
+                      <span className={`text-[11px] font-semibold block ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
                         {lang === 'fa' ? 'الگوهای سریع:' : 'Quick Presets:'}
                       </span>
                       <div className="grid grid-cols-2 gap-1.5 text-[10px]">
@@ -7106,21 +7412,27 @@ export default function ConfigForms({
                             key={idx}
                             type="button"
                             onClick={() => setEditingCronItem(prev => prev ? ({ ...prev, cron: p.cron, enabled: true }) : null)}
-                            className="bg-black/30 hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/20 rounded-lg p-2 text-left transition-all text-slate-300 hover:text-amber-300 flex items-center justify-between"
+                            className={`p-2 rounded-lg text-left transition-all flex items-center justify-between border cursor-pointer ${
+                              isLightMode
+                                ? 'bg-slate-50 hover:bg-amber-50/80 border-slate-200 text-slate-700 hover:text-amber-900 hover:border-amber-300'
+                                : 'bg-black/30 hover:bg-amber-500/10 border-white/5 hover:border-amber-500/20 text-slate-300 hover:text-amber-300'
+                            }`}
                           >
                             <span>{lang === 'fa' ? p.labelFa : p.labelEn}</span>
-                            <span className="font-mono text-slate-500 text-[9px]">{p.cron}</span>
+                            <span className={`font-mono text-[9px] ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`}>{p.cron}</span>
                           </button>
                         ))}
                       </div>
                     </div>
                   </div>
 
-                  <div className={`flex items-center justify-end gap-2 pt-3 border-t border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-end gap-2 pt-3 border-t ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <button
                       type="button"
                       onClick={() => setEditingCronItem(null)}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                      className={`px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
                     >
                       {lang === 'fa' ? 'انصراف' : 'Cancel'}
                     </button>
@@ -7128,7 +7440,7 @@ export default function ConfigForms({
                       type="button"
                       onClick={handleSaveCronEdit}
                       disabled={savingCronEdit}
-                      className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md"
                     >
                       {savingCronEdit ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                       <span>{lang === 'fa' ? 'ذخیره و اعمال روی سرور' : 'Save & Sync to Server'}</span>
@@ -7141,18 +7453,22 @@ export default function ConfigForms({
             {/* Modal to Confirm Deletion of Cron Schedule */}
             {deleteCronModal && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
-                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up bg-slate-900 border border-red-500/20 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
-                  <div className={`flex items-center gap-3 text-red-400 pb-2 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-red-200 text-slate-900' 
+                    : 'bg-slate-900 border border-red-500/20 text-white'
+                }`}>
+                  <div className={`flex items-center gap-3 text-red-500 pb-2 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <AlertTriangle className="w-6 h-6" />
                     <div>
-                      <h3 className="text-sm font-bold text-white">
+                      <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                         {lang === 'fa' ? 'حذف و غیرفعال‌سازی زمان‌بندی کرون' : 'Delete & Disable Cron Schedule'}
                       </h3>
-                      <p className="text-[10px] text-slate-400">{deleteCronModal.title}</p>
+                      <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{deleteCronModal.title}</p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className={`text-xs leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                     {lang === 'fa' 
                       ? 'آیا از حذف این زمان‌بندی خودکار از Crontab سرور اطمینان دارید؟ با تایید این مورد، اسکریپت پشتیبان‌گیری دیگر به صورت خودکار اجرا نخواهد شد.' 
                       : 'Are you sure you want to disable and remove this scheduled backup from the server crontab?'}
@@ -7162,7 +7478,9 @@ export default function ConfigForms({
                     <button
                       type="button"
                       onClick={() => setDeleteCronModal(null)}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                      className={`px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
                     >
                       {lang === 'fa' ? 'انصراف' : 'Cancel'}
                     </button>
@@ -7170,7 +7488,7 @@ export default function ConfigForms({
                       type="button"
                       onClick={handleDeleteCron}
                       disabled={isDeletingCron}
-                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md"
                     >
                       {isDeletingCron ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                       <span>{lang === 'fa' ? 'حذف از کرون‌تب' : 'Delete from Crontab'}</span>
@@ -7183,14 +7501,18 @@ export default function ConfigForms({
             {/* Modal to Confirm Restore of Scheduler Backup */}
             {schedulerRestoreModal && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
-                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up bg-slate-900 border border-amber-500/20 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
-                  <div className={`flex items-center gap-3 text-amber-400 pb-3 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                <div className={`max-w-lg w-full rounded-3xl p-6 space-y-5 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-amber-200 text-slate-900' 
+                    : 'bg-slate-900 border border-amber-500/20 text-white'
+                }`}>
+                  <div className={`flex items-center gap-3 text-amber-500 pb-3 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <AlertTriangle className="w-6 h-6" />
                     <div>
-                      <h3 className="text-sm font-bold text-white">
+                      <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                         {lang === 'fa' ? 'تایید بازیابی نسخه پشتیبان زمان‌بندی' : 'Confirm Scheduler Backup Restore'}
                       </h3>
-                      <p className="text-[10px] text-slate-400">
+                      <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                         {schedulerRestoreModal.isDatabase 
                           ? (lang === 'fa' ? 'بازیابی مستقیم دیتابیس پستگرس و راه‌اندازی مجدد سیناپس' : 'PostgreSQL Database Restoration') 
                           : (lang === 'fa' ? 'استخراج تنظیمات و راه‌اندازی مجدد سرویس' : 'Configuration Archive Extraction')}
@@ -7199,23 +7521,29 @@ export default function ConfigForms({
                   </div>
 
                   <div className="space-y-3">
-                    <p className="text-xs text-slate-300 leading-relaxed">
+                    <p className={`text-xs leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                       {lang === 'fa' ? (
-                        <span>آیا از بازیابی فایل پشتیبان <strong className="text-amber-400 font-mono select-all break-all">{schedulerRestoreModal.filename}</strong> اطمینان کامل دارید؟</span>
+                        <span>آیا از بازیابی فایل پشتیبان <strong className="text-amber-500 font-mono select-all break-all">{schedulerRestoreModal.filename}</strong> اطمینان کامل دارید؟</span>
                       ) : (
-                        <span>Are you sure you want to restore <strong className="text-amber-400 font-mono select-all break-all">{schedulerRestoreModal.filename}</strong>?</span>
+                        <span>Are you sure you want to restore <strong className="text-amber-500 font-mono select-all break-all">{schedulerRestoreModal.filename}</strong>?</span>
                       )}
                     </p>
 
                     {schedulerRestoreModal.isConfig && (
-                      <div className="space-y-1.5 bg-black/30 p-3 rounded-xl border border-white/5">
-                        <label className="block text-xs font-semibold text-slate-300">
+                      <div className={`space-y-1.5 p-3 rounded-xl border ${
+                        isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/30 border-white/5'
+                      }`}>
+                        <label className={`block text-xs font-semibold ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
                           {lang === 'fa' ? 'محدوده استخراج و بازیابی:' : 'Restoration Scope:'}
                         </label>
                         <select
                           value={schedulerRestoreScope}
                           onChange={(e: any) => setSchedulerRestoreScope(e.target.value)}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+                          className={`w-full rounded-xl px-3 py-2 text-xs focus:outline-none ${
+                            isLightMode 
+                              ? 'bg-white border border-slate-300 text-slate-900 focus:border-amber-500'
+                              : 'bg-black/40 border border-white/10 text-slate-300 focus:border-amber-500/50'
+                          }`}
                         >
                           <option value="all">{lang === 'fa' ? 'همه بخش‌ها (سیناپس + کلاینت المنت + پیکربندی Nginx)' : 'All (Synapse + Element Web + Nginx)'}</option>
                           <option value="synapse">{lang === 'fa' ? 'فقط سرور سیناپس (/etc/matrix-synapse)' : 'Synapse Only (/etc/matrix-synapse)'}</option>
@@ -7224,17 +7552,19 @@ export default function ConfigForms({
                       </div>
                     )}
 
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] text-red-300 space-y-1">
+                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] text-red-400 space-y-1">
                       <p className="font-bold">{lang === 'fa' ? '⚠️ توجه مهم:' : '⚠️ Important Notice:'}</p>
                       <p>{lang === 'fa' ? 'این عملیات داده‌ها یا تنظیمات فعلی را بازنویسی کرده و سرویس Matrix Synapse را مجدداً راه‌اندازی می‌کند.' : 'This operation overwrites current state and automatically restarts the Matrix Synapse service.'}</p>
                     </div>
                   </div>
 
-                  <div className={`flex items-center justify-end gap-2 pt-3 border-t border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-end gap-2 pt-3 border-t ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <button
                       type="button"
                       onClick={() => setSchedulerRestoreModal(null)}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                      className={`px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
                     >
                       {lang === 'fa' ? 'انصراف' : 'Cancel'}
                     </button>
@@ -7242,7 +7572,7 @@ export default function ConfigForms({
                       type="button"
                       onClick={handleSchedulerRestore}
                       disabled={isRestoringScheduler}
-                      className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md"
                     >
                       {isRestoringScheduler ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
                       <span>{lang === 'fa' ? 'شروع بازیابی سرور' : 'Start Restore'}</span>
@@ -7255,18 +7585,22 @@ export default function ConfigForms({
             {/* Modal to Confirm Deletion of Scheduler Backup File */}
             {schedulerDeleteModal && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
-                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up bg-slate-900 border border-red-500/20 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
-                  <div className={`flex items-center gap-3 text-red-400 pb-2 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-red-200 text-slate-900' 
+                    : 'bg-slate-900 border border-red-500/20 text-white'
+                }`}>
+                  <div className={`flex items-center gap-3 text-red-500 pb-2 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <Trash2 className="w-6 h-6" />
                     <div>
-                      <h3 className="text-sm font-bold text-white">
+                      <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                         {lang === 'fa' ? 'حذف فایل پشتیبان از سرور' : 'Delete Backup File from Server'}
                       </h3>
-                      <p className="text-[10px] text-slate-400">{schedulerDeleteModal.filename}</p>
+                      <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{schedulerDeleteModal.filename}</p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className={`text-xs leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
                     {lang === 'fa' 
                       ? 'آیا از حذف دائمی این فایل پشتیبان از مسیر ذخیره‌سازی سرور اطمینان دارید؟ این عملیات غیرقابل بازگشت است.' 
                       : 'Are you sure you want to permanently delete this backup file from the server storage?'}
@@ -7276,7 +7610,9 @@ export default function ConfigForms({
                     <button
                       type="button"
                       onClick={() => setSchedulerDeleteModal(null)}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+                      className={`px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
                     >
                       {lang === 'fa' ? 'انصراف' : 'Cancel'}
                     </button>
@@ -7284,7 +7620,7 @@ export default function ConfigForms({
                       type="button"
                       onClick={handleSchedulerDelete}
                       disabled={isDeletingScheduler}
-                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md"
                     >
                       {isDeletingScheduler ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                       <span>{lang === 'fa' ? 'حذف قطعی' : 'Delete Permanently'}</span>
@@ -7297,17 +7633,21 @@ export default function ConfigForms({
             {/* Cron Syntax & Preset Guidance Modal */}
             {cronHelpModal.open && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
-                <div className={`max-w-2xl w-full rounded-3xl p-6 space-y-5 animate-scale-up bg-slate-900 border border-white/10 text-white shadow-2xl ${isRtl ? 'text-right' : 'text-left'}`}>
-                  <div className={`flex items-center justify-between pb-3 border-b border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                <div className={`max-w-2xl w-full rounded-3xl p-6 space-y-5 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-slate-200 text-slate-900' 
+                    : 'bg-slate-900 border border-white/10 text-white'
+                }`}>
+                  <div className={`flex items-center justify-between pb-3 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isLightMode ? 'bg-cyan-50 border border-cyan-200 text-cyan-600' : 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400'}`}>
                         <Clock className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-white">
+                        <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                           {lang === 'fa' ? 'راهنمای ساختار و الگوهای کرون (Cron Expression Guide)' : 'Cron Syntax & Schedule Presets Guide'}
                         </h3>
-                        <p className="text-[10px] text-slate-400">
+                        <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                           {lang === 'fa' ? 'فرمت استاندارد زمان‌بندی یونیکس شامل ۵ بخش است' : 'Standard 5-field UNIX crontab syntax specification'}
                         </p>
                       </div>
@@ -7315,49 +7655,51 @@ export default function ConfigForms({
                     <button
                       type="button"
                       onClick={() => setCronHelpModal({ open: false, target: null })}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs cursor-pointer transition-all"
+                      className={`p-1.5 rounded-lg text-xs cursor-pointer transition-all ${isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'}`}
                     >
                       <XCircle className="w-5 h-5" />
                     </button>
                   </div>
 
                   {/* Visual Diagram of Cron Fields */}
-                  <div className="bg-black/40 rounded-2xl p-4 border border-white/5 space-y-3">
-                    <span className="text-[11px] font-bold text-slate-300 block">
+                  <div className={`rounded-2xl p-4 border space-y-3 ${
+                    isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-black/40 border-white/5'
+                  }`}>
+                    <span className={`text-[11px] font-bold block ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
                       {lang === 'fa' ? 'ساختار ۵ بخشی عبارت کرون:' : '5-Field Cron Structure:'}
                     </span>
                     <div className="grid grid-cols-5 gap-2 text-center text-[10px] font-mono">
-                      <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
+                      <div className={`p-2 rounded-xl border ${isLightMode ? 'bg-cyan-50 border-cyan-200 text-cyan-800' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'}`}>
                         <div className="font-bold text-xs">Field 1</div>
                         <div className="font-semibold mt-1">{lang === 'fa' ? 'دقیقه' : 'Minute'}</div>
-                        <div className="text-[9px] text-slate-400">0 - 59</div>
+                        <div className={`text-[9px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>0 - 59</div>
                       </div>
-                      <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                      <div className={`p-2 rounded-xl border ${isLightMode ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
                         <div className="font-bold text-xs">Field 2</div>
                         <div className="font-semibold mt-1">{lang === 'fa' ? 'ساعت' : 'Hour'}</div>
-                        <div className="text-[9px] text-slate-400">0 - 23</div>
+                        <div className={`text-[9px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>0 - 23</div>
                       </div>
-                      <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                      <div className={`p-2 rounded-xl border ${isLightMode ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'}`}>
                         <div className="font-bold text-xs">Field 3</div>
                         <div className="font-semibold mt-1">{lang === 'fa' ? 'روز ماه' : 'Day Month'}</div>
-                        <div className="text-[9px] text-slate-400">1 - 31</div>
+                        <div className={`text-[9px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>1 - 31</div>
                       </div>
-                      <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                      <div className={`p-2 rounded-xl border ${isLightMode ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-purple-500/10 border-purple-500/20 text-purple-300'}`}>
                         <div className="font-bold text-xs">Field 4</div>
                         <div className="font-semibold mt-1">{lang === 'fa' ? 'ماه' : 'Month'}</div>
-                        <div className="text-[9px] text-slate-400">1 - 12</div>
+                        <div className={`text-[9px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>1 - 12</div>
                       </div>
-                      <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                      <div className={`p-2 rounded-xl border ${isLightMode ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-rose-500/10 border-rose-500/20 text-rose-300'}`}>
                         <div className="font-bold text-xs">Field 5</div>
                         <div className="font-semibold mt-1">{lang === 'fa' ? 'روز هفته' : 'Weekday'}</div>
-                        <div className="text-[9px] text-slate-400">0-6 (0=Sun)</div>
+                        <div className={`text-[9px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>0-6 (0=Sun)</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Ready Presets with 1-Click Apply */}
                   <div className="space-y-2">
-                    <span className="text-xs font-bold text-slate-300 block">
+                    <span className={`text-xs font-bold block ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
                       {lang === 'fa' ? 'الگوهای پرکاربرد (کلیک برای اعمال سریع):' : 'Ready-to-Use Presets (Click to apply):'}
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
@@ -7389,17 +7731,29 @@ export default function ConfigForms({
                             setCronHelpModal({ open: false, target: null });
                             if (showToast) showToast('info', `${item.cron} ${lang === 'fa' ? 'انتخاب شد' : 'selected'}`);
                           }}
-                          className="bg-black/30 hover:bg-cyan-500/10 hover:border-cyan-500/30 border border-white/5 rounded-xl p-3 cursor-pointer transition-all flex items-center justify-between group"
+                          className={`border rounded-xl p-3 cursor-pointer transition-all flex items-center justify-between group ${
+                            isLightMode
+                              ? 'bg-slate-50 hover:bg-amber-50 border-slate-200 hover:border-amber-300'
+                              : 'bg-black/30 hover:bg-cyan-500/10 hover:border-cyan-500/30 border-white/5'
+                          }`}
                         >
                           <div className="space-y-0.5">
-                            <span className="text-xs font-mono font-bold text-amber-300 group-hover:text-cyan-300">
+                            <span className={`text-xs font-mono font-bold ${
+                              isLightMode ? 'text-amber-700 group-hover:text-amber-900' : 'text-amber-300 group-hover:text-cyan-300'
+                            }`}>
                               {item.cron}
                             </span>
-                            <p className="text-[10px] text-slate-400 group-hover:text-slate-200">
+                            <p className={`text-[10px] ${
+                              isLightMode ? 'text-slate-500 group-hover:text-slate-800' : 'text-slate-400 group-hover:text-slate-200'
+                            }`}>
                               {lang === 'fa' ? item.titleFa : item.titleEn}
                             </p>
                           </div>
-                          <span className="text-[10px] font-bold px-2 py-1 bg-white/5 group-hover:bg-cyan-500 text-slate-400 group-hover:text-slate-950 rounded-lg transition-all">
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${
+                            isLightMode 
+                              ? 'bg-slate-200 group-hover:bg-amber-500 text-slate-700 group-hover:text-slate-950'
+                              : 'bg-white/5 group-hover:bg-cyan-500 text-slate-400 group-hover:text-slate-950'
+                          }`}>
                             {lang === 'fa' ? 'انتخاب' : 'Use'}
                           </span>
                         </div>
@@ -7407,11 +7761,15 @@ export default function ConfigForms({
                     </div>
                   </div>
 
-                  <div className={`flex items-center justify-end pt-3 border-t border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                  <div className={`flex items-center justify-end pt-3 border-t ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <button
                       type="button"
                       onClick={() => setCronHelpModal({ open: false, target: null })}
-                      className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold cursor-pointer transition-all"
+                      className={`px-5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                        isLightMode 
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                          : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
                     >
                       {lang === 'fa' ? 'بستن راهنما' : 'Close Guide'}
                     </button>

@@ -20837,8 +20837,10 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
   const isDbInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_db_backup")) : (settings.dbSchedule?.enabled || false);
   const isConfigInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_config_backup")) : (settings.configSchedule?.enabled || false);
 
-  const schedules = [
-    {
+  const schedules: any[] = [];
+
+  if (settings.dbSchedule?.enabled || isDbInstalled) {
+    schedules.push({
       id: "db-schedule",
       title: "Automated Database Backup (PostgreSQL)",
       titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
@@ -20850,8 +20852,11 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
       retentionDays: settings.retentionDays || 30,
       installedOnServer: isDbInstalled,
       lastStatus: isRemote ? (settings.dbSchedule?.enabled && isDbInstalled ? "active" : (settings.dbSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.dbSchedule?.enabled ? "active_local" : "disabled")
-    },
-    {
+    });
+  }
+
+  if (settings.configSchedule?.enabled || isConfigInstalled) {
+    schedules.push({
       id: "config-schedule",
       title: "Automated Configuration Backup (Matrix & Element)",
       titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
@@ -20863,8 +20868,8 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
       retentionDays: settings.retentionDays || 30,
       installedOnServer: isConfigInstalled,
       lastStatus: isRemote ? (settings.configSchedule?.enabled && isConfigInstalled ? "active" : (settings.configSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.configSchedule?.enabled ? "active_local" : "disabled")
-    }
-  ];
+    });
+  }
 
   res.json({
     success: true,
@@ -21176,6 +21181,53 @@ app.post("/api/backups/scheduler/cron-update", authenticateToken, checkPermissio
   res.json({
     success: true,
     message: `Schedule ${id} updated and synced to server crontab.`,
+    settings: db.backupSettings,
+    syncResult
+  });
+});
+
+// Endpoint to create a new cron schedule
+app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { type, cron, enabled = true } = req.body;
+  const db = readDb();
+  if (!db.backupSettings) db.backupSettings = {};
+
+  const cleanCron = (cron || "0 2 * * *").trim();
+
+  if (type === "database") {
+    db.backupSettings.dbSchedule = {
+      enabled: Boolean(enabled),
+      cron: cleanCron
+    };
+  } else if (type === "config") {
+    db.backupSettings.configSchedule = {
+      enabled: Boolean(enabled),
+      cron: cleanCron
+    };
+  }
+
+  writeDb(db);
+
+  const activeConn = getActiveConnection();
+  let syncResult: any = { success: true, details: "Saved in settings" };
+  if (activeConn && activeConn.id !== "local") {
+    syncResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Create New Backup Cron Schedule",
+    target: type,
+    status: syncResult.success ? "success" : "warning",
+    details: `Created new ${type} backup schedule with cron '${cleanCron}', enabled: ${enabled}.`
+  });
+  writeDb(db);
+
+  res.json({
+    success: true,
+    message: `New ${type === 'database' ? 'Database' : 'Configuration'} cron schedule successfully created and synced to server.`,
     settings: db.backupSettings,
     syncResult
   });

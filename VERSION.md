@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.27.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.28.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.28.0** - 2026-08-21
+- **Light Mode Modal Harmonization & Dedicated Cron Schedule Creator**:
+  - **Relocated Save & Sync Button**: Moved the `Save & Sync Scheduler to Server` button to the bottom of the Automated Backup Daemon Configuration card for a clean and logical configuration flow.
+  - **New Cron Schedule Creator**: Added a `New` button and interactive creation modal allowing users to define new cron jobs (Database or Configuration) with custom names, expressions, descriptions, and presets, immediately registering them to the server's crontab and active list.
+  - **Pure Live Data in Active Server Schedules**: Purged all mock card placeholders from Active Server Schedules & Daemon Status; empty states are displayed dynamically when no matching cron jobs are configured on the server.
+  - **Harmonized Light/Dark Modal Palette**: Refactored styling across all scheduler modals (New Cron, Edit Cron, Delete Cron, Restore Confirmation, File Deletion, and Cron Syntax Guide) to seamlessly adapt background, text, borders, and inputs for both Light and Dark themes.
 
 #### **v2.27.0** - 2026-08-21
 - **Automated Backup Daemon & Remote Server Crontab Synchronizer**:
