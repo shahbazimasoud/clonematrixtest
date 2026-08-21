@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.32.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.33.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.33.0** - 2026-08-21
+- **Streamlined Selection Deletion & Cleanup Button Refinement**:
+  - **Dynamic Selection Delete**: The Delete Selected button (`حذف موارد انتخاب‌شده`) dynamically appears whenever one or more items (or all items via "Select All") are checked.
+  - **Removed Redundant 'Purge All Files' Buttons**: Cleaned up the bulk actions header by removing the top "Purge All Files" / "حذف همه فایل‌های دایرکتوری" button across all tables to avoid accidental directory purges.
+  - **Integrated Batch Deletion Confirmation Modals**: Added interactive confirmation dialogs for both Repository and Scheduler bulk deletions, with full server file cleanup and live directory storage metric refreshes.
 
 #### **v2.32.0** - 2026-08-21
 - **Bulk Archive Management, Directory Storage Metrics & Enhanced Cleanup Execution**:

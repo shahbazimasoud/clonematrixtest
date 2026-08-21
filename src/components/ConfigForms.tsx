@@ -1755,6 +1755,7 @@ export default function ConfigForms({
         setSelectedBackupIds([]);
         setRepositoryBatchDeleteModal(null);
         fetchBackups();
+        fetchDbBackups();
         fetchStorageStats();
       } else {
         if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در حذف فایل‌ها' : 'Error deleting backups'));
@@ -6542,22 +6543,10 @@ export default function ConfigForms({
                         <button
                           type="button"
                           onClick={() => setRepositoryBatchDeleteModal({ open: true, ids: selectedBackupIds, isAll: false })}
-                          className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
+                          className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md animate-fade-in"
                         >
                           <Trash2 className="w-3 h-3" />
-                          <span>{lang === 'fa' ? `حذف گروهی (${selectedBackupIds.length})` : `Bulk Delete (${selectedBackupIds.length})`}</span>
-                        </button>
-                      )}
-
-                      {backups && backups.length > 0 && !isReadOnly && (
-                        <button
-                          type="button"
-                          onClick={() => setRepositoryBatchDeleteModal({ open: true, ids: backups.map(b => b.id), isAll: true })}
-                          className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium text-[10px] flex items-center gap-1 transition-all cursor-pointer"
-                          title={lang === 'fa' ? 'حذف تمامی فایل‌های موجود در پوشه بکاپ سرور' : 'Purge all backup files in directory'}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>{lang === 'fa' ? 'حذف همه فایل‌های دایرکتوری' : 'Purge All Files'}</span>
+                          <span>{lang === 'fa' ? `حذف موارد انتخاب‌شده (${selectedBackupIds.length})` : `Delete Selected (${selectedBackupIds.length})`}</span>
                         </button>
                       )}
                     </div>
@@ -7159,22 +7148,10 @@ export default function ConfigForms({
                           <button
                             type="button"
                             onClick={() => setSchedulerBatchDeleteModal({ open: true, filenames: selectedSchedulerBackupNames, isAll: false })}
-                            className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
+                            className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md animate-fade-in"
                           >
                             <Trash2 className="w-3 h-3" />
-                            <span>{lang === 'fa' ? `حذف گروهی (${selectedSchedulerBackupNames.length})` : `Bulk Delete (${selectedSchedulerBackupNames.length})`}</span>
-                          </button>
-                        )}
-
-                        {schedulerBackupsList.length > 0 && !isReadOnly && (
-                          <button
-                            type="button"
-                            onClick={() => setSchedulerBatchDeleteModal({ open: true, filenames: schedulerBackupsList.map(b => b.filename), isAll: true })}
-                            className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium text-[10px] flex items-center gap-1 transition-all cursor-pointer"
-                            title={lang === 'fa' ? 'حذف تمامی فایل‌های موجود در پوشه زمان‌بندی سرور' : 'Purge all backup files in scheduler directory'}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>{lang === 'fa' ? 'حذف همه فایل‌های دایرکتوری' : 'Purge All Files'}</span>
+                            <span>{lang === 'fa' ? `حذف موارد انتخاب‌شده (${selectedSchedulerBackupNames.length})` : `Delete Selected (${selectedSchedulerBackupNames.length})`}</span>
                           </button>
                         )}
                       </div>
@@ -7916,6 +7893,108 @@ export default function ConfigForms({
                     >
                       {isDeletingScheduler ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                       <span>{lang === 'fa' ? 'حذف قطعی' : 'Delete Permanently'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Repository Batch Delete Confirmation */}
+            {repositoryBatchDeleteModal && repositoryBatchDeleteModal.open && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-red-200 text-slate-900' 
+                    : 'bg-slate-900 border border-red-500/20 text-white'
+                }`}>
+                  <div className={`flex items-center gap-3 text-red-500 pb-2 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <Trash2 className="w-6 h-6" />
+                    <div>
+                      <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                        {lang === 'fa' ? 'تایید حذف موارد انتخاب‌شده' : 'Confirm Bulk Backup Deletion'}
+                      </h3>
+                      <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {lang === 'fa' ? `${repositoryBatchDeleteModal.ids.length} نسخه پشتیبان انتخاب شده` : `${repositoryBatchDeleteModal.ids.length} backups selected`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className={`text-xs leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                    {lang === 'fa' 
+                      ? `آیا از حذف دائمی ${repositoryBatchDeleteModal.ids.length} فایل پشتیبان انتخاب‌شده از مسیر /opt/matrix-element-Backup روی سرور اطمینان دارید؟ این عملیات غیرقابل بازگشت است.` 
+                      : `Are you sure you want to permanently delete ${repositoryBatchDeleteModal.ids.length} selected backup file(s) from /opt/matrix-element-Backup on the server? This action cannot be undone.`}
+                  </p>
+
+                  <div className={`flex items-center justify-end gap-2 pt-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setRepositoryBatchDeleteModal(null)}
+                      disabled={isDeletingBatchRepository}
+                      className={`px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRepositoryBatchDeleteConfirm}
+                      disabled={isDeletingBatchRepository}
+                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md"
+                    >
+                      {isDeletingBatchRepository ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'حذف قطعی فایل‌ها' : 'Delete Permanently'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Scheduler Batch Delete Confirmation */}
+            {schedulerBatchDeleteModal && schedulerBatchDeleteModal.open && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-md w-full rounded-3xl p-6 space-y-4 animate-scale-up shadow-2xl transition-colors ${isRtl ? 'text-right' : 'text-left'} ${
+                  isLightMode 
+                    ? 'bg-white border border-red-200 text-slate-900' 
+                    : 'bg-slate-900 border border-red-500/20 text-white'
+                }`}>
+                  <div className={`flex items-center gap-3 text-red-500 pb-2 border-b ${isLightMode ? 'border-slate-100' : 'border-white/10'} ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <Trash2 className="w-6 h-6" />
+                    <div>
+                      <h3 className={`text-sm font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
+                        {lang === 'fa' ? 'تایید حذف موارد انتخاب‌شده' : 'Confirm Bulk Scheduler Deletion'}
+                      </h3>
+                      <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {lang === 'fa' ? `${schedulerBatchDeleteModal.filenames.length} فایل انتخاب شده` : `${schedulerBatchDeleteModal.filenames.length} files selected`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className={`text-xs leading-relaxed ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                    {lang === 'fa' 
+                      ? `آیا از حذف دائمی ${schedulerBatchDeleteModal.filenames.length} فایل پشتیبان انتخاب‌شده از مسیر پوشه زمان‌بندی سرور اطمینان دارید؟ این عملیات غیرقابل بازگشت است.` 
+                      : `Are you sure you want to permanently delete ${schedulerBatchDeleteModal.filenames.length} selected backup file(s) from the scheduler storage directory? This action cannot be undone.`}
+                  </p>
+
+                  <div className={`flex items-center justify-end gap-2 pt-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setSchedulerBatchDeleteModal(null)}
+                      disabled={isDeletingBatchScheduler}
+                      className={`px-4 py-2 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                        isLightMode ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSchedulerBatchDeleteConfirm}
+                      disabled={isDeletingBatchScheduler}
+                      className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md"
+                    >
+                      {isDeletingBatchScheduler ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'حذف قطعی فایل‌ها' : 'Delete Permanently'}</span>
                     </button>
                   </div>
                 </div>

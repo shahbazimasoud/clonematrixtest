@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.32.0";
+export const PANEL_VERSION = "2.33.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.33.0",
+    date: "2026-08-21",
+    title: "Streamlined Selection Deletion & Cleanup Button Refinement",
+    changes: [
+      "Refined selection-based deletion: the Delete Selected button dynamically appears upon selecting single or all backup archives.",
+      "Completely removed the top 'Purge All Files' button across all backup and archive tables.",
+      "Integrated confirmation dialog modals for batch archive deletion with instant server removal and storage metrics synchronization."
+    ]
+  },
   {
     version: "2.32.0",
     date: "2026-08-21",
