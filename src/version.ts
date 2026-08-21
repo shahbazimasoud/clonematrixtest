@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.30.0";
+export const PANEL_VERSION = "2.31.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.31.0",
+    date: "2026-08-21",
+    title: "Retention Isolation, Instant Cleanup Script Execution & Archive Filter Resolution",
+    changes: [
+      "Removed redundant Retention fields from Automated Database and Config Backup cards to isolate retention display exclusively to the Retention Cleanup task.",
+      "Fixed and hardened matrix_auto_cleanup.sh script with POSIX compliance, robust zero-retention pruning, and custom folder targeting.",
+      "Enhanced manual 'Cleanup Now' trigger to execute direct directory purging with real-time feedback and automatic catalog refresh.",
+      "Fixed Scheduler Backup Archives filtering engine to accurately categorize and filter Database (.sql.gz, .sql, .dump) and Config (.tar.gz, etc.) archives."
+    ]
+  },
   {
     version: "2.30.0",
     date: "2026-08-21",

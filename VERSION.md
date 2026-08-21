@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.30.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.31.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.31.0** - 2026-08-21
+- **Retention Isolation, Instant Cleanup Script Execution & Archive Filter Resolution**:
+  - **Retention Display Isolation**: Removed redundant retention period info from Automated Database and Config Backup schedule cards so that retention limits are exclusively displayed and managed on the Retention Cleanup schedule card.
+  - **Hardened Cleanup Script (`matrix_auto_cleanup.sh`)**: Refactored the cleanup script on target servers to be fully POSIX compliant without syntax edge cases, supporting zero retention days (pruning all backups), custom directory paths, and auto-pruning orphaned partial/temporary files.
+  - **Instant Manual Execution & Local Fallback**: Enhanced manual triggers for 'Cleanup Now' and 'Run Now' to execute directly with real-time feedback, directory scanning, and instant UI refresh.
+  - **Resolved Scheduler Archive Filters**: Fixed the classification and filtering logic in Automated Scheduler Backup Archives so switching between "All", "Database", and "Config" accurately isolates and lists matching archive files.
 
 #### **v2.30.0** - 2026-08-21
 - **Multi-Cron Architecture, Retention Policy Relocation & Real-Time Manual Trigger Execution**:

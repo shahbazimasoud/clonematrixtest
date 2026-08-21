@@ -1499,11 +1499,12 @@ export default function ConfigForms({
     let cfgCount = 0;
 
     const list = schedulerBackupsList.map(item => {
-      const isDb = item.isDatabase === true || item.type === 'database' || item.filename.includes('database') || item.filename.includes('db-backup') || item.filename.includes('matrix-synapse-db') || item.filename.endsWith('.sql.gz') || item.filename.endsWith('.sql');
-      const isCfg = !isDb && (item.isConfig === true || item.type === 'config' || item.filename.includes('config') || item.filename.includes('matrix-backup') || item.filename.endsWith('.tar.gz'));
+      const fn = (item.filename || '').toLowerCase();
+      const isDb = item.isDatabase === true || item.type === 'database' || fn.startsWith('database_backup') || fn.includes('database') || fn.includes('db-') || fn.includes('-db') || fn.includes('synapse-db') || fn.includes('postgres') || fn.endsWith('.sql.gz') || fn.endsWith('.sql') || fn.endsWith('.dump');
+      const isCfg = !isDb;
       
       if (isDb) dbCount++;
-      if (isCfg) cfgCount++;
+      else cfgCount++;
 
       return {
         ...item,
@@ -1518,7 +1519,7 @@ export default function ConfigForms({
 
       if (schedulerSearchQuery.trim()) {
         const q = schedulerSearchQuery.trim().toLowerCase();
-        return item.filename.toLowerCase().includes(q);
+        return (item.filename || '').toLowerCase().includes(q);
       }
       return true;
     });
@@ -6781,10 +6782,12 @@ export default function ConfigForms({
                                     <span className="text-slate-500">{lang === 'fa' ? 'اسکریپت اجراکننده:' : 'Script:'}</span>
                                     <span className="text-slate-400 text-[10px] select-all">{sched.scriptPath}</span>
                                   </div>
-                                  <div className={`flex justify-between py-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                                    <span className="text-slate-500">{lang === 'fa' ? 'دوره نگهداری:' : 'Retention:'}</span>
-                                    <span className="text-amber-400">{sched.retentionDays || backupSettings.retentionDays || 30} {lang === 'fa' ? 'روز' : 'Days'}</span>
-                                  </div>
+                                  {isRetention && (
+                                    <div className={`flex justify-between py-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                      <span className="text-slate-500">{lang === 'fa' ? 'دوره نگهداری:' : 'Retention:'}</span>
+                                      <span className="text-emerald-400 font-bold">{sched.retentionDays || 30} {lang === 'fa' ? 'روز' : 'Days'}</span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
