@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.28.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.29.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.29.0** - 2026-08-21
+- **UI Streamlining, Live Human-Readable Cron Preview & Archive Filter Engine**:
+  - **Removed Redundant Daemon Config Block**: Cleaned up the Backup Settings UI by removing the duplicate `Automated Backup Daemon Configuration` card, focusing management directly into `Active Server Schedules & Daemon Status` with immediate `New Cron` creation capabilities.
+  - **Live Natural Language Cron Translation**: Implemented a real-time cron expression explainer in `Add New Cron Schedule` and `Edit Schedule` modals that dynamically translates expressions into Persian and English (e.g. *Every 2 days*, *Every Wednesday at 3 AM*, etc.).
+  - **Filter Engine Fix for Archives Catalog**: Corrected the filter handling in `Automated Scheduler Backup Archives` so switching between `All`, `Database`, and `Config` or typing in search dynamically filters the files correctly.
+  - **Light & Dark Theme Harmonization**: Enhanced contrast and styling across all scheduler modals for seamless Light Mode compatibility.
 
 #### **v2.28.0** - 2026-08-21
 - **Light Mode Modal Harmonization & Dedicated Cron Schedule Creator**:

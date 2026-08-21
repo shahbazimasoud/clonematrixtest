@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.28.0";
+export const PANEL_VERSION = "2.29.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.29.0",
+    date: "2026-08-21",
+    title: "UI Streamlining, Live Human-Readable Cron Preview & Archive Filter Engine",
+    changes: [
+      "Removed the redundant 'Automated Backup Daemon Configuration' card to streamline the UI into 'Active Server Schedules & Daemon Status' with integrated New Cron schedule creation.",
+      "Integrated a real-time human-readable Cron Explainer into both 'Add New Cron Schedule' and 'Edit Schedule' modals with live multilingual translation (Persian & English).",
+      "Fixed and optimized multi-criteria filtering (All, Database, Config, and search query) for the Automated Scheduler Backup Archives catalog.",
+      "Resolved JSX syntax errors and ensured seamless Light Mode and Dark Mode theme consistency across all scheduler dialogs and action modals."
+    ]
+  },
   {
     version: "2.28.0",
     date: "2026-08-21",
