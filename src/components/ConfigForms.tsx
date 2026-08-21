@@ -9605,9 +9605,11 @@ export default function ConfigForms({
 
       {/* Push Notification Terminal Execution Modal */}
       {showPushTerminalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fadeIn">
-          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 ${
-            isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
+        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 animate-fadeIn ${
+          isLightMode ? 'bg-slate-900/40 backdrop-blur-md' : 'bg-black/75 backdrop-blur-md'
+        }`}>
+          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 transition-all duration-300 ${
+            isLightMode ? 'bg-white border-slate-200 text-slate-800 shadow-slate-900/10' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
           }`}>
             <div className={`flex items-center justify-between pb-3 border-b ${
               isLightMode ? 'border-slate-200' : 'border-white/10'
@@ -9620,10 +9622,10 @@ export default function ConfigForms({
                 </div>
                 <div>
                   <h3 className={`text-base font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
-                    {isRtl ? 'ترمینال فعال — به‌روزرسانی تنظیمات Push' : 'Active Terminal — Push Notification Update'}
+                    {loc('ترمینال فعال — به‌روزرسانی تنظیمات Push', 'Active Terminal — Push Notification Update', 'Terminal Activa — Actualización de Notificaciones Push', 'الطرفية النشطة — تحديث إشعارات الدفع', 'Aktives Terminal — Push-Benachrichtigungs-Aktualisierung', 'Активный терминал — обновление Push-уведомлений')}
                   </h3>
                   <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {isRtl ? 'اجرای دستورات روی سرور راه دور ماتریکس' : 'Live remote execution on target Matrix server'}
+                    {loc('اجرای دستورات روی سرور راه دور ماتریکس', 'Live remote execution on target Matrix server', 'Ejecución remota en el servidor Matrix', 'التنفيذ عن بعد على خادم ماتركس الهدف', 'Live-Remote-Ausführung auf dem Matrix-Server', 'Прямое удаленное выполнение на целевом сервере Matrix')}
                   </p>
                 </div>
               </div>
@@ -9641,32 +9643,45 @@ export default function ConfigForms({
               </button>
             </div>
 
-            <div className={`p-4 rounded-xl border font-mono text-xs space-y-2 max-h-80 overflow-y-auto ${
-              isLightMode ? 'bg-slate-950 text-white border-slate-800 shadow-inner' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
+            <div className={`rounded-xl border overflow-hidden font-mono text-xs ${
+              isLightMode ? 'bg-slate-950 text-slate-100 border-slate-800 shadow-md' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
             }`}>
-              {pushExecutionSteps.length > 0 ? (
-                pushExecutionSteps.map((step, idx) => {
-                  let colorClass = "text-white font-medium";
-                  if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-300 font-bold";
-                  else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
-                  else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-sky-200";
-                  else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-300 font-bold";
-                  else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-300 font-bold";
-                  else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-300 font-semibold";
-
-                  return (
-                    <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
-                      <span className="text-cyan-400 font-bold select-none">›</span>
-                      <span className="break-all">{step}</span>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex items-center gap-2 text-sky-200">
-                  <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
-                  <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+              <div className={`flex items-center justify-between px-3.5 py-2 border-b text-[11px] select-none ${
+                isLightMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white/5 border-white/5 text-slate-400'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
                 </div>
-              )}
+                <span className="text-[10px] font-mono text-slate-400">synapse-push-service</span>
+                <span className="text-[10px] font-mono text-cyan-400/80">bash</span>
+              </div>
+              <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+                {pushExecutionSteps.length > 0 ? (
+                  pushExecutionSteps.map((step, idx) => {
+                    let colorClass = "text-slate-200 font-medium";
+                    if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-400 font-bold";
+                    else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
+                    else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-teal-300";
+                    else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-400 font-bold";
+                    else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-400 font-bold";
+                    else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-400 font-semibold";
+
+                    return (
+                      <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
+                        <span className="text-cyan-400 font-bold select-none">›</span>
+                        <span className="break-all">{step}</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex items-center gap-2 text-sky-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
+                    <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className={`flex items-center justify-between pt-2 border-t ${
@@ -9678,8 +9693,8 @@ export default function ConfigForms({
                 {savingPushConfig && <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-500" />}
                 <span>
                   {savingPushConfig
-                    ? (isRtl ? 'در حال اجرا...' : 'Executing updates...')
-                    : (isRtl ? 'عملیات به پایان رسید.' : 'Execution completed.')}
+                    ? loc('در حال اجرا...', 'Executing updates...', 'Ejecutando...', 'جاري التنفيذ...', 'Wird ausgeführt...', 'Выполняется...')
+                    : loc('عملیات به پایان رسید.', 'Execution completed.', 'Ejecución completada.', 'اكتملت العملية.', 'Ausführung abgeschlossen.', 'Выполнение завершено.')}
                 </span>
               </div>
               <button
@@ -9688,7 +9703,7 @@ export default function ConfigForms({
                 disabled={savingPushConfig}
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition disabled:opacity-50 cursor-pointer shadow-md shadow-cyan-600/20"
               >
-                {isRtl ? 'بستن' : 'Close'}
+                {loc('بستن', 'Close', 'Cerrar', 'إغلاق', 'Schließen', 'Закрыть')}
               </button>
             </div>
           </div>
@@ -9697,9 +9712,11 @@ export default function ConfigForms({
 
       {/* Media Repository Terminal Execution Modal */}
       {showMediaTerminalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fadeIn">
-          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 ${
-            isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
+        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 animate-fadeIn ${
+          isLightMode ? 'bg-slate-900/40 backdrop-blur-md' : 'bg-black/75 backdrop-blur-md'
+        }`}>
+          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 transition-all duration-300 ${
+            isLightMode ? 'bg-white border-slate-200 text-slate-800 shadow-slate-900/10' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
           }`}>
             <div className={`flex items-center justify-between pb-3 border-b ${
               isLightMode ? 'border-slate-200' : 'border-white/10'
@@ -9712,10 +9729,10 @@ export default function ConfigForms({
                 </div>
                 <div>
                   <h3 className={`text-base font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
-                    {isRtl ? 'ترمینال فعال — به‌روزرسانی پیکربندی مخزن رسانه' : 'Active Terminal — Media Repository Configuration'}
+                    {loc('ترمینال فعال — به‌روزرسانی پیکربندی مخزن رسانه', 'Active Terminal — Media Repository Configuration', 'Terminal Activa — Configuración de Repositorio de Medios', 'الطرفية النشطة — تكوين مستودع الوسائط', 'Aktives Terminal — Medien-Repository-Konfiguration', 'Активный терминал — конфигурация репозитория медиа')}
                   </h3>
                   <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {isRtl ? 'اجرای دستورات روی سرور راه دور ماتریکس و هماهنگی Nginx' : 'Live remote execution on target Matrix server & Nginx sync'}
+                    {loc('اجرای دستورات روی سرور راه دور ماتریکس و هماهنگی Nginx', 'Live remote execution on target Matrix server & Nginx sync', 'Ejecución remota en el servidor Matrix y sincronización de Nginx', 'التنفيذ عن بعد على خادم ماتركس ومزامنة Nginx', 'Remote-Ausführung auf Matrix-Server & Nginx-Synchronisierung', 'Удаленное выполнение на сервере Matrix и синхронизация Nginx')}
                   </p>
                 </div>
               </div>
@@ -9733,32 +9750,45 @@ export default function ConfigForms({
               </button>
             </div>
 
-            <div className={`p-4 rounded-xl border font-mono text-xs space-y-2 max-h-80 overflow-y-auto ${
-              isLightMode ? 'bg-slate-950 text-white border-slate-800 shadow-inner' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
+            <div className={`rounded-xl border overflow-hidden font-mono text-xs ${
+              isLightMode ? 'bg-slate-950 text-slate-100 border-slate-800 shadow-md' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
             }`}>
-              {mediaExecutionSteps.length > 0 ? (
-                mediaExecutionSteps.map((step, idx) => {
-                  let colorClass = "text-white font-medium";
-                  if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-300 font-bold";
-                  else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
-                  else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-sky-200";
-                  else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-300 font-bold";
-                  else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-300 font-bold";
-                  else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-300 font-semibold";
-
-                  return (
-                    <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
-                      <span className="text-cyan-400 font-bold select-none">›</span>
-                      <span className="break-all">{step}</span>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex items-center gap-2 text-sky-200">
-                  <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
-                  <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+              <div className={`flex items-center justify-between px-3.5 py-2 border-b text-[11px] select-none ${
+                isLightMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white/5 border-white/5 text-slate-400'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
                 </div>
-              )}
+                <span className="text-[10px] font-mono text-slate-400">synapse-media-store</span>
+                <span className="text-[10px] font-mono text-cyan-400/80">bash</span>
+              </div>
+              <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+                {mediaExecutionSteps.length > 0 ? (
+                  mediaExecutionSteps.map((step, idx) => {
+                    let colorClass = "text-slate-200 font-medium";
+                    if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-400 font-bold";
+                    else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
+                    else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-teal-300";
+                    else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-400 font-bold";
+                    else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-400 font-bold";
+                    else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-400 font-semibold";
+
+                    return (
+                      <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
+                        <span className="text-cyan-400 font-bold select-none">›</span>
+                        <span className="break-all">{step}</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex items-center gap-2 text-sky-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
+                    <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className={`flex items-center justify-between pt-2 border-t ${
@@ -9770,8 +9800,8 @@ export default function ConfigForms({
                 {savingMediaConfig && <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-500" />}
                 <span>
                   {savingMediaConfig
-                    ? (isRtl ? 'در حال اجرا...' : 'Executing updates...')
-                    : (isRtl ? 'عملیات به پایان رسید.' : 'Execution completed.')}
+                    ? loc('در حال اجرا...', 'Executing updates...', 'Ejecutando...', 'جاري التنفيذ...', 'Wird ausgeführt...', 'Выполняется...')
+                    : loc('عملیات به پایان رسید.', 'Execution completed.', 'Ejecución completada.', 'اكتملت العملية.', 'Ausführung abgeschlossen.', 'Выполнение завершено.')}
                 </span>
               </div>
               <button
@@ -9780,7 +9810,7 @@ export default function ConfigForms({
                 disabled={savingMediaConfig}
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition disabled:opacity-50 cursor-pointer shadow-md shadow-cyan-600/20"
               >
-                {isRtl ? 'بستن' : 'Close'}
+                {loc('بستن', 'Close', 'Cerrar', 'إغلاق', 'Schließen', 'Закрыть')}
               </button>
             </div>
           </div>
@@ -9789,9 +9819,11 @@ export default function ConfigForms({
 
       {/* Administrator Contact Terminal Execution Modal */}
       {showAdminContactTerminalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fadeIn">
-          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 ${
-            isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
+        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 animate-fadeIn ${
+          isLightMode ? 'bg-slate-900/40 backdrop-blur-md' : 'bg-black/75 backdrop-blur-md'
+        }`}>
+          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 transition-all duration-300 ${
+            isLightMode ? 'bg-white border-slate-200 text-slate-800 shadow-slate-900/10' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
           }`}>
             <div className={`flex items-center justify-between pb-3 border-b ${
               isLightMode ? 'border-slate-200' : 'border-white/10'
@@ -9804,10 +9836,10 @@ export default function ConfigForms({
                 </div>
                 <div>
                   <h3 className={`text-base font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
-                    Active Terminal — Administrator Contact Update
+                    {loc('ترمینال فعال — به‌روزرسانی اطلاعات تماس مدیر سرور', 'Active Terminal — Administrator Contact Update', 'Terminal Activa — Actualización de Contacto del Administrador', 'الطرفية النشطة — تحديث جهة اتصال المسؤول', 'Aktives Terminal — Administrator-Kontakt-Aktualisierung', 'Активный терминал — обновление контакта администратора')}
                   </h3>
                   <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Live remote execution on target Matrix server
+                    {loc('اجرای زنده روی سرور ماتریکس مقصد', 'Live remote execution on target Matrix server', 'Ejecución remota en vivo en el servidor Matrix de destino', 'التنفيذ الحي عن بعد على خادم ماتركس الهدف', 'Live-Remote-Ausführung auf dem Ziel-Matrix-Server', 'Прямое удаленное выполнение на целевом сервере Matrix')}
                   </p>
                 </div>
               </div>
@@ -9825,32 +9857,45 @@ export default function ConfigForms({
               </button>
             </div>
 
-            <div className={`p-4 rounded-xl border font-mono text-xs space-y-2 max-h-80 overflow-y-auto ${
-              isLightMode ? 'bg-slate-950 text-white border-slate-800 shadow-inner' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
+            <div className={`rounded-xl border overflow-hidden font-mono text-xs ${
+              isLightMode ? 'bg-slate-950 text-slate-100 border-slate-800 shadow-md' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
             }`}>
-              {adminContactExecutionSteps.length > 0 ? (
-                adminContactExecutionSteps.map((step, idx) => {
-                  let colorClass = "text-white font-medium";
-                  if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-300 font-bold";
-                  else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
-                  else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-sky-200";
-                  else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-300 font-bold";
-                  else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-300 font-bold";
-                  else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-300 font-semibold";
-
-                  return (
-                    <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
-                      <span className="text-cyan-400 font-bold select-none">›</span>
-                      <span className="break-all">{step}</span>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex items-center gap-2 text-sky-200">
-                  <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
-                  <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+              <div className={`flex items-center justify-between px-3.5 py-2 border-b text-[11px] select-none ${
+                isLightMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white/5 border-white/5 text-slate-400'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
                 </div>
-              )}
+                <span className="text-[10px] font-mono text-slate-400">synapse-admin-contact</span>
+                <span className="text-[10px] font-mono text-cyan-400/80">bash</span>
+              </div>
+              <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+                {adminContactExecutionSteps.length > 0 ? (
+                  adminContactExecutionSteps.map((step, idx) => {
+                    let colorClass = "text-slate-200 font-medium";
+                    if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-400 font-bold";
+                    else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
+                    else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-teal-300";
+                    else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-400 font-bold";
+                    else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-400 font-bold";
+                    else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-400 font-semibold";
+
+                    return (
+                      <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
+                        <span className="text-cyan-400 font-bold select-none">›</span>
+                        <span className="break-all">{step}</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex items-center gap-2 text-sky-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
+                    <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className={`flex items-center justify-between pt-2 border-t ${
@@ -9862,8 +9907,8 @@ export default function ConfigForms({
                 {savingAdminContactConfig && <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-500" />}
                 <span>
                   {savingAdminContactConfig
-                    ? 'Executing updates...'
-                    : 'Execution completed.'}
+                    ? loc('در حال اجرا...', 'Executing updates...', 'Ejecutando...', 'جاري التنفيذ...', 'Wird ausgeführt...', 'Выполняется...')
+                    : loc('عملیات به پایان رسید.', 'Execution completed.', 'Ejecución completada.', 'اكتملت العملية.', 'Ausführung abgeschlossen.', 'Выполнение завершено.')}
                 </span>
               </div>
               <button
@@ -9872,7 +9917,7 @@ export default function ConfigForms({
                 disabled={savingAdminContactConfig}
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition disabled:opacity-50 cursor-pointer shadow-md shadow-cyan-600/20"
               >
-                Close
+                {loc('بستن', 'Close', 'Cerrar', 'إغلاق', 'Schließen', 'Закрыть')}
               </button>
             </div>
           </div>
@@ -9881,9 +9926,11 @@ export default function ConfigForms({
 
       {/* User Session & Authentication Policies Terminal Execution Modal */}
       {showSessionLifetimeTerminalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fadeIn">
-          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 ${
-            isLightMode ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
+        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 animate-fadeIn ${
+          isLightMode ? 'bg-slate-900/40 backdrop-blur-md' : 'bg-black/75 backdrop-blur-md'
+        }`}>
+          <div className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 transition-all duration-300 ${
+            isLightMode ? 'bg-white border-slate-200 text-slate-800 shadow-slate-900/10' : 'bg-slate-900 border-cyan-500/30 text-slate-100'
           }`}>
             <div className={`flex items-center justify-between pb-3 border-b ${
               isLightMode ? 'border-slate-200' : 'border-white/10'
@@ -9896,10 +9943,24 @@ export default function ConfigForms({
                 </div>
                 <div>
                   <h3 className={`text-base font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
-                    Active Terminal — Session & Authentication Policies Update
+                    {loc(
+                      'ترمینال فعال — به‌روزرسانی خط‌مشی‌های نشست و احراز هویت',
+                      'Active Terminal — Session & Authentication Policies Update',
+                      'Terminal Activa — Actualización de Políticas de Sesión y Autenticación',
+                      'الطرفية النشطة — تحديث سياسات الجلسة والمصادقة',
+                      'Aktives Terminal — Aktualisierung der Sitzungs- und Authentifizierungsrichtlinien',
+                      'Активный терминал — обновление политик сессий и аутентификации'
+                    )}
                   </h3>
                   <p className={`text-xs ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Live remote execution on target Matrix server
+                    {loc(
+                      'اجرای زنده روی سرور ماتریکس مقصد',
+                      'Live remote execution on target Matrix server',
+                      'Ejecución remota en vivo en el servidor Matrix de destino',
+                      'التنفيذ الحي عن بعد على خادم ماتركس الهدف',
+                      'Live-Remote-Ausführung auf dem Ziel-Matrix-Server',
+                      'Прямое удаленное выполнение на целевом сервере Matrix'
+                    )}
                   </p>
                 </div>
               </div>
@@ -9917,32 +9978,45 @@ export default function ConfigForms({
               </button>
             </div>
 
-            <div className={`p-4 rounded-xl border font-mono text-xs space-y-2 max-h-80 overflow-y-auto ${
-              isLightMode ? 'bg-slate-950 text-white border-slate-800 shadow-inner' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
+            <div className={`rounded-xl border overflow-hidden font-mono text-xs ${
+              isLightMode ? 'bg-slate-950 text-slate-100 border-slate-800 shadow-md' : 'bg-black/90 text-white border-cyan-500/20 shadow-inner'
             }`}>
-              {sessionLifetimeExecutionSteps.length > 0 ? (
-                sessionLifetimeExecutionSteps.map((step, idx) => {
-                  let colorClass = "text-white font-medium";
-                  if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-300 font-bold";
-                  else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
-                  else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-sky-200";
-                  else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-300 font-bold";
-                  else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-300 font-bold";
-                  else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-300 font-semibold";
-
-                  return (
-                    <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
-                      <span className="text-cyan-400 font-bold select-none">›</span>
-                      <span className="break-all">{step}</span>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex items-center gap-2 text-sky-200">
-                  <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
-                  <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+              <div className={`flex items-center justify-between px-3.5 py-2 border-b text-[11px] select-none ${
+                isLightMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white/5 border-white/5 text-slate-400'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
                 </div>
-              )}
+                <span className="text-[10px] font-mono text-slate-400">synapse-session-policy</span>
+                <span className="text-[10px] font-mono text-cyan-400/80">bash</span>
+              </div>
+              <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+                {sessionLifetimeExecutionSteps.length > 0 ? (
+                  sessionLifetimeExecutionSteps.map((step, idx) => {
+                    let colorClass = "text-slate-200 font-medium";
+                    if (step.startsWith("[IDENTITY]") || step.startsWith("[CONNECTION]")) colorClass = "text-sky-400 font-bold";
+                    else if (step.startsWith("[TASK]") || step.startsWith("[STEP]") || step.startsWith("[EXEC]")) colorClass = "text-cyan-300 font-semibold";
+                    else if (step.startsWith("[HEALTH]") || step.startsWith("[VERIFY]") || step.startsWith("[CONFIG]")) colorClass = "text-teal-300";
+                    else if (step.startsWith("[SUCCESS]")) colorClass = "text-emerald-400 font-bold";
+                    else if (step.startsWith("[ERROR]") || step.startsWith("[ROLLBACK]") || step.startsWith("[FAILED]")) colorClass = "text-rose-400 font-bold";
+                    else if (step.startsWith("[WARN]") || step.startsWith("[WARNING]")) colorClass = "text-amber-400 font-semibold";
+
+                    return (
+                      <div key={idx} className={`flex items-start gap-2 leading-relaxed ${colorClass}`}>
+                        <span className="text-cyan-400 font-bold select-none">›</span>
+                        <span className="break-all">{step}</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex items-center gap-2 text-sky-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
+                    <span className="text-sky-200 font-medium">Connecting to remote Matrix server...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className={`flex items-center justify-between pt-2 border-t ${
@@ -9954,8 +10028,8 @@ export default function ConfigForms({
                 {savingSessionLifetimeConfig && <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-500" />}
                 <span>
                   {savingSessionLifetimeConfig
-                    ? 'Executing updates...'
-                    : 'Execution completed.'}
+                    ? loc('در حال اجرا...', 'Executing updates...', 'Ejecutando...', 'جاري التنفيذ...', 'Wird ausgeführt...', 'Выполняется...')
+                    : loc('عملیات به پایان رسید.', 'Execution completed.', 'Ejecución completada.', 'اكتملت العملية.', 'Ausführung abgeschlossen.', 'Выполнение завершено.')}
                 </span>
               </div>
               <button
@@ -9964,7 +10038,7 @@ export default function ConfigForms({
                 disabled={savingSessionLifetimeConfig}
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition disabled:opacity-50 cursor-pointer shadow-md shadow-cyan-600/20"
               >
-                Close
+                {loc('بستن', 'Close', 'Cerrar', 'إغلاق', 'Schließen', 'Закрыть')}
               </button>
             </div>
           </div>

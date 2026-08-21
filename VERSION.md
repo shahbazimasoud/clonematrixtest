@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.37.2** (Released: 2026-08-21)
+## Current Panel Version: **v2.37.3** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.37.3** - 2026-08-21
+- **Harmonized Light Mode Theme & Modern Mac-Style Header for Active Terminal Modals**:
+  - **Light Mode Theming Fix**: Fixed visual inconsistencies in the "Active Terminal — Session & Authentication Policies Update", Admin Contact, Push, and Media Repository execution modals under Light Mode. Formatted with soft shadows, balanced slate border contrasts, and smooth backdrop blurs.
+  - **macOS-Style Terminal Header**: Integrated a dedicated terminal header bar with window control dots (`red`, `amber`, `green`), clear process tags (`synapse-session-policy`, `bash`), and high-legibility terminal font rendering.
+  - **Full Localization**: Integrated complete multilingual text for Persian, English, Spanish, Arabic, German, and Russian on all modal headers, status text, and buttons.
 
 #### **v2.37.2** - 2026-08-21
 - **Element Brand Title & Assets Synchronization in `/var/www/element/index.html`**:

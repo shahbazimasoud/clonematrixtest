@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.37.2";
+export const PANEL_VERSION = "2.37.3";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.37.3",
+    date: "2026-08-21",
+    title: "Harmonized Light Mode Theme & Modern Mac-Style Header for Active Terminal Modals",
+    changes: [
+      "Light Mode Visual Harmony: Fixed color mismatch in the Active Terminal modals (Session & Authentication Policies, Admin Contact, Push Notifications, and Media Repository) by implementing soft shadow cards, high-contrast typography, and backdrop blur transitions for light mode.",
+      "Terminal Header & macOS Dots: Added a clean, structured top bar with traffic light indicators and session labels to give the terminal window a polished, readable appearance across both light and dark themes.",
+      "Full Multilingual Support: Updated modal headers, execution subtitles, action buttons, and status descriptions with multi-language localizations (loc helper) across English, Persian, Spanish, Arabic, German, and Russian."
+    ]
+  },
   {
     version: "2.37.2",
     date: "2026-08-21",

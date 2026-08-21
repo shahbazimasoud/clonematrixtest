@@ -244,72 +244,12 @@
   "adSyncSettings": {
     "enabled": true,
     "intervalMinutes": 5,
-    "lastSyncAt": "2026-08-21T17:35:00.001Z"
+    "lastSyncAt": "2026-08-21T20:45:00.003Z"
   },
   "adSyncLogs": [
     {
-      "id": "sync_1787333700001",
-      "timestamp": "2026-08-21T17:35:00.001Z",
-      "auto": true,
-      "roomsChecked": 0,
-      "usersJoined": 0,
-      "syncedRoomsCount": 0,
-      "newlyJoinedCount": 0,
-      "status": "success",
-      "details": "Checked 0 rooms, 0 new users joined.",
-      "roomSummaries": []
-    },
-    {
-      "id": "sync_1787333400002",
-      "timestamp": "2026-08-21T17:30:00.002Z",
-      "auto": true,
-      "roomsChecked": 0,
-      "usersJoined": 0,
-      "syncedRoomsCount": 0,
-      "newlyJoinedCount": 0,
-      "status": "success",
-      "details": "Checked 0 rooms, 0 new users joined.",
-      "roomSummaries": []
-    },
-    {
-      "id": "sync_1787333100002",
-      "timestamp": "2026-08-21T17:25:00.002Z",
-      "auto": true,
-      "roomsChecked": 0,
-      "usersJoined": 0,
-      "syncedRoomsCount": 0,
-      "newlyJoinedCount": 0,
-      "status": "success",
-      "details": "Checked 0 rooms, 0 new users joined.",
-      "roomSummaries": []
-    },
-    {
-      "id": "sync_1787332800003",
-      "timestamp": "2026-08-21T17:20:00.003Z",
-      "auto": true,
-      "roomsChecked": 0,
-      "usersJoined": 0,
-      "syncedRoomsCount": 0,
-      "newlyJoinedCount": 0,
-      "status": "success",
-      "details": "Checked 0 rooms, 0 new users joined.",
-      "roomSummaries": []
-    },
-    {
-      "id": "sync_1787332500002",
-      "timestamp": "2026-08-21T17:15:00.002Z",
-      "auto": true,
-      "roomsChecked": 0,
-      "usersJoined": 0,
-      "syncedRoomsCount": 0,
-      "newlyJoinedCount": 0,
-      "status": "success",
-      "details": "Checked 0 rooms, 0 new users joined.",
-      "roomSummaries": []
-    },
-    {
-      "id": "sync_1787332200004",
-      "timestamp": "2026-08-21T17:10:00.004Z",
+      "id": "sync_1787345100003",
+      "timestamp": "2026-08-21T20:45:00.003Z",
       "auto": true,
       "roomsChecked": 0,
       "usersJoined": 0,
@@ -838,6 +778,66 @@
     {
       "id": "sync_1787312100002",
       "timestamp": "2026-08-21T11:35:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1787311800002",
+      "timestamp": "2026-08-21T11:30:00.002Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1787311500003",
+      "timestamp": "2026-08-21T11:25:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1787311200003",
+      "timestamp": "2026-08-21T11:20:00.003Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1787310900005",
+      "timestamp": "2026-08-21T11:15:00.005Z",
+      "auto": true,
+      "roomsChecked": 0,
+      "usersJoined": 0,
+      "syncedRoomsCount": 0,
+      "newlyJoinedCount": 0,
+      "status": "success",
+      "details": "Checked 0 rooms, 0 new users joined.",
+      "roomSummaries": []
+    },
+    {
+      "id": "sync_1787310600005",
+      "timestamp": "2026-08-21T11:10:00.005Z",
       "auto": true,
       "roomsChecked": 0,
       "usersJoined": 0,
