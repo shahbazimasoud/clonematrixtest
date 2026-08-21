@@ -42,7 +42,9 @@ import {
   Github,
   WifiOff,
   Loader2,
-  Check
+  Check,
+  Clock,
+  Calendar
 } from 'lucide-react';
 import SpatialDock from './components/SpatialDock';
 import MetricCard from './components/MetricCard';
@@ -99,7 +101,9 @@ const translations = {
     connectedProfileDesc: "سرور ماتریکس (Synapse)، کلاینت المنت و دیتابیس پستگرس به طور فعال از طریق تونل امن SSH مدیریت می‌شوند.",
     refreshStatsBtn: "بروزرسانی آمار",
     switchProfileBtn: "تغییر پروفایل",
-    refreshing: "در حال بروزرسانی..."
+    refreshing: "در حال بروزرسانی...",
+    dateTime: "تاریخ و ساعت سرور",
+    dateTimeSub: "زمان و تاریخ محلی سرور متصل"
   },
   en: {
     title: "Raven — Matrix Stack Manager",
@@ -140,7 +144,9 @@ const translations = {
     connectedProfileDesc: "Matrix homeserver, Element client, and Postgres Database are actively being managed over SSH tunnel.",
     refreshStatsBtn: "Refresh Stats",
     switchProfileBtn: "Switch Profile",
-    refreshing: "Refreshing..."
+    refreshing: "Refreshing...",
+    dateTime: "Server Date & Time",
+    dateTimeSub: "Connected server local system clock"
   },
   es: {
     title: "Gestor de Pila Matrix",
@@ -175,13 +181,15 @@ const translations = {
     connectedPrefix: "Conectado a: ",
     localSandboxMode: "Modo Sandbox Local",
     remoteOnboardingTitle: "Conecte su Servidor Matrix/Element Remoto",
-    remoteOnboardingDesc: "Este panel de control se está ejecutando actualmente en modo Sandbox de respaldo. Establezca un perfil de conexión SSH y Base de Datos seguro para comenzar a administrar sus servicios activos de servidor Matrix, archivos de configuración, registro de usuarios, salas y telemetría en vivo en su VPS de producción.",
+    remoteOnboardingDesc: "Este panel de control se está ejecutando actualmente en modo Sandbox de respaldo. Establezca un perfil de conexión SSH و Base de Datos seguro para comenzar a administrar sus servicios activos de servidor Matrix, archivos de configuración, registro de usuarios, salas y telemetría en vivo en su VPS de producción.",
     connectRemoteBtn: "Conectar Servidor Remoto",
     connectedProfileLabel: "Perfil de Servidor Conectado",
     connectedProfileDesc: "El servidor Matrix, el cliente Element y la base de datos Postgres se administran activamente a través de un túnel SSH.",
     refreshStatsBtn: "Refrescar Estadísticas",
     switchProfileBtn: "Cambiar Perfil",
-    refreshing: "Refrescando..."
+    refreshing: "Refrescando...",
+    dateTime: "Fecha y Hora del Servidor",
+    dateTimeSub: "Reloj del sistema del servidor conectado"
   },
   ar: {
     title: "مدير حزمة ماتريكس",
@@ -222,7 +230,9 @@ const translations = {
     connectedProfileDesc: "يتم إدارة خادم ماتريكس وعميل المنت وقاعدة بيانات بوستجرس بنشاط عبر نفق SSH آمن.",
     refreshStatsBtn: "تحديث الإحصائيات",
     switchProfileBtn: "تبديل ملف التعريف",
-    refreshing: "جاري التحديث..."
+    refreshing: "جاري التحديث...",
+    dateTime: "تاريخ ووقت الخادم",
+    dateTimeSub: "الساعة والوقت المحلي للخادم المتصل"
   },
   de: {
     title: "Matrix-Stack-Manager",
@@ -263,7 +273,9 @@ const translations = {
     connectedProfileDesc: "Matrix-Homeserver, Element-Client und Postgres-Datenbank werden aktiv über einen SSH-Tunnel verwaltet.",
     refreshStatsBtn: "Statistiken aktualisieren",
     switchProfileBtn: "Profil wechseln",
-    refreshing: "Aktualisierung..."
+    refreshing: "Aktualisierung...",
+    dateTime: "Server Datum & Uhrzeit",
+    dateTimeSub: "Lokale Systemzeit des verbundenen Servers"
   },
   ru: {
     title: "Управление стеком Matrix",
@@ -304,7 +316,9 @@ const translations = {
     connectedProfileDesc: "Сервер Matrix, веб-клиент Element и база данных Postgres активно управляются через безопасный SSH-туннель.",
     refreshStatsBtn: "Обновить статистику",
     switchProfileBtn: "Сменить профиль",
-    refreshing: "Обновление..."
+    refreshing: "Обновление...",
+    dateTime: "Дата и время сервера",
+    dateTimeSub: "Системное время подключенного сервера"
   }
 };
 
@@ -2511,8 +2525,8 @@ export default function App() {
                   />
                 </div>
 
-                {/* Element Web & Synapse Matrix Server Version Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Element Web, Synapse Server & Server Date & Time Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Element Web Card */}
                   {isDashboardLoading ? (
                     <div className="spatial-glass rounded-3xl p-5 border border-indigo-500/25 relative overflow-hidden space-y-4">
@@ -2699,6 +2713,93 @@ export default function App() {
                             {lang === 'fa' ? 'نسخه بروز' : 'Up to date'}
                           </span>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Date & Time Card */}
+                  {isDashboardLoading ? (
+                    <div className="spatial-glass rounded-3xl p-5 border border-cyan-500/25 relative overflow-hidden space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 w-3/4">
+                          <div className="w-10 h-10 rounded-2xl bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden shrink-0 border border-black/5 dark:border-white/[0.05]">
+                            <div className="shimmer-light-beam" />
+                          </div>
+                          <div className="space-y-2 flex-1">
+                            <div className="h-4 w-36 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                              <div className="shimmer-light-beam" />
+                            </div>
+                            <div className="h-3 w-48 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                              <div className="shimmer-light-beam" />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="w-4 h-4 rounded bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden">
+                          <div className="shimmer-light-beam" />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between pt-2">
+                        <div className="h-7 w-28 rounded-lg bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                          <div className="shimmer-light-beam" />
+                        </div>
+                        <div className="h-6 w-36 rounded-full bg-slate-300/40 dark:bg-slate-800/40 relative overflow-hidden border border-black/5 dark:border-white/[0.05]">
+                          <div className="shimmer-light-beam" />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => handleRefreshStats()}
+                      title={lang === 'fa' ? 'کلیک جهت همگام‌سازی فوری زمان و آمار سرور' : 'Click to refresh server time and metrics'}
+                      className="spatial-glass rounded-3xl p-5 border border-white/10 hover:border-cyan-500/30 hover:bg-white/5 transition-all cursor-pointer group relative overflow-hidden flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-2xl ${isLightMode ? 'bg-cyan-100 text-cyan-600' : 'bg-cyan-500/10 text-cyan-400'}`}>
+                              <Clock className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                                <span>{lang === 'fa' ? 'Date & Time' : 'Date & Time'}</span>
+                              </h4>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {t.dateTimeSub || (lang === 'fa' ? 'زمان و تاریخ سیستم سرور متصل' : 'Connected server local system clock')}
+                              </p>
+                            </div>
+                          </div>
+                          <RefreshCw className={`w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors shrink-0 ${isStatsRefreshing ? 'animate-spin' : ''}`} />
+                        </div>
+
+                        {/* Date and Time Formatted Display */}
+                        <div className="mt-2.5 space-y-1.5 bg-black/20 dark:bg-black/30 rounded-2xl p-3 border border-white/5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono font-medium text-slate-400">Date :</span>
+                            <span className="text-base sm:text-lg font-mono font-bold text-white tracking-wide">
+                              {stats?.serverDate || 'YYYY-MM-DD'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-white/5 pt-1.5">
+                            <span className="text-xs font-mono font-medium text-slate-400">Time:</span>
+                            <span className="text-base sm:text-lg font-mono font-bold text-cyan-400 tracking-wide">
+                              {stats?.serverTime || 'HH:MM:SS'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Footer with Timezone badge & sync indicator */}
+                      <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-white/5">
+                        <span className="text-[11px] text-slate-400 truncate max-w-[130px]" title={stats?.serverTimezone || 'UTC'}>
+                          {lang === 'fa' ? 'منطقه:' : 'TZ:'} <span className="font-mono text-slate-300 font-medium">{stats?.serverTimezone || 'UTC'}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400"></span>
+                          </span>
+                          <span>{lang === 'fa' ? 'همگام زنده' : 'Live Sync'}</span>
+                        </span>
                       </div>
                     </div>
                   )}

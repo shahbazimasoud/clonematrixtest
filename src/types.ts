@@ -76,6 +76,10 @@ export interface SystemStats {
   synapseLatestVersion?: string;
   synapseHasUpdate?: boolean;
   isDbConnected?: boolean;
+  serverDate?: string;
+  serverTime?: string;
+  serverTimezone?: string;
+  serverTimestamp?: number;
 }
 
 export interface ServiceState {

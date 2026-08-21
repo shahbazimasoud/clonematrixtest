@@ -694,6 +694,23 @@ function getServicesStatus() {
   return services;
 }
 
+function getServerDateTime(): { serverDate: string; serverTime: string; serverTimezone: string; serverTimestamp: number } {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const serverDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const serverTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  let serverTimezone = "UTC";
+  try {
+    serverTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch (e) {}
+  return {
+    serverDate,
+    serverTime,
+    serverTimezone,
+    serverTimestamp: now.getTime()
+  };
+}
+
 interface MetricsCache {
   timestamp: number;
   data: {
@@ -702,6 +719,10 @@ interface MetricsCache {
     disk: { pct: number; total: number; free: number };
     uptimeStr: string;
     activeServices: any[];
+    serverDate: string;
+    serverTime: string;
+    serverTimezone: string;
+    serverTimestamp: number;
   };
 }
 
@@ -713,6 +734,7 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
   const cached = remoteMetricsCacheMap.get(cacheKey);
   const lastFailure = remoteFailureCacheMap.get(cacheKey) || 0;
   const now = Date.now();
+  const defaultDT = getServerDateTime();
 
   if (activeConn.authType === "agent") {
     try {
@@ -741,7 +763,12 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
         { id: "postgresql", status: "active" },
         { id: "coturn", status: "active" }
       ];
-      return { cpu, mem, disk, uptimeStr, activeServices };
+      const serverDate = sys.serverDate || defaultDT.serverDate;
+      const serverTime = sys.serverTime || defaultDT.serverTime;
+      const serverTimezone = sys.serverTimezone || defaultDT.serverTimezone;
+      const serverTimestamp = sys.serverTimestamp || defaultDT.serverTimestamp;
+
+      return { cpu, mem, disk, uptimeStr, activeServices, serverDate, serverTime, serverTimezone, serverTimestamp };
     } catch (e) {
       // Fallback below
     }
@@ -763,7 +790,11 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
         { id: "nginx", status: "active" },
         { id: "postgresql", status: "active" },
         { id: "coturn", status: "active" }
-      ]
+      ],
+      serverDate: defaultDT.serverDate,
+      serverTime: defaultDT.serverTime,
+      serverTimezone: defaultDT.serverTimezone,
+      serverTimestamp: defaultDT.serverTimestamp
     };
   }
 
@@ -778,6 +809,8 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
       df -m / || true
       echo "===UPTIME==="
       uptime -p 2>/dev/null || uptime || true
+      echo "===SERVER_TIME==="
+      date +"%Y-%m-%d|%H:%M:%S|%Z|%z|%s" 2>/dev/null || date +"%Y-%m-%d %H:%M:%S" 2>/dev/null || true
       echo "===SERVICES==="
       for s in matrix-synapse nginx postgresql coturn; do
         systemctl is-active $s 2>/dev/null || echo "inactive"
@@ -794,6 +827,10 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
     let disk = { pct: 32, total: 97.7, free: 66.4 };
     let uptimeStr = "Active";
     let activeServices: any[] = [];
+    let serverDate = defaultDT.serverDate;
+    let serverTime = defaultDT.serverTime;
+    let serverTimezone = defaultDT.serverTimezone;
+    let serverTimestamp = defaultDT.serverTimestamp;
 
     const cpuMatch = rawOutput.match(/===CPU===([\s\S]*?)===MEM===/);
     if (cpuMatch) {
@@ -851,9 +888,34 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
       disk.free = parseFloat((disk.free / 1024).toFixed(1));
     }
 
-    const uptimeMatch = rawOutput.match(/===UPTIME===([\s\S]*?)===SERVICES===/);
+    const uptimeMatch = rawOutput.match(/===UPTIME===([\s\S]*?)===SERVER_TIME===/);
     if (uptimeMatch) {
       uptimeStr = uptimeMatch[1].trim();
+    }
+
+    const serverTimeMatch = rawOutput.match(/===SERVER_TIME===([\s\S]*?)===SERVICES===/);
+    if (serverTimeMatch) {
+      const timeLine = serverTimeMatch[1].trim();
+      if (timeLine.includes("|")) {
+        const parts = timeLine.split("|");
+        if (parts.length >= 2 && parts[0].includes("-") && parts[1].includes(":")) {
+          serverDate = parts[0].trim();
+          serverTime = parts[1].trim();
+          if (parts[2]?.trim()) serverTimezone = parts[2].trim();
+          const ts = parseInt(parts[4]?.trim() || "", 10);
+          if (!isNaN(ts) && ts > 0) {
+            serverTimestamp = ts * 1000;
+          }
+        }
+      } else {
+        const matchRegex = /(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\s+([A-Za-z0-9_+\-]+))?/;
+        const m = timeLine.match(matchRegex);
+        if (m) {
+          serverDate = m[1];
+          serverTime = m[2];
+          if (m[3]) serverTimezone = m[3];
+        }
+      }
     }
 
     const servicesMatch = rawOutput.match(/===SERVICES===([\s\S]*)$/);
@@ -866,7 +928,7 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
       });
     }
 
-    const resData = { cpu, mem, disk, uptimeStr, activeServices };
+    const resData = { cpu, mem, disk, uptimeStr, activeServices, serverDate, serverTime, serverTimezone, serverTimestamp };
     remoteMetricsCacheMap.set(cacheKey, { timestamp: Date.now(), data: resData });
     remoteFailureCacheMap.delete(cacheKey);
     return resData;
@@ -883,7 +945,11 @@ async function getRemoteBatchMetrics(activeConn: ConnectionProfile) {
         { id: "nginx", status: "active" },
         { id: "postgresql", status: "active" },
         { id: "coturn", status: "active" }
-      ]
+      ],
+      serverDate: defaultDT.serverDate,
+      serverTime: defaultDT.serverTime,
+      serverTimezone: defaultDT.serverTimezone,
+      serverTimestamp: defaultDT.serverTimestamp
     };
   }
 }
@@ -7441,6 +7507,11 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
     let disk = { pct: 0, total: 0, free: 0 };
     let uptimeStr = "";
     let activeServices: any[] = [];
+    const localDT = getServerDateTime();
+    let serverDate = localDT.serverDate;
+    let serverTime = localDT.serverTime;
+    let serverTimezone = localDT.serverTimezone;
+    let serverTimestamp = localDT.serverTimestamp;
 
     if (activeConn && activeConn.id !== "local") {
       try {
@@ -7450,6 +7521,10 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
         disk = batch.disk;
         uptimeStr = batch.uptimeStr;
         activeServices = batch.activeServices;
+        if (batch.serverDate) serverDate = batch.serverDate;
+        if (batch.serverTime) serverTime = batch.serverTime;
+        if (batch.serverTimezone) serverTimezone = batch.serverTimezone;
+        if (batch.serverTimestamp) serverTimestamp = batch.serverTimestamp;
       } catch (e) {
         cpu = getCPUUsage();
         mem = getMemoryUsage();
@@ -7484,6 +7559,10 @@ app.get("/api/matrix/stats", authenticateToken, async (req, res) => {
       reportsCount,
       uptime: uptimeStr,
       services: activeServices,
+      serverDate,
+      serverTime,
+      serverTimezone,
+      serverTimestamp,
       isDbConnected,
       ...esVersions
     });
@@ -20855,8 +20934,6 @@ exit 0
 // Function to generate ONLY the specific scheduler script needed by an action or schedule
 async function ensureSingleSchedulerScript(activeConn: any, type: string, backupPath: string, retentionDays: number): Promise<{ scriptPath: string; scriptName: string }> {
   const scriptDir = `${REMOTE_BACKUP_BASE_DIR}/scripts`;
-  await runActiveServerCommand(activeConn, `mkdir -p "${backupPath}" "${scriptDir}" && chmod 755 "${backupPath}" "${scriptDir}"`);
-
   let scriptName = "matrix_auto_db_backup.sh";
   let content = "";
 
@@ -20872,13 +20949,24 @@ async function ensureSingleSchedulerScript(activeConn: any, type: string, backup
   }
 
   const scriptPath = `${scriptDir}/${scriptName}`;
-  const b64 = Buffer.from(content).toString("base64");
-  await runActiveServerCommand(activeConn, `echo "${b64}" | base64 -d > "${scriptPath}" && chmod 755 "${scriptPath}"`);
+
+  // Ensure destination directories exist
+  await runActiveServerCommand(activeConn, `mkdir -p "${backupPath}" "${scriptDir}" && chmod 755 "${backupPath}" "${scriptDir}"`);
+
+  // Check if this specific script already exists on server
+  const checkCmd = `[ -s "${scriptPath}" ] && echo "EXISTS" || echo "MISSING"`;
+  const checkRes = await runActiveServerCommand(activeConn, checkCmd);
+
+  if (checkRes.trim() !== "EXISTS") {
+    const b64 = Buffer.from(content).toString("base64");
+    await runActiveServerCommand(activeConn, `echo "${b64}" | base64 -d > "${scriptPath}" && chmod 755 "${scriptPath}"`);
+  }
+
   return { scriptPath, scriptName };
 }
 
 // Function to synchronize remote server crontab for automated backups (strictly creating only enabled schedule scripts)
-async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise<{ success: boolean; details: string; installedCrons: string[] }> {
+async function syncRemoteBackupCronJobs(activeConn: any, settings: any, specificOnlyType?: string): Promise<{ success: boolean; details: string; installedCrons: string[] }> {
   if (!activeConn || activeConn.id === "local") {
     return { success: true, details: "Settings saved for local environment (no remote SSH host connected).", installedCrons: [] };
   }
@@ -20935,12 +21023,12 @@ async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise
     const configScriptPath = `${scriptDir}/matrix_auto_config_backup.sh`;
     const cleanupScriptPath = `${scriptDir}/matrix_auto_cleanup.sh`;
 
-    // 2. Generate scripts ONLY for types that are actually configured & enabled
-    const hasDbSchedule = schedulesList.some(s => s.enabled && s.type === "database");
-    const hasConfigSchedule = schedulesList.some(s => s.enabled && s.type === "config");
-    const hasRetentionSchedule = schedulesList.some(s => s.enabled && (s.type === "retention" || s.type === "cleanup"));
+    // 2. Generate scripts ONLY for types that are targeted or actively configured & enabled
+    const shouldSyncDb = specificOnlyType ? (specificOnlyType === "database") : schedulesList.some(s => s.enabled && s.type === "database");
+    const shouldSyncConfig = specificOnlyType ? (specificOnlyType === "config") : schedulesList.some(s => s.enabled && s.type === "config");
+    const shouldSyncRetention = specificOnlyType ? (specificOnlyType === "retention" || specificOnlyType === "cleanup") : schedulesList.some(s => s.enabled && (s.type === "retention" || s.type === "cleanup"));
 
-    if (hasDbSchedule) {
+    if (shouldSyncDb) {
       const dbSched = schedulesList.find(s => s.enabled && s.type === "database");
       const dbRetDays = parseInt(dbSched?.retentionDays, 10) || globalRetentionDays;
       const dbScriptContent = getDbBackupScriptContent(backupPath, dbRetDays, activeConn);
@@ -20948,7 +21036,7 @@ async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise
       await runActiveServerCommand(activeConn, `echo "${b64DbScript}" | base64 -d > "${dbScriptPath}" && chmod 755 "${dbScriptPath}"`);
     }
 
-    if (hasConfigSchedule) {
+    if (shouldSyncConfig) {
       const configSched = schedulesList.find(s => s.enabled && s.type === "config");
       const cfgRetDays = parseInt(configSched?.retentionDays, 10) || globalRetentionDays;
       const configScriptContent = getConfigBackupScriptContent(backupPath, cfgRetDays);
@@ -20956,7 +21044,7 @@ async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise
       await runActiveServerCommand(activeConn, `echo "${b64ConfigScript}" | base64 -d > "${configScriptPath}" && chmod 755 "${configScriptPath}"`);
     }
 
-    if (hasRetentionSchedule) {
+    if (shouldSyncRetention) {
       const retSched = schedulesList.find(s => s.enabled && (s.type === "retention" || s.type === "cleanup"));
       const retDays = parseInt(retSched?.retentionDays, 10) || globalRetentionDays;
       const cleanupScriptContent = getRetentionCleanupScriptContent(backupPath, retDays);
@@ -21712,7 +21800,8 @@ app.post("/api/backups/scheduler/cron-update", authenticateToken, checkPermissio
   const activeConn = getActiveConnection();
   let syncResult: any = { success: true, details: "Saved in settings" };
   if (activeConn && activeConn.id !== "local") {
-    syncResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
+    const targetType = id?.includes("retention") || id?.includes("cleanup") ? "retention" : (id?.includes("config") ? "config" : (id?.includes("db") || id?.includes("database") ? "database" : undefined));
+    syncResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings, targetType);
   }
 
   db.auditLogs.unshift({
@@ -21778,7 +21867,7 @@ app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission([
   const activeConn = getActiveConnection();
   let syncResult: any = { success: true, details: "Saved in settings" };
   if (activeConn && activeConn.id !== "local") {
-    syncResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
+    syncResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings, cleanType);
   }
 
   db.auditLogs.unshift({
@@ -26123,6 +26212,22 @@ wss.on("connection", (ws: WebSocket, request: any) => {
       const esVersions = await detectServerElementSynapseVersions(activeConn);
       const isDbConnected = await checkDatabaseConnection(activeConn);
 
+      const localDT = getServerDateTime();
+      let serverDate = localDT.serverDate;
+      let serverTime = localDT.serverTime;
+      let serverTimezone = localDT.serverTimezone;
+      let serverTimestamp = localDT.serverTimestamp;
+
+      if (activeConn && activeConn.id !== "local") {
+        try {
+          const batch = await getRemoteBatchMetrics(activeConn);
+          if (batch.serverDate) serverDate = batch.serverDate;
+          if (batch.serverTime) serverTime = batch.serverTime;
+          if (batch.serverTimezone) serverTimezone = batch.serverTimezone;
+          if (batch.serverTimestamp) serverTimestamp = batch.serverTimestamp;
+        } catch (e) {}
+      }
+
       const stats = {
         cpuUsage: cpu,
         memoryUsage: mem.pct,
@@ -26143,6 +26248,10 @@ wss.on("connection", (ws: WebSocket, request: any) => {
         federationServers: 34,
         messageVolume24h: 12450 + Math.floor(Math.random() * 50),
         uptime: uptimeStr,
+        serverDate,
+        serverTime,
+        serverTimezone,
+        serverTimestamp,
         trends,
         services: activeServices,
         isDbConnected,

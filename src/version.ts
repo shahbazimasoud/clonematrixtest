@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.35.0";
+export const PANEL_VERSION = "2.36.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.36.0",
+    date: "2026-08-21",
+    title: "Server Date & Time Dashboard Card and Strict Script Generation Isolation",
+    changes: [
+      "Server Date & Time Dashboard Card: Added a dedicated Spatial Glass 'Date & Time' monitoring card to the dashboard grid displaying real-time connected server date (YYYY-MM-DD), local time (HH:MM:SS), timezone, and live sync status.",
+      "Strict Script Generation Isolation: Creating or updating any cron schedule generates ONLY its specific script without regenerating other scripts.",
+      "Optimized 'Run Now' Script Execution: Clicking 'Run Now' checks if the specific script exists on the server, creates only that script if missing, and executes it with custom schedule card parameters."
+    ]
+  },
   {
     version: "2.35.0",
     date: "2026-08-21",

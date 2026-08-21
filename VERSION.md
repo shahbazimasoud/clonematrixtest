@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.35.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.36.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.36.0** - 2026-08-21
+- **Server Date & Time Dashboard Card & Strict Script Generation Isolation**:
+  - **Server Date & Time Card**: Added a dedicated Spatial Glass 'Date & Time' metric card to the primary dashboard grid displaying live connected server date (`Date : YYYY-MM-DD`), local time (`Time: HH:MM:SS`), timezone, and real-time synchronization pulse.
+  - **Granular Script Creation on Schedule Creation**: Creating or updating any single cron schedule strictly generates ONLY its specific script file (`matrix_auto_db_backup.sh`, `matrix_auto_config_backup.sh`, or `matrix_auto_cleanup.sh`) in `/opt/matrix-element-Backup/scripts/` without creating or overwriting unrelated scripts.
+  - **Targeted 'Run Now' Script Execution**: Triggering "Run Now" verifies if the specific script already exists on the remote host, generates only that script if missing, and executes it immediately with its custom card configurations.
 
 #### **v2.35.0** - 2026-08-21
 - **Granular Single-Script Generation & Targeted 'Run Now' Execution**:
