@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.25.2** (Released: 2026-08-20)
+## Current Panel Version: **v2.25.3** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.25.3** - 2026-08-21
+- **Strict Remote Execution Engine for Matrix & Element Backup Operations**:
+  - **No Local/Sandbox Fallback**: Removed all local filesystem operations and fallbacks for Matrix and Element backup triggers. The operations strictly require and execute on the active remote destination server (via SSH or Agent).
+  - **Multi-Stage Destination Verification**: Enforced remote verification after creating the `.tar.gz` archive, ensuring `test -f`, `test -s`, valid `tar -tzf`, and checking that the archive contains both `var/www/element/` and `etc/matrix-synapse/` trees.
+  - **Accurate File Sizes**: Retrieved exact byte counts from `stat -c %s` on the destination server instead of hardcoded or simulated values.
+  - **Remote Backup Catalog & Rollback Engine**: Ensured all snapshots, rollbacks, downloads, and deletions read and write directly to `/opt/matrix-element-Backup/` on the active destination server.
 
 #### **v2.25.2** - 2026-08-20
 - **Remote-First Architecture & Strict Multi-Path Archive Verification for /opt/matrix-element-Backup**:

@@ -16,8 +16,8 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.25.2";
-export const PANEL_BUILD_DATE = "2026-08-20";
+export const PANEL_VERSION = "2.25.3";
+export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
 
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.25.3",
+    date: "2026-08-21",
+    title: "Strict Remote Execution Engine for Matrix & Element Backup Operations",
+    changes: [
+      "Eliminated all local and sandbox fallbacks for configuration and snapshot backups, ensuring all execution occurs strictly on the active remote destination server.",
+      "Added multi-stage verification on the destination server: verified non-zero byte size with stat, confirmed readability with tar -tzf, and asserted the presence of both /var/www/element/ and /etc/matrix-synapse/ hierarchies.",
+      "Refactored scanServerBackups, download, restore, delete, and rollback endpoints to target /opt/matrix-element-Backup on the active destination connection exclusively.",
+      "Added exact error reporting across API layers with localization and toast alerts without swallow or silent fallback."
+    ]
+  },
   {
     version: "2.25.2",
     date: "2026-08-20",

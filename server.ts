@@ -20417,23 +20417,20 @@ function getDirectoryFilesMap(targetDir: string, virtualPrefix: string): { [vPat
 const REMOTE_BACKUP_BASE_DIR = "/opt/matrix-element-Backup";
 
 async function runActiveServerCommand(activeConn: any, cmd: string, useSudo: boolean = true): Promise<string> {
-  if (activeConn && activeConn.id !== "local") {
-    const sudoPrefix = (useSudo && activeConn.username !== "root") ? "sudo " : "";
-    const fullCmd = `${sudoPrefix}${cmd}`;
-    if (activeConn.authType === "agent") {
-      return await executeRemoteAgentTask(activeConn.id, "execute_command", { command: fullCmd });
-    } else {
-      return await executeSSHCommand(activeConn, fullCmd);
-    }
+  if (!activeConn || activeConn.id === "local") {
+    throw new Error("No active remote destination server connected. Please connect to a Matrix server via SSH or Agent before executing this operation.");
+  }
+  if (activeConn.status === "disconnected" || activeConn.status === "error" || activeConn.status === "failed") {
+    throw new Error(`Active connection '${activeConn.name || activeConn.host}' is disconnected (status: ${activeConn.status}). Please reconnect before executing remote backup operations.`);
+  }
+
+  const sudoPrefix = (useSudo && activeConn.username && activeConn.username !== "root") ? "sudo " : "";
+  const fullCmd = `${sudoPrefix}${cmd}`;
+
+  if (activeConn.authType === "agent") {
+    return await executeRemoteAgentTask(activeConn.id, "execute_command", { command: fullCmd });
   } else {
-    try {
-      const output = execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
-      return output;
-    } catch (err: any) {
-      const stderr = err.stderr ? err.stderr.toString() : "";
-      const stdout = err.stdout ? err.stdout.toString() : "";
-      throw new Error(stderr.trim() || stdout.trim() || err.message);
-    }
+    return await executeSSHCommand(activeConn, fullCmd);
   }
 }
 
@@ -20448,36 +20445,12 @@ function getBackupDirectory() {
     };
     writeDb(db);
   }
-  const backupPath = db.backupSettings.backupPath || REMOTE_BACKUP_BASE_DIR;
-  
-  let targetPath = "";
-  if (backupPath.startsWith("/sandbox")) {
-    targetPath = getRealPath(backupPath.substring(8));
-  } else if (backupPath.startsWith("sandbox/")) {
-    targetPath = getRealPath(backupPath.substring(8));
-  } else if (path.isAbsolute(backupPath)) {
-    targetPath = backupPath;
-  } else {
-    targetPath = path.join(process.cwd(), backupPath);
-  }
-  
-  try {
-    if (!fs.existsSync(targetPath)) {
-      fs.mkdirSync(targetPath, { recursive: true });
-    }
-  } catch (_) {
-    const fallbackPath = getRealPath(backupPath);
-    if (!fs.existsSync(fallbackPath)) {
-      fs.mkdirSync(fallbackPath, { recursive: true });
-    }
-    return fallbackPath;
-  }
-  return targetPath;
+  return REMOTE_BACKUP_BASE_DIR;
 }
 
 async function scanServerBackups(activeConn?: any): Promise<any[]> {
   const db = readDb();
-  const backupDirName = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  const backupDirName = REMOTE_BACKUP_BASE_DIR;
   const foundBackups: any[] = [];
   const existingMap = new Map<string, any>();
   
@@ -20488,7 +20461,12 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
     });
   }
 
-  // 1. Scan target backup directory on the active connection
+  // Strictly require active remote connection; do NOT scan local sandbox filesystem
+  if (!activeConn || activeConn.id === "local") {
+    return Array.isArray(db.backups) ? db.backups : [];
+  }
+
+  // Scan target backup directory on the active remote destination server
   try {
     const scanCmd = `
       mkdir -p "${backupDirName}" 2>/dev/null || true
@@ -20525,7 +20503,7 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
             foundBackups.push({
               id: existing?.id || `bak-${Buffer.from(filename).toString("hex").substring(0, 12)}`,
               filename,
-              path: path.join(backupDirName, filename),
+              path: `${backupDirName}/${filename}`,
               size: isDir ? "Snapshot Directory" : (existing?.size || formatBytes(rawSize)),
               timestamp: existing?.timestamp || timestamp,
               hasSSL: existing?.hasSSL || filename.includes("ssl") || false,
@@ -20540,58 +20518,13 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
     console.warn("[BACKUP] Scan warning on active connection:", scanErr);
   }
 
-  // 2. Also check local sandbox if connection is local
-  if (!activeConn || activeConn.id === "local") {
-    const localDirs = [
-      backupDirName,
-      getRealPath(backupDirName),
-      getBackupDirectory()
-    ];
-    const scannedSet = new Set<string>();
-    for (const dir of localDirs) {
-      if (!dir || scannedSet.has(dir)) continue;
-      scannedSet.add(dir);
-      try {
-        if (fs.existsSync(dir)) {
-          const files = fs.readdirSync(dir);
-          for (const filename of files) {
-            if (filename.startsWith(".") || foundBackups.some(b => b.filename === filename)) continue;
-            if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.startsWith("snapshot-") || filename.includes(".bak_")) {
-              const filePath = path.join(dir, filename);
-              const stat = fs.statSync(filePath);
-              const isDb = filename.includes("database") || filename.includes("db-backup");
-              const isConfig = filename.includes("config") || filename.includes("synapse") || filename.includes("element") || filename.startsWith("snapshot-");
-              const existing = existingMap.get(filename);
-
-              let timestamp = stat.mtime.toISOString();
-              const dateMatch = filename.match(/(\d{4})(\d{2})(\d{2})[-_](\d{2})(\d{2})(\d{2})/);
-              if (dateMatch) {
-                const [_, y, m, d, h, min, s] = dateMatch;
-                timestamp = new Date(`${y}-${m}-${d}T${h}:${min}:${s}Z`).toISOString();
-              }
-
-              foundBackups.push({
-                id: existing?.id || `bak-${stat.mtimeMs.toFixed(0)}`,
-                filename,
-                path: filePath,
-                size: stat.isDirectory() ? "Snapshot Directory" : (existing?.size || formatBytes(stat.size)),
-                timestamp: existing?.timestamp || timestamp,
-                hasSSL: existing?.hasSSL || filename.includes("ssl") || false,
-                type: existing?.type || (isDb ? "database" : "config"),
-                coveredPaths: existing?.coveredPaths || (isConfig ? ["/var/www/element", "/etc/matrix-synapse"] : ["database"])
-              });
-            }
-          }
-        }
-      } catch (_) {}
-    }
-  }
-
-  // 3. Reconcile with db.backups
+  // Reconcile with db.backups keeping only valid remote records
   if (Array.isArray(db.backups)) {
     for (const b of db.backups) {
       if (!foundBackups.some(f => f.filename === b.filename || f.id === b.id)) {
-        foundBackups.push(b);
+        if (b.path?.startsWith(REMOTE_BACKUP_BASE_DIR)) {
+          foundBackups.push(b);
+        }
       }
     }
   }
@@ -20640,10 +20573,6 @@ app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "
   if (configSchedule !== undefined) db.backupSettings.configSchedule = configSchedule;
   
   writeDb(db);
-  
-  try {
-    getBackupDirectory();
-  } catch (err) {}
 
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
@@ -20659,13 +20588,27 @@ app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "
   res.json({ success: true, settings: db.backupSettings });
 });
 
-// Create Configuration / Database Backup in /opt/matrix-element-Backup
+// Create Configuration / Database Backup in /opt/matrix-element-Backup on remote destination server
 app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { includeSSL, type } = req.body; // type can be 'config' or 'database'
   const backupType = type || "config";
   const db = readDb();
   const activeConn = getActiveConnection();
-  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  const backupDirPath = REMOTE_BACKUP_BASE_DIR;
+
+  if (!activeConn || activeConn.id === "local") {
+    return res.status(400).json({
+      success: false,
+      error: "No active remote destination server connected. Please connect to a Matrix destination server (via SSH or Agent) before creating backups."
+    });
+  }
+
+  if (activeConn.status === "disconnected" || activeConn.status === "error" || activeConn.status === "failed") {
+    return res.status(400).json({
+      success: false,
+      error: `Active connection '${activeConn.name || activeConn.host}' is not connected (status: ${activeConn.status}). Please reconnect before performing backup.`
+    });
+  }
 
   const timestamp = new Date().toISOString();
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -20674,97 +20617,85 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
   const jsonFilename = `${backupType}-backup-${dateStr}-${timeStr}.json`;
   const snapshotDirName = `snapshot-${dateStr}-${timeStr}`;
 
-  console.log(`[BACKUP] Starting remote ${backupType} backup`);
-  console.log(`[BACKUP] Active connection: ${activeConn?.name || 'Local'} (${activeConn?.host || 'localhost'}, ID: ${activeConn?.id || 'local'})`);
+  console.log(`[BACKUP] Starting strict remote ${backupType} backup on ${activeConn.name || activeConn.host} (${activeConn.id})`);
 
   try {
-    let finalPath = path.join(backupDirPath, tarFilename);
+    let finalPath = `${backupDirPath}/${tarFilename}`;
     let formattedSize = "0 KB";
     let rawSizeBytes = 0;
 
-    // Step 1: Create destination backup directory on active server
-    console.log(`[BACKUP] Ensuring destination directory: ${backupDirPath}`);
+    // Step 1: Ensure destination directory exists on destination server
     await runActiveServerCommand(activeConn, `mkdir -p "${backupDirPath}" && chmod 755 "${backupDirPath}"`);
 
     if (backupType === "config") {
-      console.log(`[BACKUP] Source: /var/www/element`);
-      console.log(`[BACKUP] Source: /etc/matrix-synapse`);
-      console.log(`[BACKUP] Destination: ${backupDirPath}/${tarFilename}`);
+      // Step 2: Strict remote backup creation & multi-step verification script
+      const backupScript = `
+        set -e
+        mkdir -p "${backupDirPath}"
+        chmod 755 "${backupDirPath}"
 
-      // Step 2: Check existence of required source directories on active server
-      const checkSrcScript = `
-MISSING=""
-[ ! -d "/var/www/element" ] && MISSING="$MISSING /var/www/element"
-[ ! -d "/etc/matrix-synapse" ] && MISSING="$MISSING /etc/matrix-synapse"
-if [ -n "$MISSING" ]; then
-  echo "MISSING_SOURCES:$MISSING"
-  exit 1
-fi
-`.trim();
+        MISSING=""
+        [ ! -d "/var/www/element" ] && MISSING="$MISSING /var/www/element"
+        [ ! -d "/etc/matrix-synapse" ] && MISSING="$MISSING /etc/matrix-synapse"
+        if [ -n "$MISSING" ]; then
+          echo "ERR_MISSING_SOURCE:$MISSING"
+          exit 1
+        fi
 
-      try {
-        await runActiveServerCommand(activeConn, checkSrcScript);
-      } catch (srcErr: any) {
-        let cleanMsg = "Required source directories do not exist on the server (/var/www/element or /etc/matrix-synapse).";
-        const errMsg = srcErr.message || "";
-        if (errMsg.includes("MISSING_SOURCES:")) {
-          const missingList = errMsg.split("MISSING_SOURCES:")[1]?.trim() || "";
-          cleanMsg = `Source directory not found on server: ${missingList}`;
-        }
-        console.error(`[BACKUP] FAILED: ${cleanMsg}`);
-        return res.status(400).json({
-          success: false,
-          error: cleanMsg,
-          details: errMsg
-        });
-      }
+        # Create recursive TAR.GZ archive preserving relative root directory hierarchy
+        cd / && tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matrix-synapse
 
-      // Step 3: Create tar.gz archive on active server preserving var/www/element and etc/matrix-synapse
-      const createTarCmd = `cd / && tar -czf "${backupDirPath}/${tarFilename}" var/www/element etc/matrix-synapse`;
-      try {
-        await runActiveServerCommand(activeConn, createTarCmd);
-      } catch (tarErr: any) {
-        console.error(`[BACKUP] FAILED: Archive creation command failed: ${tarErr.message}`);
-        return res.status(500).json({
-          success: false,
-          error: `Failed to create tar archive on server: ${tarErr.message}`
-        });
-      }
+        # Verification 1: File existence check
+        if [ ! -f "${backupDirPath}/${tarFilename}" ]; then
+          echo "ERR_NOT_FOUND: Archive file not found at ${backupDirPath}/${tarFilename}"
+          exit 1
+        fi
 
-      // Step 4: Strict verification of created archive on active server
-      const verifyCmd = `test -f "${backupDirPath}/${tarFilename}" && test -s "${backupDirPath}/${tarFilename}" && tar -tzf "${backupDirPath}/${tarFilename}" >/dev/null`;
-      try {
-        await runActiveServerCommand(activeConn, verifyCmd);
-        console.log(`[BACKUP] Archive created`);
-        console.log(`[BACKUP] Archive verification: OK`);
-      } catch (vErr: any) {
-        console.error(`[BACKUP] FAILED: Archive verification failed on server: ${vErr.message}`);
-        return res.status(500).json({
-          success: false,
-          error: `Archive verification failed on server: The created backup file is missing, empty, or corrupted (${vErr.message})`
-        });
-      }
+        # Verification 2: Non-zero size check
+        if [ ! -s "${backupDirPath}/${tarFilename}" ]; then
+          echo "ERR_EMPTY: Archive file is 0 bytes (empty)"
+          exit 1
+        fi
 
-      // Step 5: Get exact size from active server
-      const statCmd = `stat -c %s "${backupDirPath}/${tarFilename}" 2>/dev/null || wc -c < "${backupDirPath}/${tarFilename}"`;
-      try {
-        const sizeOut = await runActiveServerCommand(activeConn, statCmd);
-        rawSizeBytes = parseInt(sizeOut.trim(), 10) || 0;
-      } catch (statErr: any) {
-        console.warn("[BACKUP] stat command failed:", statErr);
-      }
+        # Verification 3: Archive readability and format integrity test
+        TAR_CONTENTS=$(tar -tzf "${backupDirPath}/${tarFilename}" 2>&1)
+        TAR_EXIT=$?
+        if [ $TAR_EXIT -ne 0 ]; then
+          echo "ERR_CORRUPT: tar.gz archive is corrupted or unreadable: $TAR_CONTENTS"
+          exit 1
+        fi
+
+        # Verification 4: Hierarchy verification for both required roots
+        HAS_ELEMENT=$(echo "$TAR_CONTENTS" | grep -E '^var/www/element/' || true)
+        HAS_SYNAPSE=$(echo "$TAR_CONTENTS" | grep -E '^etc/matrix-synapse/' || true)
+
+        if [ -z "$HAS_ELEMENT" ]; then
+          echo "ERR_MISSING_ELEMENT: Archive does not contain var/www/element/ structure"
+          exit 1
+        fi
+
+        if [ -z "$HAS_SYNAPSE" ]; then
+          echo "ERR_MISSING_SYNAPSE: Archive does not contain etc/matrix-synapse/ structure"
+          exit 1
+        fi
+
+        # Output exact byte size from destination server stat
+        stat -c "%s" "${backupDirPath}/${tarFilename}" 2>/dev/null || wc -c < "${backupDirPath}/${tarFilename}"
+      `.trim();
+
+      const scriptOutput = await runActiveServerCommand(activeConn, backupScript);
+      const lines = scriptOutput.trim().split("\n");
+      const lastLine = lines[lines.length - 1]?.trim() || "";
+      rawSizeBytes = parseInt(lastLine, 10) || 0;
 
       if (rawSizeBytes <= 0) {
-        console.error("[BACKUP] FAILED: Archive file size is 0 bytes.");
-        return res.status(500).json({
-          success: false,
-          error: "Archive file size is 0 bytes on server."
-        });
+        throw new Error("Backup archive size verification failed: 0 bytes reported by remote destination server.");
       }
-      formattedSize = formatBytes(rawSizeBytes);
-      console.log(`[BACKUP] Archive size: ${formattedSize} (${rawSizeBytes} bytes)`);
 
-      // Step 6: Create Snapshot directory on active server
+      formattedSize = formatBytes(rawSizeBytes);
+      console.log(`[BACKUP] Verified remote archive created: ${formattedSize} (${rawSizeBytes} bytes)`);
+
+      // Step 3: Create companion Snapshot directory on destination server
       const snapDir = `${backupDirPath}/${snapshotDirName}`;
       const snapCmd = `
         mkdir -p "${snapDir}/var/www/element" "${snapDir}/etc/matrix-synapse" &&
@@ -20775,17 +20706,17 @@ fi
       `.trim();
       try {
         await runActiveServerCommand(activeConn, snapCmd);
-        console.log(`[BACKUP] Snapshot directory created: ${snapDir}`);
+        console.log(`[BACKUP] Remote snapshot directory created: ${snapDir}`);
       } catch (snapErr: any) {
-        console.warn(`[BACKUP] Warning creating snapshot directory: ${snapErr.message}`);
+        console.warn(`[BACKUP] Snapshot directory warning: ${snapErr.message}`);
       }
 
-      // Step 7: Write companion JSON manifest on active server
+      // Step 4: Write companion JSON manifest on destination server
       const manifest = {
         type: "config",
         timestamp,
         hasSSL: !!includeSSL,
-        connection: activeConn?.name || "local",
+        connection: activeConn.name || activeConn.host,
         archiveFilename: tarFilename,
         snapshotDir: snapshotDirName,
         archiveSize: formattedSize,
@@ -20794,16 +20725,14 @@ fi
       };
       const manifestB64 = Buffer.from(JSON.stringify(manifest, null, 2), "utf8").toString("base64");
       const writeManifestCmd = `echo "${manifestB64}" | base64 -d > "${backupDirPath}/${jsonFilename}" && chmod 644 "${backupDirPath}/${jsonFilename}"`;
-      try {
-        await runActiveServerCommand(activeConn, writeManifestCmd);
-      } catch (_) {}
+      await runActiveServerCommand(activeConn, writeManifestCmd);
     } else {
       // Database Backup
-      console.log(`[BACKUP] Starting database backup`);
+      finalPath = `${backupDirPath}/${jsonFilename}`;
       const dbPayload = {
         type: "database",
         timestamp,
-        connection: activeConn?.name || "local",
+        connection: activeConn.name || activeConn.host,
         dbData: db
       };
       const jsonStr = JSON.stringify(dbPayload, null, 2);
@@ -20811,7 +20740,6 @@ fi
       const writeDbCmd = `echo "${dbB64}" | base64 -d > "${backupDirPath}/${jsonFilename}" && chmod 644 "${backupDirPath}/${jsonFilename}"`;
       await runActiveServerCommand(activeConn, writeDbCmd);
 
-      // Verify DB backup on server
       const verifyDbCmd = `test -f "${backupDirPath}/${jsonFilename}" && test -s "${backupDirPath}/${jsonFilename}"`;
       await runActiveServerCommand(activeConn, verifyDbCmd);
 
@@ -20819,10 +20747,9 @@ fi
       const sizeOut = await runActiveServerCommand(activeConn, sizeCmd);
       rawSizeBytes = parseInt(sizeOut.trim(), 10) || Buffer.byteLength(jsonStr);
       formattedSize = formatBytes(rawSizeBytes);
-      finalPath = path.join(backupDirPath, jsonFilename);
     }
 
-    // Step 8: Only register verified backup in db.backups
+    // Step 5: Only register verified backup in db.backups
     const newBackup = {
       id: `bak-${Date.now()}`,
       filename: backupType === "config" ? tarFilename : jsonFilename,
@@ -20854,7 +20781,7 @@ fi
       action: "Create Backup",
       target: newBackup.filename,
       status: "success",
-      details: `Created verified full ${backupType} backup in ${backupDirPath}/${newBackup.filename} (${formattedSize})`
+      details: `Created verified full ${backupType} backup in ${backupDirPath}/${newBackup.filename} (${formattedSize}) on destination server ${activeConn.name || activeConn.host}`
     });
     writeDb(db);
 
@@ -20869,7 +20796,7 @@ fi
   }
 });
 
-// Delete backup from /opt/matrix-element-Backup
+// Delete backup from /opt/matrix-element-Backup on remote destination server
 app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { id } = req.params;
   const db = readDb();
@@ -20884,30 +20811,16 @@ app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Sup
     return res.status(400).json({ error: "Invalid backup filename." });
   }
 
-  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  const backupDirPath = REMOTE_BACKUP_BASE_DIR;
   
-  // Delete file/snapshot directory strictly inside backupDirPath on active connection
-  try {
-    const delCmd = `rm -rf "${backupDirPath}/${cleanFilename}" "${backupDirPath}/${cleanFilename.replace('.tar.gz', '.json')}"`;
-    await runActiveServerCommand(activeConn, delCmd, true);
-  } catch (err) {
-    console.warn("Failed to delete backup file on server:", err);
-  }
-
-  // Delete physical file on local filesystem if exists
-  try {
-    const localPaths = [
-      backup.path,
-      path.join(getBackupDirectory(), cleanFilename),
-      path.join(REMOTE_BACKUP_BASE_DIR, cleanFilename),
-      path.join(getRealPath(REMOTE_BACKUP_BASE_DIR), cleanFilename)
-    ];
-    for (const p of localPaths) {
-      if (p && fs.existsSync(p)) {
-        try { fs.rmSync(p, { recursive: true, force: true }); } catch (_) {}
-      }
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const delCmd = `rm -rf "${backupDirPath}/${cleanFilename}" "${backupDirPath}/${cleanFilename.replace('.tar.gz', '.json')}"`;
+      await runActiveServerCommand(activeConn, delCmd, true);
+    } catch (err: any) {
+      console.warn("Failed to delete backup file on remote server:", err);
     }
-  } catch (_) {}
+  }
 
   db.backups.splice(idx, 1);
   writeDb(db);
@@ -20919,14 +20832,14 @@ app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Sup
     action: "Delete Backup",
     target: cleanFilename,
     status: "success",
-    details: `Deleted archived backup ${cleanFilename} from ${backupDirPath}.`
+    details: `Deleted backup ${cleanFilename} from ${backupDirPath}.`
   });
   writeDb(db);
 
   res.json({ success: true, message: "Backup deleted successfully" });
 });
 
-// Download Single Backup from /opt/matrix-element-Backup
+// Download Single Backup from /opt/matrix-element-Backup on remote destination server
 app.get("/api/backups/download/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
   const db = readDb();
@@ -20934,75 +20847,45 @@ app.get("/api/backups/download/:id", authenticateToken, async (req, res) => {
   const backup = (db.backups || []).find((b: any) => b.id === id || b.filename === id);
   if (!backup) return res.status(404).json({ error: "Backup not found in catalog" });
 
+  if (!activeConn || activeConn.id === "local") {
+    return res.status(400).json({ error: "No active remote destination server connected." });
+  }
+
   const rawFilename = backup.filename || id;
   const cleanFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "");
   if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
     return res.status(400).json({ error: "Invalid backup filename." });
   }
 
-  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  const backupDirPath = REMOTE_BACKUP_BASE_DIR;
   const targetFile = `${backupDirPath}/${cleanFilename}`;
 
-  // If remote connected server
-  if (activeConn && activeConn.id !== "local") {
-    try {
-      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
-      const readCmd = `${sudoPrefix}base64 -w 0 "${targetFile}" 2>/dev/null || ${sudoPrefix}cat "${targetFile}" | base64`;
-      let b64 = "";
-      if (activeConn.authType === "agent") {
-        b64 = await executeRemoteAgentTask(activeConn.id, "execute_command", { command: readCmd }) || "";
-      } else {
-        b64 = await executeSSHCommand(activeConn, readCmd);
-      }
-
-      if (b64 && b64.trim()) {
-        const buffer = Buffer.from(b64.trim(), "base64");
-        res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}"`);
-        res.setHeader("Content-Type", cleanFilename.endsWith(".tar.gz") ? "application/gzip" : "application/json");
-        return res.send(buffer);
-      }
-    } catch (err: any) {
-      console.warn("Failed to stream remote backup via SSH:", err);
-    }
-  }
-
-  // Local / Sandbox download
   try {
-    const candidatePaths = [
-      backup.path,
-      path.join(getBackupDirectory(), cleanFilename),
-      path.join(REMOTE_BACKUP_BASE_DIR, cleanFilename),
-      path.join(getRealPath(REMOTE_BACKUP_BASE_DIR), cleanFilename)
-    ];
+    const readCmd = `base64 -w 0 "${targetFile}" 2>/dev/null || cat "${targetFile}" | base64`;
+    const b64 = await runActiveServerCommand(activeConn, readCmd, true);
 
-    let foundPath = "";
-    for (const p of candidatePaths) {
-      if (p && fs.existsSync(p)) {
-        foundPath = p;
-        break;
-      }
+    if (!b64 || !b64.trim()) {
+      return res.status(404).json({ error: "Backup file is empty or not found on destination server." });
     }
 
-    if (!foundPath) {
-      return res.status(404).json({ error: "Physical backup file not found on server" });
-    }
-
+    const buffer = Buffer.from(b64.trim(), "base64");
     res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}"`);
     res.setHeader("Content-Type", cleanFilename.endsWith(".tar.gz") ? "application/gzip" : "application/json");
-    const fileStream = fs.createReadStream(foundPath);
-    fileStream.pipe(res);
+    return res.send(buffer);
   } catch (err: any) {
-    res.status(500).json({ error: "Download failed: " + err.message });
+    console.error("Failed to stream remote backup:", err);
+    return res.status(500).json({ error: "Download failed from remote server: " + err.message });
   }
 });
 
 // Download Bulk Backups as a single compound payload
-app.post("/api/backups/download-bulk", authenticateToken, (req, res) => {
+app.post("/api/backups/download-bulk", authenticateToken, async (req, res) => {
   const { ids } = req.body;
   if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: "IDs array is required" });
 
   const db = readDb();
-  const backupDir = getBackupDirectory();
+  const activeConn = getActiveConnection();
+  const backupDir = REMOTE_BACKUP_BASE_DIR;
   const matchedBackups = (db.backups || []).filter((b: any) => ids.includes(b.id) || ids.includes(b.filename));
 
   if (matchedBackups.length === 0) return res.status(404).json({ error: "No backups found matching provided IDs" });
@@ -21015,19 +20898,20 @@ app.post("/api/backups/download-bulk", authenticateToken, (req, res) => {
 
     for (const b of matchedBackups) {
       const cleanName = (b.filename || "").replace(/[^a-zA-Z0-9._-]/g, "");
-      const filePath = b.path || path.join(backupDir, cleanName);
-      if (fs.existsSync(filePath)) {
-        try {
-          const content = fs.readFileSync(filePath, "utf8");
+      const targetFile = `${backupDir}/${cleanName}`;
+      try {
+        const readCmd = `base64 -w 0 "${targetFile}" 2>/dev/null || cat "${targetFile}" | base64`;
+        const b64 = await runActiveServerCommand(activeConn, readCmd, true);
+        if (b64 && b64.trim()) {
           compoundPackage.backups.push({
             filename: cleanName,
             type: b.type,
             hasSSL: b.hasSSL,
             timestamp: b.timestamp,
-            content: cleanName.endsWith(".json") ? JSON.parse(content) : content
+            contentBase64: b64.trim()
           });
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
     }
 
     res.setHeader("Content-Disposition", "attachment; filename=matrix-bulk-backups.json");
@@ -21038,7 +20922,7 @@ app.post("/api/backups/download-bulk", authenticateToken, (req, res) => {
   }
 });
 
-// Upload Backup File
+// Upload Backup File to /opt/matrix-element-Backup on remote destination server
 app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { filename, content, type } = req.body;
   if (!filename || !content) return res.status(400).json({ error: "Filename and file content are required" });
@@ -21050,10 +20934,13 @@ app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Su
 
   try {
     const activeConn = getActiveConnection();
+    if (!activeConn || activeConn.id === "local") {
+      return res.status(400).json({ error: "No active remote destination server connected." });
+    }
+
     const backupDirPath = REMOTE_BACKUP_BASE_DIR;
     const targetPath = `${backupDirPath}/${cleanFilename}`;
 
-    // Write file to remote or local server
     const b64 = Buffer.from(content, "utf8").toString("base64");
     const writeCmd = `mkdir -p "${backupDirPath}" && echo "${b64}" | base64 -d > "${targetPath}" && chmod 644 "${targetPath}"`;
     await runActiveServerCommand(activeConn, writeCmd);
@@ -21063,7 +20950,6 @@ app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Su
     const fileSize = parseInt(sizeOut.trim(), 10) || Buffer.byteLength(content);
     const formattedSize = formatBytes(fileSize);
 
-    // Try parsing type from content
     let detectedType = type || "config";
     try {
       const parsed = JSON.parse(content);
@@ -21095,7 +20981,7 @@ app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Su
       action: "Upload Backup",
       target: cleanFilename,
       status: "success",
-      details: `Uploaded custom backup file to: ${targetPath}. Detected type: ${detectedType}`
+      details: `Uploaded backup file to destination server: ${targetPath}. Detected type: ${detectedType}`
     });
     writeDb(db);
 
@@ -21105,7 +20991,7 @@ app.post("/api/backups/upload", authenticateToken, checkPermission(["Owner", "Su
   }
 });
 
-// Restore Selected Backup from /opt/matrix-element-Backup
+// Restore Selected Backup from /opt/matrix-element-Backup on remote destination server
 app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { id } = req.params;
   const { targetScope } = req.body || {}; // optional scope: 'all' | 'synapse' | 'element'
@@ -21114,42 +21000,42 @@ app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner"
   const backup = (db.backups || []).find((b: any) => b.id === id || b.filename === id);
   if (!backup) return res.status(404).json({ error: "Backup not found in catalog" });
 
+  if (!activeConn || activeConn.id === "local") {
+    return res.status(400).json({ error: "No active remote destination server connected." });
+  }
+
   const rawFilename = backup.filename || id;
   const cleanFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "");
   if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
     return res.status(400).json({ error: "Invalid backup filename." });
   }
 
-  const backupDirPath = db.backupSettings?.backupPath || REMOTE_BACKUP_BASE_DIR;
+  const backupDirPath = REMOTE_BACKUP_BASE_DIR;
   const targetFile = `${backupDirPath}/${cleanFilename}`;
   const scope = targetScope || "all";
 
   try {
     if (cleanFilename.endsWith(".tar.gz")) {
-      // 1. Verify archive integrity
+      // 1. Verify archive integrity on destination server
       const verifyCmd = `test -f "${targetFile}" && test -s "${targetFile}" && tar -tzf "${targetFile}" >/dev/null`;
       await runActiveServerCommand(activeConn, verifyCmd);
 
       // 2. Verify security paths inside archive (no path traversal)
-      try {
-        const listArchiveCmd = `tar -tf "${targetFile}"`;
-        const archiveList = await runActiveServerCommand(activeConn, listArchiveCmd);
-        const illegalEntries = archiveList.split("\n").map(s => s.trim()).filter(Boolean).filter(entry => {
-          if (entry.startsWith("/") || entry.includes("..")) return true;
-          if (!entry.startsWith("var/www/element") && !entry.startsWith("etc/matrix-synapse") && !entry.startsWith("etc/matrix-stack") && !entry.startsWith("etc/nginx")) {
-            return true;
-          }
-          return false;
-        });
-
-        if (illegalEntries.length > 0) {
-          return res.status(403).json({
-            error: "Security validation error",
-            message: `Archive contains unauthorized target paths outside Matrix/Element configuration: ${illegalEntries.slice(0, 3).join(", ")}`
-          });
+      const listArchiveCmd = `tar -tf "${targetFile}"`;
+      const archiveList = await runActiveServerCommand(activeConn, listArchiveCmd);
+      const illegalEntries = archiveList.split("\n").map(s => s.trim()).filter(Boolean).filter(entry => {
+        if (entry.startsWith("/") || entry.includes("..")) return true;
+        if (!entry.startsWith("var/www/element") && !entry.startsWith("etc/matrix-synapse") && !entry.startsWith("etc/matrix-stack") && !entry.startsWith("etc/nginx")) {
+          return true;
         }
-      } catch (checkErr: any) {
-        console.warn("[RESTORE] Archive list check warning:", checkErr);
+        return false;
+      });
+
+      if (illegalEntries.length > 0) {
+        return res.status(403).json({
+          error: "Security validation error",
+          message: `Archive contains unauthorized target paths outside Matrix/Element configuration: ${illegalEntries.slice(0, 3).join(", ")}`
+        });
       }
 
       let extractScope = "";
@@ -21177,16 +21063,11 @@ app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner"
       }
       await runActiveServerCommand(activeConn, restoreSnapCmd);
     } else if (cleanFilename.endsWith(".json")) {
-      const jsonContent = await readConfigContent(targetFile, "");
+      const jsonCmd = `cat "${targetFile}"`;
+      const jsonContent = await runActiveServerCommand(activeConn, jsonCmd);
       if (jsonContent) {
         const payload = JSON.parse(jsonContent);
-        if (payload.files) {
-          for (const [vPath, content] of Object.entries(payload.files)) {
-            if (scope === "synapse" && !vPath.startsWith("/etc/matrix-synapse")) continue;
-            if (scope === "element" && !vPath.startsWith("/var/www/element")) continue;
-            await writeConfigContent(vPath, content as string);
-          }
-        } else if (payload.dbData) {
+        if (payload.dbData) {
           writeDb(payload.dbData);
         }
       }
@@ -21201,11 +21082,11 @@ app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner"
       action: "Restore Backup Archive",
       target: cleanFilename,
       status: "success",
-      details: `Restored backup ${cleanFilename} from ${backupDirPath} to host targets [${scope}]. Synapse service restarted.`
+      details: `Restored backup ${cleanFilename} from ${backupDirPath} to host targets [${scope}] on destination server. Synapse service restarted.`
     });
     writeDb(db);
 
-    return res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup (${scope}) and restarted Synapse.` });
+    return res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup (${scope}) on remote destination server and restarted Synapse.` });
   } catch (err: any) {
     console.error("Restore failed:", err);
     res.status(500).json({ error: "Restore failed: " + err.message });
