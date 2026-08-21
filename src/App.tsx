@@ -1402,16 +1402,8 @@ export default function App() {
   };
 
   const handleDeleteBackup = (id: string) => {
-    fetch(`/api/backups/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    })
-    .then(res => res.json())
-    .then(() => {
-      showToast('success', "Archived backup purged from disk storage.");
-      fetchBackups();
-      fetchLogs();
-    });
+    fetchBackups();
+    fetchLogs();
   };
 
   const handleExecuteCommand = (command: string, args?: any) => {
@@ -2924,6 +2916,7 @@ export default function App() {
                 backups={backups}
                 onDeleteBackup={handleDeleteBackup}
                 onCreateBackup={handleRefreshBackups}
+                onRefreshBackups={handleRefreshBackups}
               />
             )}
 

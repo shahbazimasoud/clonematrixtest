@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.33.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.34.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.34.0** - 2026-08-21
+- **Script Directory Protection & Instant Backup List Rescan**:
+  - **Preserved `/opt/matrix-element-Backup/scripts/` & `.sh` files**: Updated single deletion, batch deletion, and purge commands to strictly safeguard helper scripts and the `/scripts/` directory against removal.
+  - **Excluded Scripts from Catalog & Storage Calculations**: Filtered out scripts and the `scripts/` directory from `scanServerBackups`, `scanSchedulerBackups`, and storage size calculations.
+  - **Hardened Automated Cleanup Script (`matrix_auto_cleanup.sh`)**: Added explicit exclusion patterns to ensure automated retention cleanup routines never prune shell scripts or helper tools.
+  - **Instant Live Re-scan**: All deletion operations immediately execute a live filesystem scan to reflect the latest contents of the backup directory and return updated storage metrics in real time.
 
 #### **v2.33.0** - 2026-08-21
 - **Streamlined Selection Deletion & Cleanup Button Refinement**:

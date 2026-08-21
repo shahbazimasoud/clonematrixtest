@@ -79,6 +79,7 @@ interface ConfigFormsProps {
   backups?: BackupItem[];
   onDeleteBackup?: (id: string) => void;
   onCreateBackup?: (includeSSL?: boolean) => void;
+  onRefreshBackups?: () => void;
   onSaveConfig: (data: { config?: Partial<MatrixConfig>; ldap?: Partial<LDAPConfig>; workers?: any; applyToExistingUsers?: boolean }) => any;
   onRegisterUser: (username: string, pass: string, isAdmin: boolean) => void;
   onDeactivateUser: (mxid: string) => void;
@@ -274,6 +275,7 @@ export default function ConfigForms({
   backups = [],
   onDeleteBackup,
   onCreateBackup,
+  onRefreshBackups,
   onSaveConfig, 
   onRegisterUser, 
   onDeactivateUser, 
@@ -1754,6 +1756,8 @@ export default function ConfigForms({
         if (showToast) showToast('success', data.message || (lang === 'fa' ? 'فایل‌های انتخابی با موفقیت حذف شدند' : 'Selected catalog backups deleted successfully'));
         setSelectedBackupIds([]);
         setRepositoryBatchDeleteModal(null);
+        if (data.backups) setBackupsList(data.backups);
+        if (onRefreshBackups) onRefreshBackups();
         fetchBackups();
         fetchDbBackups();
         fetchStorageStats();
@@ -2255,15 +2259,17 @@ export default function ConfigForms({
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         if (showToast) showToast('success', lang === 'fa' ? `فایل ${filename} با موفقیت از سرور حذف شد.` : `Backup ${filename} deleted from server.`);
         setDeleteConfirmModal(null);
+        if (data.backups) setBackupsList(data.backups);
+        if (onRefreshBackups) onRefreshBackups();
         fetchBackups();
         fetchDbBackups();
-        if (onDeleteBackup) onDeleteBackup(id);
+        fetchStorageStats();
       } else {
-        const err = await res.json().catch(() => ({}));
-        if (showToast) showToast('error', err.error || (lang === 'fa' ? 'خطا در حذف فایل پشتیبان' : 'Error deleting backup'));
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در حذف فایل پشتیبان' : 'Error deleting backup'));
       }
     } catch (e: any) {
       if (showToast) showToast('error', e?.message || (lang === 'fa' ? 'خطا در حذف فایل' : 'Failed to delete backup'));

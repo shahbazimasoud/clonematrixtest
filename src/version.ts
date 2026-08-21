@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.33.0";
+export const PANEL_VERSION = "2.34.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.34.0",
+    date: "2026-08-21",
+    title: "Script Directory Protection & Instant Backup List Rescan",
+    changes: [
+      "Strictly preserved /opt/matrix-element-Backup/scripts/ and all shell scripts (*.sh) during single, batch, and purge operations.",
+      "Excluded the scripts directory and helper scripts from backup scanning, catalog listings, and storage calculations.",
+      "Hardened matrix_auto_cleanup.sh automated cleanup script with explicit exclusions to never prune scripts.",
+      "Implemented instant server-side directory re-scanning to immediately refresh backup catalog views and storage statistics upon deletion."
+    ]
+  },
   {
     version: "2.33.0",
     date: "2026-08-21",

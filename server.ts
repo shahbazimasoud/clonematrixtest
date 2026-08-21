@@ -20464,12 +20464,12 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
     return [];
   }
 
-  // Scan target backup directory and any scheduler subdirectory on the active remote destination server
+  // Scan target backup directory on the active remote destination server (strictly exclude /scripts/ directory and .sh files)
   try {
     const scanCmd = `
       mkdir -p "${baseDir}" "${schedulerDir}" 2>/dev/null || true
       if [ -d "${baseDir}" ]; then
-        find "${baseDir}" -maxdepth 2 -type f -exec ls -la --time-style=+%s {} + 2>/dev/null || ls -la "${baseDir}"
+        find "${baseDir}" -path "${baseDir}/scripts" -prune -o -type f ! -name "*.sh" -exec ls -la --time-style=+%s {} + 2>/dev/null || ls -la "${baseDir}"
       fi
     `.trim();
 
@@ -20482,10 +20482,26 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
         const fullPath = parts[parts.length - 1];
         if (!fullPath || fullPath === "." || fullPath === ".." || fullPath.startsWith(".")) continue;
         
-        const filename = fullPath.split("/").pop() || fullPath;
-        if (!filename || filename.startsWith(".")) continue;
+        // Strictly protect scripts directory from appearing in backup catalog
+        if (fullPath.includes("/scripts/") || fullPath.endsWith("/scripts") || fullPath.endsWith(".sh")) continue;
 
-        if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.endsWith(".sql.gz") || filename.endsWith(".sql") || filename.startsWith("snapshot-") || filename.includes(".bak_")) {
+        const filename = fullPath.split("/").pop() || fullPath;
+        if (!filename || filename.startsWith(".") || filename.endsWith(".sh") || filename.startsWith("matrix_auto_")) continue;
+
+        const isBackupArchive = (
+          filename.endsWith(".tar.gz") ||
+          filename.endsWith(".sql.gz") ||
+          filename.endsWith(".sql") ||
+          filename.endsWith(".dump") ||
+          filename.startsWith("database_backup_") ||
+          filename.startsWith("matrix-backup-") ||
+          filename.startsWith("matrix_backup_") ||
+          filename.startsWith("snapshot-") ||
+          filename.includes(".bak_") ||
+          (filename.endsWith(".json") && (filename.includes("manifest") || filename.includes("backup") || filename.includes("config")))
+        );
+
+        if (isBackupArchive) {
           const rawSize = parseInt(parts[4], 10) || 0;
           const rawTs = parseInt(parts[5], 10);
           let timestamp = (!isNaN(rawTs) && rawTs > 1000000000) ? new Date(rawTs * 1000).toISOString() : new Date().toISOString();
@@ -20538,8 +20554,8 @@ async function getDirectoryStorageInfo(activeConn: any, dirPath: string): Promis
         TARGET="${cleanPath}"
         mkdir -p "$TARGET" 2>/dev/null || true
         if [ -d "$TARGET" ]; then
-          BYTES=$(du -sb "$TARGET" 2>/dev/null | cut -f1 || du -sk "$TARGET" 2>/dev/null | awk '{print $1 * 1024}' || echo "0")
-          COUNT=$(find "$TARGET" -maxdepth 1 -type f 2>/dev/null | wc -l || echo "0")
+          BYTES=$(find "$TARGET" -maxdepth 1 -type f ! -name "*.sh" ! -path "*/scripts/*" -exec du -b {} + 2>/dev/null | awk '{sum+=$1} END {print sum+0}' || echo "0")
+          COUNT=$(find "$TARGET" -maxdepth 1 -type f ! -name "*.sh" ! -path "*/scripts/*" 2>/dev/null | wc -l || echo "0")
           echo "$BYTES:$COUNT"
         else
           echo "0:0"
@@ -20562,6 +20578,7 @@ async function getDirectoryStorageInfo(activeConn: any, dirPath: string): Promis
         const files = fs.readdirSync(localDir);
         for (const file of files) {
           try {
+            if (file.endsWith(".sh") || file.startsWith("matrix_auto_")) continue;
             const st = fs.statSync(path.join(localDir, file));
             if (st.isFile()) {
               totalBytes += st.size;
@@ -20594,7 +20611,7 @@ async function scanSchedulerBackups(activeConn: any, customPath?: string): Promi
       const scanCmd = `
         mkdir -p "${schedulerDir}" 2>/dev/null || true
         if [ -d "${schedulerDir}" ]; then
-          find "${schedulerDir}" -maxdepth 1 -type f -exec ls -la --time-style=+%s {} + 2>/dev/null || ls -la "${schedulerDir}"
+          find "${schedulerDir}" -maxdepth 1 -type f ! -name "*.sh" ! -path "*/scripts/*" -exec ls -la --time-style=+%s {} + 2>/dev/null || ls -la "${schedulerDir}"
         fi
       `.trim();
 
@@ -20605,11 +20622,23 @@ async function scanSchedulerBackups(activeConn: any, customPath?: string): Promi
         if (parts.length >= 7 && !line.startsWith("total")) {
           const fullPath = parts[parts.length - 1];
           if (!fullPath || fullPath === "." || fullPath === ".." || fullPath.startsWith(".")) continue;
+          if (fullPath.includes("/scripts/") || fullPath.endsWith("/scripts") || fullPath.endsWith(".sh")) continue;
           
           const filename = fullPath.split("/").pop() || fullPath;
-          if (!filename || filename.startsWith(".")) continue;
+          if (!filename || filename.startsWith(".") || filename.endsWith(".sh") || filename.startsWith("matrix_auto_")) continue;
 
-          if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.endsWith(".sql.gz") || filename.endsWith(".sql")) {
+          const isBackupArchive = (
+            filename.endsWith(".tar.gz") ||
+            filename.endsWith(".sql.gz") ||
+            filename.endsWith(".sql") ||
+            filename.endsWith(".dump") ||
+            filename.startsWith("database_backup_") ||
+            filename.startsWith("matrix-backup-") ||
+            filename.startsWith("matrix_backup_") ||
+            (filename.endsWith(".json") && (filename.includes("manifest") || filename.includes("backup")))
+          );
+
+          if (isBackupArchive) {
             const rawSize = parseInt(parts[4], 10) || 0;
             const rawTs = parseInt(parts[5], 10);
             let timestamp = (!isNaN(rawTs) && rawTs > 1000000000) ? new Date(rawTs * 1000).toISOString() : new Date().toISOString();
@@ -20819,6 +20848,7 @@ fi
     // 4. Generate and write Enhanced Automated Retention & Prune Cleanup script
     const cleanupScriptContent = `#!/bin/bash
 # Matrix Panel Automated Backup Retention & Prune Cleanup Script
+# Safeguards: Strictly ignores /scripts/ directory and any .sh execution scripts
 
 BACKUP_DIR="${backupPath}"
 RETENTION_DAYS=${globalRetentionDays}
@@ -20844,6 +20874,9 @@ if [ "$RETENTION_DAYS" -eq 0 ] 2>/dev/null; then
   echo "Pruning ALL backup files in $BACKUP_DIR (Retention = 0)..."
   for f in "$BACKUP_DIR"/*.sql.gz "$BACKUP_DIR"/*.tar.gz "$BACKUP_DIR"/*.sql "$BACKUP_DIR"/*.dump "$BACKUP_DIR"/*.tar "$BACKUP_DIR"/*.bak "$BACKUP_DIR"/database_backup_* "$BACKUP_DIR"/matrix-backup-* "$BACKUP_DIR"/matrix_backup_* "$BACKUP_DIR"/backup-*; do
     if [ -f "$f" ]; then
+      case "$f" in
+        *.sh|*/scripts/*|*/scripts) continue ;;
+      esac
       F_SIZE=$(du -h "$f" 2>/dev/null | cut -f1)
       echo "Pruning backup archive: $f ($F_SIZE)"
       rm -f "$f" 2>/dev/null || true
@@ -20855,19 +20888,22 @@ elif [ "$RETENTION_DAYS" -gt 0 ] 2>/dev/null; then
   
   while IFS= read -r f; do
     if [ -n "$f" ] && [ -f "$f" ]; then
+      case "$f" in
+        *.sh|*/scripts/*|*/scripts) continue ;;
+      esac
       F_SIZE=$(du -h "$f" 2>/dev/null | cut -f1)
       echo "Pruning expired backup archive: $f ($F_SIZE)"
       rm -f "$f" 2>/dev/null || true
       DELETED_COUNT=$((DELETED_COUNT + 1))
     fi
   done <<EOF
-$(find "$BACKUP_DIR" -maxdepth 1 \\( -name "*.sql.gz" -o -name "*.tar.gz" -o -name "*.dump" -o -name "*.sql" -o -name "*.tar" -o -name "*.bak" -o -name "database_backup_*" -o -name "matrix-backup-*" -o -name "matrix_backup_*" -o -name "backup-*" \\) -type f -mtime +"$RETENTION_DAYS" 2>/dev/null)
+$(find "$BACKUP_DIR" -maxdepth 1 \\( -name "*.sql.gz" -o -name "*.tar.gz" -o -name "*.dump" -o -name "*.sql" -o -name "*.tar" -o -name "*.bak" -o -name "database_backup_*" -o -name "matrix-backup-*" -o -name "matrix_backup_*" -o -name "backup-*" \\) ! -name "*.sh" ! -path "*/scripts/*" -type f -mtime +"$RETENTION_DAYS" 2>/dev/null)
 EOF
 
 fi
 
-# Prune temporary or leftover corrupted partial files
-find "$BACKUP_DIR" -maxdepth 1 \\( -name "*.tmp" -o -name "*.part" -o -name "*.incomplete" \\) -type f -mmin +30 -delete 2>/dev/null || true
+# Prune temporary or leftover corrupted partial files (strictly excluding .sh or scripts)
+find "$BACKUP_DIR" -maxdepth 1 \\( -name "*.tmp" -o -name "*.part" -o -name "*.incomplete" \\) ! -name "*.sh" ! -path "*/scripts/*" -type f -mmin +30 -delete 2>/dev/null || true
 
 echo "[$NOW] Retention cleanup completed successfully. Total archives pruned: $DELETED_COUNT"
 exit 0
@@ -21173,10 +21209,11 @@ app.post("/api/backups/scheduler/delete-batch", authenticateToken, checkPermissi
   if (all === true) {
     if (isRemote) {
       try {
+        // Strictly protect /scripts/ directory and .sh files from deletion
         const purgeCmd = `
           TARGET="${backupPath}"
           if [ -d "$TARGET" ] && [ "$TARGET" != "/" ] && [ "$TARGET" != "/opt" ]; then
-            find "$TARGET" -maxdepth 1 -type f -exec rm -f {} + 2>/dev/null || true
+            find "$TARGET" -maxdepth 1 -type f ! -name "*.sh" ! -path "*/scripts/*" -exec rm -f {} + 2>/dev/null || true
           fi
         `.trim();
         await runActiveServerCommand(activeConn, purgeCmd, true);
@@ -21189,7 +21226,10 @@ app.post("/api/backups/scheduler/delete-batch", authenticateToken, checkPermissi
         if (fs.existsSync(localDir)) {
           const files = fs.readdirSync(localDir);
           for (const f of files) {
-            try { fs.unlinkSync(path.join(localDir, f)); } catch (_) {}
+            try {
+              if (f.endsWith(".sh") || f.startsWith("matrix_auto_")) continue;
+              fs.unlinkSync(path.join(localDir, f));
+            } catch (_) {}
           }
         }
       } catch (_) {}
@@ -21198,10 +21238,10 @@ app.post("/api/backups/scheduler/delete-batch", authenticateToken, checkPermissi
   } else if (Array.isArray(filenames) && filenames.length > 0) {
     const validFilenames = filenames
       .map(f => String(f || "").replace(/[^a-zA-Z0-9._-]/g, ""))
-      .filter(f => f && f !== "." && f !== "..");
+      .filter(f => f && f !== "." && f !== ".." && !f.endsWith(".sh") && !f.startsWith("matrix_auto_") && !f.includes("scripts"));
 
     if (validFilenames.length === 0) {
-      return res.status(400).json({ success: false, error: "No valid backup filenames specified." });
+      return res.status(400).json({ success: false, error: "No valid backup archives specified for deletion." });
     }
 
     if (isRemote) {
@@ -21240,12 +21280,13 @@ app.post("/api/backups/scheduler/delete-batch", authenticateToken, checkPermissi
   });
   writeDb(db);
 
+  // Instantly re-scan remote filesystem to show accurate up-to-date backup list
   const updatedBackups = await scanSchedulerBackups(activeConn, backupPath);
   const storageInfo = await getDirectoryStorageInfo(activeConn, backupPath);
 
   res.json({
     success: true,
-    message: all ? "All scheduler backup files deleted successfully." : `${deletedCount} scheduler backup file(s) deleted successfully.`,
+    message: all ? "All scheduler backup archives deleted successfully." : `${deletedCount} scheduler backup archive(s) deleted successfully.`,
     deletedCount,
     directorySize: storageInfo.formattedSize,
     totalCount: updatedBackups.length,
@@ -21324,6 +21365,11 @@ app.delete("/api/backups/scheduler/files/:filename", authenticateToken, checkPer
     return res.status(400).json({ error: "Invalid backup filename." });
   }
 
+  // Strictly protect scripts and script directory
+  if (cleanFilename.endsWith(".sh") || cleanFilename.startsWith("matrix_auto_") || cleanFilename.includes("scripts")) {
+    return res.status(400).json({ error: "Scripts and system configuration files cannot be deleted." });
+  }
+
   const targetFile = `${backupPath}/${cleanFilename}`;
 
   if (activeConn && activeConn.id !== "local") {
@@ -21354,7 +21400,16 @@ app.delete("/api/backups/scheduler/files/:filename", authenticateToken, checkPer
   });
   writeDb(db);
 
-  res.json({ success: true, message: `Backup file ${cleanFilename} deleted successfully.` });
+  const updatedBackups = await scanSchedulerBackups(activeConn, backupPath);
+  const storageInfo = await getDirectoryStorageInfo(activeConn, backupPath);
+
+  res.json({
+    success: true,
+    message: `Backup file ${cleanFilename} deleted successfully.`,
+    backups: updatedBackups,
+    directorySize: storageInfo.formattedSize,
+    totalCount: updatedBackups.length
+  });
 });
 
 // Endpoint to download a backup file strictly from the Scheduler storage path
@@ -22137,10 +22192,11 @@ app.post("/api/backups/delete-batch", authenticateToken, checkPermission(["Owner
   if (all === true) {
     if (isRemote) {
       try {
+        // Strictly protect /scripts/ directory and .sh files from deletion
         const purgeCmd = `
           TARGET="${repoPath}"
           if [ -d "$TARGET" ] && [ "$TARGET" != "/" ] && [ "$TARGET" != "/opt" ]; then
-            find "$TARGET" -maxdepth 1 -type f -exec rm -f {} + 2>/dev/null || true
+            find "$TARGET" -maxdepth 1 -type f ! -name "*.sh" ! -path "*/scripts/*" -exec rm -f {} + 2>/dev/null || true
           fi
         `.trim();
         await runActiveServerCommand(activeConn, purgeCmd, true);
@@ -22154,6 +22210,7 @@ app.post("/api/backups/delete-batch", authenticateToken, checkPermission(["Owner
           const files = fs.readdirSync(localDir);
           for (const f of files) {
             try {
+              if (f.endsWith(".sh") || f.startsWith("matrix_auto_")) continue;
               const p = path.join(localDir, f);
               if (fs.statSync(p).isFile()) fs.unlinkSync(p);
             } catch (_) {}
@@ -22168,7 +22225,10 @@ app.post("/api/backups/delete-batch", authenticateToken, checkPermission(["Owner
     const matched = existing.filter((b: any) => ids.includes(b.id) || ids.includes(b.filename));
 
     if (isRemote) {
-      const filesToDelete = matched.map((b: any) => b.path || `${repoPath}/${b.filename}`).filter(Boolean);
+      const filesToDelete = matched
+        .map((b: any) => b.path || `${repoPath}/${b.filename}`)
+        .filter(Boolean)
+        .filter((p: string) => !p.includes("/scripts/") && !p.endsWith(".sh") && !p.startsWith("matrix_auto_"));
       if (filesToDelete.length > 0) {
         try {
           const fileArgs = filesToDelete.map(p => `"${p}"`).join(" ");
@@ -22181,6 +22241,7 @@ app.post("/api/backups/delete-batch", authenticateToken, checkPermission(["Owner
       const localDir = path.join(process.cwd(), "sandbox", "backups");
       for (const b of matched) {
         try {
+          if (b.filename.endsWith(".sh") || b.filename.startsWith("matrix_auto_")) continue;
           const p = path.join(localDir, b.filename);
           if (fs.existsSync(p)) fs.unlinkSync(p);
         } catch (_) {}
@@ -22204,14 +22265,16 @@ app.post("/api/backups/delete-batch", authenticateToken, checkPermission(["Owner
   });
   writeDb(db);
 
+  // Instantly re-scan remote filesystem to show accurate up-to-date backup list
   const updatedBackups = await scanServerBackups(activeConn);
   const storageInfo = await getDirectoryStorageInfo(activeConn, repoPath);
 
   res.json({
     success: true,
-    message: all ? "All repository backups deleted successfully." : `${deletedCount} backup(s) deleted successfully.`,
+    message: all ? "All repository backup archives deleted successfully." : `${deletedCount} backup archive(s) deleted successfully.`,
     deletedCount,
     directorySize: storageInfo.formattedSize,
+    totalCount: updatedBackups.length,
     backups: updatedBackups
   });
 });
@@ -22229,6 +22292,11 @@ app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Sup
   const cleanFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "");
   if (!cleanFilename || cleanFilename === "." || cleanFilename === "..") {
     return res.status(400).json({ error: "Invalid backup filename." });
+  }
+
+  // Strictly protect scripts and script directory
+  if (cleanFilename.endsWith(".sh") || cleanFilename.startsWith("matrix_auto_") || cleanFilename.includes("scripts")) {
+    return res.status(400).json({ error: "Scripts and system configuration files cannot be deleted." });
   }
 
   const backupDirPath = REMOTE_BACKUP_BASE_DIR;
@@ -22256,7 +22324,16 @@ app.delete("/api/backups/:id", authenticateToken, checkPermission(["Owner", "Sup
   });
   writeDb(db);
 
-  res.json({ success: true, message: "Backup deleted successfully" });
+  const updatedBackups = await scanServerBackups(activeConn);
+  const storageInfo = await getDirectoryStorageInfo(activeConn, backupDirPath);
+
+  res.json({
+    success: true,
+    message: "Backup deleted successfully",
+    backups: updatedBackups,
+    directorySize: storageInfo.formattedSize,
+    totalCount: updatedBackups.length
+  });
 });
 
 // Download Single Backup from /opt/matrix-element-Backup on remote destination server
