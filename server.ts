@@ -20484,7 +20484,7 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
         const filename = parts[parts.length - 1];
         if (!filename || filename === "." || filename === ".." || filename.startsWith(".")) continue;
         
-        if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.startsWith("snapshot-") || filename.includes(".bak_")) {
+        if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.endsWith(".sql.gz") || filename.endsWith(".sql") || filename.startsWith("snapshot-") || filename.includes(".bak_")) {
           const rawSize = parseInt(parts[4], 10) || 0;
           const rawTs = parseInt(parts[5], 10);
           let timestamp = (!isNaN(rawTs) && rawTs > 1000000000) ? new Date(rawTs * 1000).toISOString() : new Date().toISOString();
@@ -20495,8 +20495,8 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
             timestamp = new Date(`${y}-${m}-${d}T${h}:${min}:${s}Z`).toISOString();
           }
 
-          const isDb = filename.includes("database") || filename.includes("db-backup");
-          const isConfig = filename.includes("config") || filename.includes("synapse") || filename.includes("element") || filename.startsWith("snapshot-");
+          const isDb = filename.startsWith("database_backup") || filename.includes("database") || filename.includes("db-backup") || filename.endsWith(".sql.gz") || filename.endsWith(".sql");
+          const isConfig = !isDb && (filename.includes("config") || filename.includes("synapse") || filename.includes("element") || filename.startsWith("snapshot-") || filename.endsWith(".tar.gz"));
           const existing = existingMap.get(filename);
 
           if (!foundBackups.some(f => f.filename === filename)) {
@@ -20603,10 +20603,10 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
     });
   }
 
-  if (activeConn.status === "disconnected" || activeConn.status === "error" || activeConn.status === "failed") {
+  if (activeConn.status !== "online") {
     return res.status(400).json({
       success: false,
-      error: `Active connection '${activeConn.name || activeConn.host}' is not connected (status: ${activeConn.status}). Please reconnect before performing backup.`
+      error: `Active connection '${activeConn.name || activeConn.host}' is not online (status: ${activeConn.status}). Please connect to the remote server before performing backup.`
     });
   }
 
@@ -20727,32 +20727,102 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
       const writeManifestCmd = `echo "${manifestB64}" | base64 -d > "${backupDirPath}/${jsonFilename}" && chmod 644 "${backupDirPath}/${jsonFilename}"`;
       await runActiveServerCommand(activeConn, writeManifestCmd);
     } else {
-      // Database Backup
-      finalPath = `${backupDirPath}/${jsonFilename}`;
-      const dbPayload = {
+      // Database Backup via pg_dump on destination server
+      const dbDumpFilename = `database_backup_${dateStr}_${timeStr}.sql.gz`;
+      const dbManifestFilename = `database_backup_${dateStr}_${timeStr}.json`;
+      finalPath = `${backupDirPath}/${dbDumpFilename}`;
+
+      const dbUser = (activeConn.dbUser || "synapse_user").trim();
+      const dbPass = (activeConn.dbPass || "").trim();
+      const dbName = (activeConn.dbName || "synapse").trim();
+      const dbHost = (activeConn.dbHost || "localhost").trim();
+      const dbPort = activeConn.dbPort || 5432;
+
+      const escapedPass = dbPass.replace(/'/g, "'\\''");
+      const escapedUser = dbUser.replace(/'/g, "'\\''");
+      const escapedDb = dbName.replace(/'/g, "'\\''");
+      const escapedHost = dbHost.replace(/'/g, "'\\''");
+
+      const dbBackupScript = `
+        set -e
+        mkdir -p "${backupDirPath}"
+        chmod 755 "${backupDirPath}"
+        TARGET_DUMP="${backupDirPath}/${dbDumpFilename}"
+
+        DUMP_SUCCESS=0
+        if [ -n "${escapedPass}" ] && [ -n "${escapedUser}" ]; then
+          PGPASSWORD='${escapedPass}' pg_dump -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' | gzip > "$TARGET_DUMP" && DUMP_SUCCESS=1 || true
+          if [ $DUMP_SUCCESS -eq 0 ]; then
+            PGPASSWORD='${escapedPass}' pg_dump -h '127.0.0.1' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' | gzip > "$TARGET_DUMP" && DUMP_SUCCESS=1 || true
+          fi
+        fi
+
+        if [ $DUMP_SUCCESS -eq 0 ]; then
+          sudo -u postgres pg_dump -d '${escapedDb}' | gzip > "$TARGET_DUMP" && DUMP_SUCCESS=1 || true
+        fi
+
+        if [ $DUMP_SUCCESS -eq 0 ]; then
+          sudo pg_dump -U '${escapedUser}' -d '${escapedDb}' | gzip > "$TARGET_DUMP" && DUMP_SUCCESS=1 || true
+        fi
+
+        if [ $DUMP_SUCCESS -eq 0 ]; then
+          pg_dump -d '${escapedDb}' | gzip > "$TARGET_DUMP" && DUMP_SUCCESS=1 || true
+        fi
+
+        if [ ! -f "$TARGET_DUMP" ]; then
+          echo "ERR_NOT_FOUND: Database backup file not created at $TARGET_DUMP"
+          exit 1
+        fi
+
+        if [ ! -s "$TARGET_DUMP" ]; then
+          echo "ERR_EMPTY: Database backup file is 0 bytes (empty)"
+          exit 1
+        fi
+
+        gzip -t "$TARGET_DUMP" 2>&1
+        GZIP_EXIT=$?
+        if [ $GZIP_EXIT -ne 0 ]; then
+          echo "ERR_CORRUPT: Database backup gzip archive is invalid"
+          exit 1
+        fi
+
+        stat -c "%s" "$TARGET_DUMP" 2>/dev/null || wc -c < "$TARGET_DUMP"
+      `.trim();
+
+      const dbScriptOutput = await runActiveServerCommand(activeConn, dbBackupScript);
+      const lines = dbScriptOutput.trim().split("\n");
+      const lastLine = lines[lines.length - 1]?.trim() || "";
+      rawSizeBytes = parseInt(lastLine, 10) || 0;
+
+      if (rawSizeBytes <= 0) {
+        throw new Error("Database backup verification failed: 0 bytes reported by remote destination server.");
+      }
+
+      formattedSize = formatBytes(rawSizeBytes);
+      console.log(`[BACKUP] Verified remote database dump created: ${formattedSize} (${rawSizeBytes} bytes)`);
+
+      // Write companion JSON manifest on destination server
+      const manifest = {
         type: "database",
         timestamp,
         connection: activeConn.name || activeConn.host,
-        dbData: db
+        archiveFilename: dbDumpFilename,
+        archiveSize: formattedSize,
+        archiveSizeBytes: rawSizeBytes,
+        dbName,
+        dbHost,
+        dbUser,
+        dbPort
       };
-      const jsonStr = JSON.stringify(dbPayload, null, 2);
-      const dbB64 = Buffer.from(jsonStr, "utf8").toString("base64");
-      const writeDbCmd = `echo "${dbB64}" | base64 -d > "${backupDirPath}/${jsonFilename}" && chmod 644 "${backupDirPath}/${jsonFilename}"`;
-      await runActiveServerCommand(activeConn, writeDbCmd);
-
-      const verifyDbCmd = `test -f "${backupDirPath}/${jsonFilename}" && test -s "${backupDirPath}/${jsonFilename}"`;
-      await runActiveServerCommand(activeConn, verifyDbCmd);
-
-      const sizeCmd = `stat -c %s "${backupDirPath}/${jsonFilename}" 2>/dev/null || wc -c < "${backupDirPath}/${jsonFilename}"`;
-      const sizeOut = await runActiveServerCommand(activeConn, sizeCmd);
-      rawSizeBytes = parseInt(sizeOut.trim(), 10) || Buffer.byteLength(jsonStr);
-      formattedSize = formatBytes(rawSizeBytes);
+      const manifestB64 = Buffer.from(JSON.stringify(manifest, null, 2), "utf8").toString("base64");
+      const writeManifestCmd = `echo "${manifestB64}" | base64 -d > "${backupDirPath}/${dbManifestFilename}" && chmod 644 "${backupDirPath}/${dbManifestFilename}"`;
+      await runActiveServerCommand(activeConn, writeManifestCmd);
     }
 
     // Step 5: Only register verified backup in db.backups
     const newBackup = {
       id: `bak-${Date.now()}`,
-      filename: backupType === "config" ? tarFilename : jsonFilename,
+      filename: backupType === "config" ? tarFilename : `database_backup_${dateStr}_${timeStr}.sql.gz`,
       size: formattedSize,
       timestamp,
       hasSSL: !!includeSSL,
@@ -21062,6 +21132,57 @@ app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner"
         `.trim();
       }
       await runActiveServerCommand(activeConn, restoreSnapCmd);
+    } else if (cleanFilename.endsWith(".sql.gz") || cleanFilename.endsWith(".sql") || cleanFilename.startsWith("database_backup_")) {
+      // Database Restore from .sql.gz or .sql archive
+      const dbUser = (activeConn.dbUser || "synapse_user").trim();
+      const dbPass = (activeConn.dbPass || "").trim();
+      const dbName = (activeConn.dbName || "synapse").trim();
+      const dbHost = (activeConn.dbHost || "localhost").trim();
+      const dbPort = activeConn.dbPort || 5432;
+
+      const escapedPass = dbPass.replace(/'/g, "'\\''");
+      const escapedUser = dbUser.replace(/'/g, "'\\''");
+      const escapedDb = dbName.replace(/'/g, "'\\''");
+      const escapedHost = dbHost.replace(/'/g, "'\\''");
+
+      const dbRestoreCmd = `
+        set -e
+        TARGET="${targetFile}"
+        if [ ! -f "$TARGET" ]; then
+          echo "ERR_NOT_FOUND: Database backup file does not exist at $TARGET"
+          exit 1
+        fi
+
+        RESTORE_SUCCESS=0
+        if [[ "$TARGET" == *.gz ]]; then
+          if [ -n "${escapedPass}" ] && [ -n "${escapedUser}" ]; then
+            gunzip -c "$TARGET" | PGPASSWORD='${escapedPass}' psql -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+            if [ $RESTORE_SUCCESS -eq 0 ]; then
+              gunzip -c "$TARGET" | PGPASSWORD='${escapedPass}' psql -h '127.0.0.1' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+            fi
+          fi
+          if [ $RESTORE_SUCCESS -eq 0 ]; then
+            gunzip -c "$TARGET" | sudo -u postgres psql -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+          if [ $RESTORE_SUCCESS -eq 0 ]; then
+            gunzip -c "$TARGET" | sudo psql -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+        else
+          if [ -n "${escapedPass}" ] && [ -n "${escapedUser}" ]; then
+            PGPASSWORD='${escapedPass}' psql -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' < "$TARGET" 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+          if [ $RESTORE_SUCCESS -eq 0 ]; then
+            sudo -u postgres psql -d '${escapedDb}' < "$TARGET" 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+        fi
+
+        if [ $RESTORE_SUCCESS -eq 0 ]; then
+          echo "ERR_RESTORE: Database restoration failed on PostgreSQL"
+          exit 1
+        fi
+      `.trim();
+
+      await runActiveServerCommand(activeConn, dbRestoreCmd);
     } else if (cleanFilename.endsWith(".json")) {
       const jsonCmd = `cat "${targetFile}"`;
       const jsonContent = await runActiveServerCommand(activeConn, jsonCmd);
@@ -21082,14 +21203,118 @@ app.post("/api/backups/restore/:id", authenticateToken, checkPermission(["Owner"
       action: "Restore Backup Archive",
       target: cleanFilename,
       status: "success",
-      details: `Restored backup ${cleanFilename} from ${backupDirPath} to host targets [${scope}] on destination server. Synapse service restarted.`
+      details: `Restored backup ${cleanFilename} from ${backupDirPath} on destination server. Synapse service restarted.`
     });
     writeDb(db);
 
-    return res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup (${scope}) on remote destination server and restarted Synapse.` });
+    return res.json({ success: true, message: `Successfully restored ${backup.type || "config"} backup (${cleanFilename}) on remote destination server and restarted Synapse.` });
   } catch (err: any) {
     console.error("Restore failed:", err);
     res.status(500).json({ error: "Restore failed: " + err.message });
+  }
+});
+
+// API endpoint to list all database backups from /opt/matrix-element-Backup
+app.get("/api/matrix/database/backups", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    const scannedBackups = await scanServerBackups(activeConn);
+    const dbBackups = scannedBackups.filter((b: any) => 
+      b.type === "database" || 
+      b.filename.startsWith("database_backup_") || 
+      b.filename.includes("database") || 
+      b.filename.endsWith(".sql.gz") || 
+      b.filename.endsWith(".sql")
+    );
+    res.json({ success: true, backups: dbBackups });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, backups: [] });
+  }
+});
+
+// API endpoint to restore database backup directly from /opt/matrix-element-Backup into PostgreSQL
+app.post("/api/matrix/database/restore", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { backupFilename } = req.body;
+  const activeConn = getActiveConnection();
+  if (!activeConn || activeConn.id === "local") {
+    return res.status(400).json({ success: false, error: "No active remote destination server connected." });
+  }
+
+  if (!backupFilename) {
+    return res.status(400).json({ success: false, error: "Backup filename is required." });
+  }
+
+  const cleanFilename = String(backupFilename).replace(/[^a-zA-Z0-9._-]/g, "");
+  const targetFile = `${REMOTE_BACKUP_BASE_DIR}/${cleanFilename}`;
+
+  const dbUser = (activeConn.dbUser || "synapse_user").trim();
+  const dbPass = (activeConn.dbPass || "").trim();
+  const dbName = (activeConn.dbName || "synapse").trim();
+  const dbHost = (activeConn.dbHost || "localhost").trim();
+  const dbPort = activeConn.dbPort || 5432;
+
+  const escapedPass = dbPass.replace(/'/g, "'\\''");
+  const escapedUser = dbUser.replace(/'/g, "'\\''");
+  const escapedDb = dbName.replace(/'/g, "'\\''");
+  const escapedHost = dbHost.replace(/'/g, "'\\''");
+
+  try {
+    const restoreScript = `
+      set -e
+      TARGET="${targetFile}"
+      if [ ! -f "$TARGET" ]; then
+        echo "ERR_NOT_FOUND: Database backup file not found at $TARGET"
+        exit 1
+      fi
+
+      RESTORE_SUCCESS=0
+      if [[ "$TARGET" == *.gz ]]; then
+        if [ -n "${escapedPass}" ] && [ -n "${escapedUser}" ]; then
+          gunzip -c "$TARGET" | PGPASSWORD='${escapedPass}' psql -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+          if [ $RESTORE_SUCCESS -eq 0 ]; then
+            gunzip -c "$TARGET" | PGPASSWORD='${escapedPass}' psql -h '127.0.0.1' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+          fi
+        fi
+        if [ $RESTORE_SUCCESS -eq 0 ]; then
+          gunzip -c "$TARGET" | sudo -u postgres psql -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+        fi
+        if [ $RESTORE_SUCCESS -eq 0 ]; then
+          gunzip -c "$TARGET" | sudo psql -U '${escapedUser}' -d '${escapedDb}' 2>&1 && RESTORE_SUCCESS=1 || true
+        fi
+      else
+        if [ -n "${escapedPass}" ] && [ -n "${escapedUser}" ]; then
+          PGPASSWORD='${escapedPass}' psql -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' < "$TARGET" 2>&1 && RESTORE_SUCCESS=1 || true
+        fi
+        if [ $RESTORE_SUCCESS -eq 0 ]; then
+          sudo -u postgres psql -d '${escapedDb}' < "$TARGET" 2>&1 && RESTORE_SUCCESS=1 || true
+        fi
+      fi
+
+      if [ $RESTORE_SUCCESS -eq 0 ]; then
+        echo "ERR_RESTORE: Database restoration failed on PostgreSQL"
+        exit 1
+      fi
+    `.trim();
+
+    await runActiveServerCommand(activeConn, restoreScript);
+    await restartSynapseService(activeConn);
+
+    const db = readDb();
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Database Restore",
+      target: cleanFilename,
+      status: "success",
+      details: `Database restored from ${cleanFilename} to ${dbName} on ${activeConn.name || activeConn.host}. Matrix Synapse service restarted.`
+    });
+    writeDb(db);
+
+    return res.json({ success: true, message: `Database restored successfully from ${cleanFilename} and Synapse restarted.` });
+  } catch (err: any) {
+    console.error("Database restore failed:", err);
+    return res.status(500).json({ success: false, error: "Database restore failed: " + err.message });
   }
 });
 

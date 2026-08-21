@@ -1379,6 +1379,11 @@ export default function App() {
     });
   };
 
+  const handleRefreshBackups = () => {
+    fetchBackups();
+    fetchLogs();
+  };
+
   const handleCreateBackup = (includeSSL: boolean) => {
     fetch('/api/backups/create', {
       method: 'POST',
@@ -1386,7 +1391,7 @@ export default function App() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`
       },
-      body: JSON.stringify({ includeSSL })
+      body: JSON.stringify({ type: 'config', includeSSL })
     })
     .then(res => res.json())
     .then(() => {
@@ -2918,7 +2923,7 @@ export default function App() {
                 activeConnectionId={activeConnection?.id}
                 backups={backups}
                 onDeleteBackup={handleDeleteBackup}
-                onCreateBackup={handleCreateBackup}
+                onCreateBackup={handleRefreshBackups}
               />
             )}
 
@@ -2970,7 +2975,7 @@ export default function App() {
                 onChangeUserPassword={handleChangeUserPassword}
                 onDeletePanelUser={handleDeletePanelUser}
                 onDeleteBackup={handleDeleteBackup}
-                onCreateBackup={handleCreateBackup}
+                onCreateBackup={handleRefreshBackups}
                 userRole={currentUser?.role || 'Viewer'}
                 authToken={authToken}
                 showToast={showToast}

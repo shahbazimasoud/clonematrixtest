@@ -56,7 +56,8 @@ import {
   Eye,
   HardDrive,
   Info,
-  Palette
+  Palette,
+  FileCode
 } from 'lucide-react';
 import { MatrixConfig, LDAPConfig, MatrixUser, BackupItem } from '../types';
 import WallpaperTab from './WallpaperTab';
@@ -1446,6 +1447,8 @@ export default function ConfigForms({
   useEffect(() => {
     if (activeTab === 'backups') {
       fetchBackupSettings();
+      fetchBackups();
+      fetchDbBackups();
     }
   }, [activeTab, authToken]);
 
@@ -1626,6 +1629,14 @@ export default function ConfigForms({
   const [networkStatus, setNetworkStatus] = useState<any>(null);
   const [loadingNetworkStatus, setLoadingNetworkStatus] = useState<boolean>(false);
 
+  // Database Restore & Snapshot Tabs State
+  const [activeSnapshotTab, setActiveSnapshotTab] = useState<'config' | 'database'>('config');
+  const [dbBackupsList, setDbBackupsList] = useState<any[]>([]);
+  const [loadingDbBackups, setLoadingDbBackups] = useState<boolean>(false);
+  const [restoringDb, setRestoringDb] = useState<boolean>(false);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ id: string; filename: string } | null>(null);
+  const [dbRestoreConfirmModal, setDbRestoreConfirmModal] = useState<{ filename: string } | null>(null);
+
   const fetchNetworkStatus = async () => {
     if (!authToken) return;
     setLoadingNetworkStatus(true);
@@ -1665,6 +1676,74 @@ export default function ConfigForms({
       console.error("Failed to load backups", e);
     } finally {
       setLoadingBackups(false);
+    }
+  };
+
+  const fetchDbBackups = async () => {
+    if (!authToken) return;
+    setLoadingDbBackups(true);
+    try {
+      const res = await fetch('/api/matrix/database/backups', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDbBackupsList(data.backups || []);
+      }
+    } catch (e) {
+      console.error("Failed to load database backups", e);
+    } finally {
+      setLoadingDbBackups(false);
+    }
+  };
+
+  const handleDatabaseRestore = async (backupFilename: string) => {
+    setRestoringDb(true);
+    try {
+      const res = await fetch('/api/matrix/database/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ backupFilename })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        if (showToast) showToast('success', lang === 'fa' ? 'دیتابیس با موفقیت بازگردانی شد و سرویس Synapse راه‌اندازی مجدد گردید.' : 'Database restored successfully and Matrix Synapse restarted.');
+        setDbRestoreConfirmModal(null);
+        fetchDbBackups();
+        fetchBackups();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در بازگردانی دیتابیس' : 'Database restore failed'));
+      }
+    } catch (e: any) {
+      if (showToast) showToast('error', e?.message || (lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Server connection error'));
+    } finally {
+      setRestoringDb(false);
+    }
+  };
+
+  const confirmDeleteBackup = async () => {
+    if (!deleteConfirmModal) return;
+    const { id, filename } = deleteConfirmModal;
+    try {
+      const res = await fetch(`/api/backups/${id || filename}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        if (showToast) showToast('success', lang === 'fa' ? `فایل ${filename} با موفقیت از سرور حذف شد.` : `Backup ${filename} deleted from server.`);
+        setDeleteConfirmModal(null);
+        fetchBackups();
+        fetchDbBackups();
+        if (onDeleteBackup) onDeleteBackup(id);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (showToast) showToast('error', err.error || (lang === 'fa' ? 'خطا در حذف فایل پشتیبان' : 'Error deleting backup'));
+      }
+    } catch (e: any) {
+      if (showToast) showToast('error', e?.message || (lang === 'fa' ? 'خطا در حذف فایل' : 'Failed to delete backup'));
     }
   };
 
@@ -5680,107 +5759,232 @@ export default function ConfigForms({
                   </div>
                 )}
 
-                {/* Configuration Snapshots & Instant Rollback Section */}
+                {/* Configuration Snapshots & Database Restore Section */}
                 <div className="space-y-4 bg-black/30 border border-white/5 p-5 rounded-2xl">
-                  <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
-                    <h3 className={`text-sm font-display font-semibold text-white flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                      <Clock className="w-4 h-4 text-indigo-400" />
-                      <span>{lang === 'fa' ? 'اسنپ‌شات‌ها و بازگردانی سریع کانفیگ ماتریکس (Configuration Snapshots & Rollback)' : 'Configuration Snapshots & Rollback'}</span>
-                    </h3>
+                  {/* Top Sub-tabs for Snapshots / Database Restore */}
+                  <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                    <div className={`flex items-center gap-2 p-1 bg-black/40 rounded-xl border border-white/10 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSnapshotTab('config')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeSnapshotTab === 'config'
+                            ? 'bg-indigo-500 text-white shadow-md'
+                            : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{lang === 'fa' ? 'اسنپ‌شات‌های کانفیگ (Config Snapshots)' : 'Configuration Snapshots'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveSnapshotTab('database'); fetchDbBackups(); }}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          activeSnapshotTab === 'database'
+                            ? 'bg-cyan-600 text-white shadow-md'
+                            : 'text-slate-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <Database className="w-3.5 h-3.5" />
+                        <span>{lang === 'fa' ? 'بازیابی دیتابیس (Database Restore)' : 'Database Restore'}</span>
+                      </button>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleRollback()}
-                      disabled={rollingBack || backupsList.length === 0}
-                      className="px-3.5 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:bg-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer self-start sm:self-auto"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${rollingBack ? 'animate-spin' : ''}`} />
-                      <span>{lang === 'fa' ? 'بازگردانی به آخرین اسنپ‌شات' : 'Rollback to Latest'}</span>
-                    </button>
+                    <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      {activeSnapshotTab === 'config' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRollback()}
+                          disabled={rollingBack || backupsList.length === 0}
+                          className="px-3.5 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:bg-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${rollingBack ? 'animate-spin' : ''}`} />
+                          <span>{lang === 'fa' ? 'بازگردانی به آخرین اسنپ‌شات' : 'Rollback to Latest'}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={fetchDbBackups}
+                          disabled={loadingDbBackups}
+                          className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${loadingDbBackups ? 'animate-spin' : ''}`} />
+                          <span>{lang === 'fa' ? 'بروزرسانی لیست دیتابیس' : 'Refresh DB Backups'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <p className="text-xs text-slate-400">
-                    {lang === 'fa' 
-                      ? 'قبل از هر تغییر در تنظیمات شبکه یا سرور ماتریکس، یک اسنپ‌شات ایمن از فایل تنظیمات ذخیره می‌شود. می‌توانید هر زمان به تنظیمات قبلی رول‌بک کنید.'
-                      : 'An automatic snapshot is saved before every configuration update. Restore any previous configuration safely below.'}
-                  </p>
+                  {/* TAB 1: CONFIGURATION SNAPSHOTS */}
+                  {activeSnapshotTab === 'config' && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-400">
+                        {lang === 'fa' 
+                          ? 'قبل از هر تغییر در تنظیمات سرور یا المنت، یک اسنپ‌شات ایمن ذخیره می‌شود. می‌توانید هر زمان به تنظیمات قبلی رول‌بک کنید.'
+                          : 'An automatic snapshot is saved before every configuration update. Restore any previous configuration safely below.'}
+                      </p>
 
-                  {loadingBackups ? (
-                    <div className="p-6 text-center text-slate-400 text-xs">
-                      <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-teal-400" />
-                      <span>{lang === 'fa' ? 'در حال بارگذاری اسنپ‌شات‌ها...' : 'Loading config snapshots...'}</span>
-                    </div>
-                  ) : backupsList.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 text-xs bg-black/20 rounded-xl border border-white/5">
-                      {lang === 'fa' ? 'هیچ اسنپ‌شات کانفیگی یافت نشد. پس از اولین تغییر در تنظیمات، اسنپ‌شات‌ها در اینجا ایجاد می‌شوند.' : 'No configuration snapshots found.'}
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      {backupsList.map((bak: any, idx: number) => (
-                        <div 
-                          key={bak.filename || idx}
-                          className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl bg-black/20 border border-white/5 hover:border-white/10 transition-all gap-3 ${isRtl ? 'sm:flex-row-reverse' : ''}`}
-                        >
-                          <div className={`flex items-start sm:items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
-                            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 mt-0.5 sm:mt-0">
-                              <Clock className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-mono font-semibold text-slate-200 break-all select-all">
-                                {bak.filename}
-                              </div>
-                              <div className="text-[11px] text-slate-400 mt-0.5">
-                                {bak.dateStr || new Date(bak.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}
-                              </div>
-                              {bak.coveredPaths && bak.coveredPaths.length > 0 && (
-                                <div className={`flex flex-wrap gap-1 mt-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
-                                  {bak.coveredPaths.map((p: string, i: number) => (
-                                    <span key={i} className="px-1.5 py-0.2 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-slate-300">
-                                      {p}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className={`flex items-center gap-1.5 self-end sm:self-auto ${isRtl ? 'flex-row-reverse' : ''}`}>
-                            <button
-                              type="button"
-                              onClick={() => handleRollback(bak.filename, 'all')}
-                              disabled={rollingBack || isReadOnly}
-                              className="px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer"
-                              title={lang === 'fa' ? 'بازگردانی کامل (سیناپس و المنت)' : 'Full Rollback (Synapse & Element)'}
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>{lang === 'fa' ? 'بازگردانی کامل' : 'Full Rollback'}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRollback(bak.filename, 'synapse')}
-                              disabled={rollingBack || isReadOnly}
-                              className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
-                              title={lang === 'fa' ? 'فقط بازگردانی Synapse' : 'Synapse Only'}
-                            >
-                              <span>{lang === 'fa' ? 'سیناپس' : 'Synapse'}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRollback(bak.filename, 'element')}
-                              disabled={rollingBack || isReadOnly}
-                              className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
-                              title={lang === 'fa' ? 'فقط بازگردانی Element' : 'Element Only'}
-                            >
-                              <span>{lang === 'fa' ? 'المنت' : 'Element'}</span>
-                            </button>
-                          </div>
+                      {loadingBackups ? (
+                        <div className="p-6 text-center text-slate-400 text-xs">
+                          <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-teal-400" />
+                          <span>{lang === 'fa' ? 'در حال بارگذاری اسنپ‌شات‌ها...' : 'Loading config snapshots...'}</span>
                         </div>
-                      ))}
+                      ) : backupsList.length === 0 ? (
+                        <div className="p-6 text-center text-slate-500 text-xs bg-black/20 rounded-xl border border-white/5">
+                          {lang === 'fa' ? 'هیچ اسنپ‌شات کانفیگی یافت نشد. پس از اولین تغییر در تنظیمات، اسنپ‌شات‌ها در اینجا ایجاد می‌شوند.' : 'No configuration snapshots found.'}
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {backupsList.map((bak: any, idx: number) => (
+                            <div 
+                              key={bak.filename || idx}
+                              className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl bg-black/20 border border-white/5 hover:border-white/10 transition-all gap-3 ${isRtl ? 'sm:flex-row-reverse' : ''}`}
+                            >
+                              <div className={`flex items-start sm:items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 mt-0.5 sm:mt-0">
+                                  <Clock className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div className="text-xs font-mono font-semibold text-slate-200 break-all select-all">
+                                    {bak.filename}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                    {bak.dateStr || new Date(bak.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}
+                                  </div>
+                                  {bak.coveredPaths && bak.coveredPaths.length > 0 && (
+                                    <div className={`flex flex-wrap gap-1 mt-1.5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                      {bak.coveredPaths.map((p: string, i: number) => (
+                                        <span key={i} className="px-1.5 py-0.2 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-slate-300">
+                                          {p}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className={`flex items-center gap-1.5 self-end sm:self-auto ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRollback(bak.filename, 'all')}
+                                  disabled={rollingBack || isReadOnly}
+                                  className="px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                                  title={lang === 'fa' ? 'بازگردانی کامل (سیناپس و المنت)' : 'Full Rollback (Synapse & Element)'}
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>{lang === 'fa' ? 'بازگردانی کامل' : 'Full Rollback'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRollback(bak.filename, 'synapse')}
+                                  disabled={rollingBack || isReadOnly}
+                                  className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                                  title={lang === 'fa' ? 'فقط بازگردانی Synapse' : 'Synapse Only'}
+                                >
+                                  <span>{lang === 'fa' ? 'سیناپس' : 'Synapse'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRollback(bak.filename, 'element')}
+                                  disabled={rollingBack || isReadOnly}
+                                  className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                                  title={lang === 'fa' ? 'فقط بازگردانی Element' : 'Element Only'}
+                                >
+                                  <span>{lang === 'fa' ? 'المنت' : 'Element'}</span>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 2: DATABASE RESTORE */}
+                  {activeSnapshotTab === 'database' && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-400">
+                        {lang === 'fa'
+                          ? 'نسخه‌های پشتیبان پایگاه داده PostgreSQL ماتریکس مستقر در مسیر سرور (/opt/matrix-element-Backup). می‌توانید از اینجا دیتابیس را مستقیماً بازیابی کنید، دانلود نمایید یا حذف کنید.'
+                          : 'PostgreSQL database backups located in /opt/matrix-element-Backup. You can restore, download, or delete database dumps here.'}
+                      </p>
+
+                      {loadingDbBackups ? (
+                        <div className="p-6 text-center text-slate-400 text-xs">
+                          <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-cyan-400" />
+                          <span>{lang === 'fa' ? 'در حال دریافت نسخه‌های پشتیبان دیتابیس از سرور...' : 'Fetching database backups from server...'}</span>
+                        </div>
+                      ) : dbBackupsList.length === 0 ? (
+                        <div className="p-6 text-center text-slate-500 text-xs bg-black/20 rounded-xl border border-white/5 space-y-2">
+                          <Database className="w-8 h-8 text-slate-600 mx-auto" />
+                          <p>{lang === 'fa' ? 'هیچ بک‌آپ دیتابیسی در مسیر سرور یافت نشد.' : 'No database backups found on server.'}</p>
+                          <p className="text-[11px] text-slate-400">{lang === 'fa' ? 'از دکمه بالا برای تهیه بک‌آپ جدید دیتابیس (Database Backup) استفاده کنید.' : 'Use the Database Backup button above to create a new database dump.'}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {dbBackupsList.map((dbBak: any, idx: number) => (
+                            <div
+                              key={dbBak.id || dbBak.filename || idx}
+                              className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl bg-black/20 border border-cyan-500/10 hover:border-cyan-500/30 transition-all gap-3 ${isRtl ? 'sm:flex-row-reverse' : ''}`}
+                            >
+                              <div className={`flex items-start sm:items-center gap-3 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 mt-0.5 sm:mt-0">
+                                  <Database className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div className="text-xs font-mono font-semibold text-cyan-200 break-all select-all flex items-center gap-2 flex-wrap">
+                                    <span>{dbBak.filename}</span>
+                                    <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-sans font-bold">
+                                      PostgreSQL Dump
+                                    </span>
+                                  </div>
+                                  <div className={`flex items-center gap-3 mt-1 text-[11px] text-slate-400 font-mono ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                    <span>{lang === 'fa' ? 'حجم:' : 'Size:'} <strong className="text-white">{dbBak.size}</strong></span>
+                                    <span>•</span>
+                                    <span>{new Date(dbBak.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className={`flex items-center gap-1.5 self-end sm:self-auto ${isRtl ? 'flex-row-reverse' : ''}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => setDbRestoreConfirmModal({ filename: dbBak.filename })}
+                                  disabled={restoringDb || isReadOnly}
+                                  className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                                  title={lang === 'fa' ? 'بازیابی پایگاه داده' : 'Restore Database'}
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>{lang === 'fa' ? 'بازیابی دیتابیس' : 'Restore DB'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadSingleBackup(dbBak)}
+                                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-all cursor-pointer"
+                                  title={lang === 'fa' ? 'دانلود فایل دیتابیس' : 'Download'}
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                                {!isReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmModal({ id: dbBak.id || dbBak.filename, filename: dbBak.filename })}
+                                    className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all cursor-pointer"
+                                    title={lang === 'fa' ? 'حذف فایل' : 'Delete'}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Backups List & Bulk Actions */}
+                {/* Backups List & Bulk Actions — Row-by-Row Layout (No Restore Button here) */}
                 <div className="space-y-3">
                   <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/30 p-4 rounded-2xl border border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
                     <div className={`flex items-center gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
@@ -5825,21 +6029,21 @@ export default function ConfigForms({
                       <p className="text-xs text-slate-500 mt-1">{lang === 'fa' ? 'با دکمه‌های بالا اولین نسخه پشتیبان خود را ایجاد کنید.' : 'Trigger your first manual backup using the buttons above.'}</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
                       {backups.map((b) => (
                         <div 
                           key={b.id} 
-                          className={`spatial-glass rounded-2xl p-4 border transition-all flex items-center justify-between ${
+                          className={`spatial-glass rounded-xl p-3.5 border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
                             selectedBackupIds.includes(b.id) 
                               ? 'border-amber-500/40 bg-amber-500/[0.03]' 
-                              : 'border-white/5 hover:border-white/10'
-                          } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
+                              : 'border-white/5 hover:border-white/10 bg-black/20'
+                          } ${isRtl ? 'sm:flex-row-reverse text-right' : 'text-left'}`}
                         >
-                          <div className={`flex items-start gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex items-start sm:items-center gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
                             <button
                               type="button"
                               onClick={() => handleToggleSelectBackup(b.id)}
-                              className="mt-0.5 text-slate-500 hover:text-white transition-colors cursor-pointer"
+                              className="mt-0.5 sm:mt-0 text-slate-500 hover:text-white transition-colors cursor-pointer"
                             >
                               {selectedBackupIds.includes(b.id) ? (
                                 <CheckSquare className="w-4.5 h-4.5 text-amber-500" />
@@ -5847,57 +6051,153 @@ export default function ConfigForms({
                                 <Square className="w-4.5 h-4.5" />
                               )}
                             </button>
+                            <div className="p-2 rounded-lg bg-white/5 text-slate-300">
+                              {b.type === 'database' || b.filename.startsWith('database_backup_') || b.filename.endsWith('.sql.gz') ? (
+                                <Database className="w-4 h-4 text-cyan-400" />
+                              ) : (
+                                <FileCode className="w-4 h-4 text-amber-400" />
+                              )}
+                            </div>
                             <div className={isRtl ? 'text-right' : 'text-left'}>
-                              <h5 className="text-xs font-bold text-white font-mono break-all select-all">{b.filename}</h5>
-                              <div className={`flex items-center gap-3 mt-2 font-mono text-[10px] text-slate-400 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-white font-mono break-all select-all">{b.filename}</span>
                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase ${
-                                  b.type === 'database' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-amber-500/10 text-amber-400'
+                                  b.type === 'database' || b.filename.startsWith('database_backup_') || b.filename.endsWith('.sql.gz')
+                                    ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                                 }`}>
-                                  {b.type === 'database' ? (lang === 'fa' ? 'دیتابیس' : 'Database') : (lang === 'fa' ? 'تنظیمات' : 'Config')}
+                                  {b.type === 'database' || b.filename.startsWith('database_backup_') || b.filename.endsWith('.sql.gz') 
+                                    ? (lang === 'fa' ? 'دیتابیس' : 'Database') 
+                                    : (lang === 'fa' ? 'تنظیمات' : 'Config')}
                                 </span>
+                              </div>
+                              <div className={`flex items-center gap-3 mt-1 font-mono text-[10px] text-slate-400 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
                                 <span>{lang === 'fa' ? 'حجم:' : 'Size:'} <strong className="text-white">{b.size}</strong></span>
+                                <span>•</span>
                                 <span>{new Date(b.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className={`flex items-center gap-1.5 ml-2 ${isRtl ? 'flex-row-reverse mr-2' : ''}`}>
+                          <div className={`flex items-center gap-2 self-end sm:self-auto ${isRtl ? 'flex-row-reverse' : ''}`}>
                             <button
                               type="button"
                               onClick={() => downloadSingleBackup(b)}
-                              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition-all cursor-pointer"
-                              title={lang === 'fa' ? 'دانلود' : 'Download'}
+                              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-all text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                              title={lang === 'fa' ? 'دانلود فایل پشتیبان' : 'Download'}
                             >
-                              <Download className="w-4 h-4" />
+                              <Download className="w-3.5 h-3.5" />
+                              <span>{lang === 'fa' ? 'دانلود' : 'Download'}</span>
                             </button>
                             {!isReadOnly && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowRestoreModal(b)}
-                                  className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/10 transition-all cursor-pointer font-semibold text-xs flex items-center gap-1"
-                                  title={lang === 'fa' ? 'بازنشانی / Restore' : 'Restore'}
-                                >
-                                  <RotateCcw className="w-4 h-4" />
-                                  <span className="hidden lg:inline text-[10px]">{lang === 'fa' ? 'بازنشانی' : 'Restore'}</span>
-                                </button>
-                                {onDeleteBackup && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onDeleteBackup(b.id)}
-                                    className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all cursor-pointer"
-                                    title={lang === 'fa' ? 'حذف بک‌آپ' : 'Purge'}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmModal({ id: b.id, filename: b.filename })}
+                                className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                                title={lang === 'fa' ? 'حذف نسخه پشتیبان' : 'Delete'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>{lang === 'fa' ? 'حذف' : 'Delete'}</span>
+                              </button>
                             )}
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Delete Backup Confirmation */}
+            {deleteConfirmModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-md w-full rounded-2xl p-6 space-y-4 border ${
+                  isLightMode ? 'bg-white border-slate-200 text-slate-900 shadow-2xl' : 'bg-slate-900 border-red-500/20 text-white shadow-[0_0_50px_rgba(239,68,68,0.15)]'
+                }`}>
+                  <div className={`flex items-center gap-3 text-red-400 pb-2 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <AlertTriangle className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-base font-bold">{lang === 'fa' ? 'تایید حذف نسخه پشتیبان' : 'Confirm Backup Deletion'}</h3>
+                      <p className="text-[10px] text-slate-400">{lang === 'fa' ? 'عملیات حذف فایل از روی سرور مقصد' : 'Permanent file removal from remote destination'}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {lang === 'fa' ? (
+                      <span>آیا از حذف فایل پشتیبان <strong className="text-red-400 font-mono select-all break-all">{deleteConfirmModal.filename}</strong> از مسیر <code className="text-amber-300">/opt/matrix-element-Backup</code> روی سرور اطمینان دارید؟</span>
+                    ) : (
+                      <span>Are you sure you want to permanently delete backup <strong className="text-red-400 font-mono select-all break-all">{deleteConfirmModal.filename}</strong> from <code className="text-amber-300">/opt/matrix-element-Backup</code> on the remote server?</span>
+                    )}
+                  </p>
+
+                  <div className={`flex items-center justify-end gap-3 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmModal(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold cursor-pointer"
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmDeleteBackup}
+                      className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{lang === 'fa' ? 'بله، حذف کن' : 'Yes, Delete Backup'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Database Restore Confirmation */}
+            {dbRestoreConfirmModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-lg w-full rounded-2xl p-6 space-y-4 border ${
+                  isLightMode ? 'bg-white border-cyan-200 text-slate-900 shadow-2xl' : 'bg-slate-900 border-cyan-500/30 text-white shadow-[0_0_50px_rgba(6,182,212,0.15)]'
+                }`}>
+                  <div className={`flex items-center gap-3 text-cyan-400 pb-2 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <Database className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-base font-bold">{lang === 'fa' ? 'هشدار بازیابی پایگاه داده (Database Restore)' : 'PostgreSQL Database Restore Warning'}</h3>
+                      <p className="text-[10px] text-slate-400">{lang === 'fa' ? 'بازنشانی جداول PostgreSQL روی سرور مقصد' : 'PostgreSQL tables rollback on remote server'}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {lang === 'fa' ? (
+                      <span>آیا از بازگردانی کامل پایگاه داده از فایل <strong className="text-cyan-300 font-mono select-all break-all">{dbRestoreConfirmModal.filename}</strong> اطمینان دارید؟</span>
+                    ) : (
+                      <span>Are you sure you want to restore the PostgreSQL database using <strong className="text-cyan-300 font-mono select-all break-all">{dbRestoreConfirmModal.filename}</strong>?</span>
+                    )}
+                  </p>
+
+                  <div className="rounded-xl p-3.5 bg-cyan-500/10 border border-cyan-500/20 text-[11px] text-cyan-200 space-y-1">
+                    <p className="font-bold">{lang === 'fa' ? 'توجه:' : 'Notice:'}</p>
+                    <p>{lang === 'fa' ? '• داده‌های پایگاه داده بازنویسی خواهند شد و سرویس Matrix Synapse پس از عملیات به طور خودکار ریستارت می‌شود.' : '• Database data will be overwritten and the Matrix Synapse service will automatically restart.'}</p>
+                  </div>
+
+                  <div className={`flex items-center justify-end gap-3 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      disabled={restoringDb}
+                      onClick={() => setDbRestoreConfirmModal(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold cursor-pointer"
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={restoringDb}
+                      onClick={() => handleDatabaseRestore(dbRestoreConfirmModal.filename)}
+                      className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {restoringDb ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      <span>{lang === 'fa' ? 'تایید و بازیابی دیتابیس' : 'Confirm & Restore DB'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

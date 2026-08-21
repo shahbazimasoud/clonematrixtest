@@ -36,6 +36,7 @@ import {
   Gauge,
   Sliders,
   FileCode,
+  Database,
   Search,
   Filter,
   Eye,
@@ -1497,6 +1498,7 @@ export default function ReportingPanel({
   const [selectedBackupIds, setSelectedBackupIds] = useState<string[]>([]);
   const [isTriggeringBackup, setIsTriggeringBackup] = useState<boolean>(false);
   const [showRestoreModal, setShowRestoreModal] = useState<BackupItem | null>(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ id: string; filename: string } | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [activeBackupSubTab, setActiveBackupSubTab] = useState<'list' | 'settings'>('list');
 
@@ -3442,20 +3444,21 @@ export default function ReportingPanel({
                       <p className="text-xs text-slate-500 mt-1">{lang === 'fa' ? 'با دکمه‌های بالا اولین نسخه پشتیبان خود را ایجاد کنید.' : 'Trigger your first manual backup using the buttons above.'}</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
                       {backups.map((b) => (
                         <div 
                           key={b.id} 
-                          className={`spatial-glass rounded-2xl p-4 border transition-all flex items-center justify-between ${
+                          className={`spatial-glass rounded-xl p-3.5 border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
                             selectedBackupIds.includes(b.id) 
                               ? 'border-amber-500/40 bg-amber-500/[0.03]' 
-                              : 'border-white/5 hover:border-white/10'
-                          } ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}
+                              : 'border-white/5 hover:border-white/10 bg-black/20'
+                          } ${isRtl ? 'sm:flex-row-reverse text-right' : 'text-left'}`}
                         >
-                          <div className={`flex items-start gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                          <div className={`flex items-start sm:items-center gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
                             <button
+                              type="button"
                               onClick={() => handleToggleSelectBackup(b.id)}
-                              className="mt-0.5 text-slate-500 hover:text-white transition-colors cursor-pointer"
+                              className="mt-0.5 sm:mt-0 text-slate-500 hover:text-white transition-colors cursor-pointer"
                             >
                               {selectedBackupIds.includes(b.id) ? (
                                 <CheckSquare className="w-4.5 h-4.5 text-amber-500" />
@@ -3463,46 +3466,54 @@ export default function ReportingPanel({
                                 <Square className="w-4.5 h-4.5" />
                               )}
                             </button>
+                            <div className="p-2 rounded-lg bg-white/5 text-slate-300">
+                              {b.type === 'database' || b.filename.startsWith('database_backup_') || b.filename.endsWith('.sql.gz') ? (
+                                <Database className="w-4 h-4 text-cyan-400" />
+                              ) : (
+                                <FileCode className="w-4 h-4 text-amber-400" />
+                              )}
+                            </div>
                             <div className={isRtl ? 'text-right' : 'text-left'}>
-                              <h5 className="text-xs font-bold text-white font-mono break-all select-all">{b.filename}</h5>
-                              <div className={`flex items-center gap-3 mt-2 font-mono text-[10px] text-slate-400 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-white font-mono break-all select-all">{b.filename}</span>
                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-sans font-bold uppercase ${
-                                  b.type === 'database' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-amber-500/10 text-amber-400'
+                                  b.type === 'database' || b.filename.startsWith('database_backup_') || b.filename.endsWith('.sql.gz')
+                                    ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                                 }`}>
-                                  {b.type === 'database' ? (lang === 'fa' ? 'دیتابیس' : 'Database') : (lang === 'fa' ? 'تنظیمات' : 'Config')}
+                                  {b.type === 'database' || b.filename.startsWith('database_backup_') || b.filename.endsWith('.sql.gz') 
+                                    ? (lang === 'fa' ? 'دیتابیس' : 'Database') 
+                                    : (lang === 'fa' ? 'تنظیمات' : 'Config')}
                                 </span>
+                              </div>
+                              <div className={`flex items-center gap-3 mt-1 font-mono text-[10px] text-slate-400 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
                                 <span>{lang === 'fa' ? 'حجم:' : 'Size:'} <strong className="text-white">{b.size}</strong></span>
+                                <span>•</span>
                                 <span>{new Date(b.timestamp).toLocaleString(['fa', 'ar'].includes(lang) ? 'fa-IR' : 'en-US')}</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className={`flex items-center gap-1.5 ml-2 ${isRtl ? 'flex-row-reverse mr-2' : ''}`}>
+                          <div className={`flex items-center gap-2 self-end sm:self-auto ${isRtl ? 'flex-row-reverse' : ''}`}>
                             <button
+                              type="button"
                               onClick={() => downloadSingleBackup(b)}
-                              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition-all cursor-pointer"
+                              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-all text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                               title={t.downloadBtn}
                             >
-                              <Download className="w-4 h-4" />
+                              <Download className="w-3.5 h-3.5" />
+                              <span>{lang === 'fa' ? 'دانلود' : 'Download'}</span>
                             </button>
                             {!isReadOnly && (
-                              <>
-                                <button
-                                  onClick={() => setShowRestoreModal(b)}
-                                  className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/10 transition-all cursor-pointer font-semibold text-xs flex items-center gap-1"
-                                  title={t.restoreBtn}
-                                >
-                                  <RotateCcw className="w-4 h-4" />
-                                  <span className="hidden lg:inline text-[10px]">{lang === 'fa' ? 'بازنشانی' : 'Restore'}</span>
-                                </button>
-                                <button
-                                  onClick={() => onDeleteBackup(b.id)}
-                                  className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all cursor-pointer"
-                                  title={t.deleteBtn}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmModal({ id: b.id, filename: b.filename })}
+                                className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/10 transition-all text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                                title={t.deleteBtn}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>{lang === 'fa' ? 'حذف' : 'Delete'}</span>
+                              </button>
                             )}
                           </div>
                         </div>
@@ -3734,6 +3745,53 @@ export default function ReportingPanel({
                     >
                       {isRestoring ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
                       <span>{t.confirmRestore}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Delete Backup Confirmation */}
+            {deleteConfirmModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" dir={isRtl ? "rtl" : "ltr"}>
+                <div className={`max-w-md w-full rounded-2xl p-6 space-y-4 border ${
+                  isLightMode ? 'bg-white border-slate-200 text-slate-900 shadow-2xl' : 'bg-slate-900 border-red-500/20 text-white shadow-[0_0_50px_rgba(239,68,68,0.15)]'
+                }`}>
+                  <div className={`flex items-center gap-3 text-red-400 pb-2 border-b border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <AlertTriangle className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-base font-bold">{lang === 'fa' ? 'تایید حذف نسخه پشتیبان' : 'Confirm Backup Deletion'}</h3>
+                      <p className="text-[10px] text-slate-400">{lang === 'fa' ? 'عملیات حذف فایل از روی سرور مقصد' : 'Permanent file removal from remote destination'}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {lang === 'fa' ? (
+                      <span>آیا از حذف فایل پشتیبان <strong className="text-red-400 font-mono select-all break-all">{deleteConfirmModal.filename}</strong> از مسیر <code className="text-amber-300">/opt/matrix-element-Backup</code> روی سرور اطمینان دارید؟</span>
+                    ) : (
+                      <span>Are you sure you want to permanently delete backup <strong className="text-red-400 font-mono select-all break-all">{deleteConfirmModal.filename}</strong> from <code className="text-amber-300">/opt/matrix-element-Backup</code> on the remote server?</span>
+                    )}
+                  </p>
+
+                  <div className={`flex items-center justify-end gap-3 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmModal(null)}
+                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold cursor-pointer"
+                    >
+                      {lang === 'fa' ? 'انصراف' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetId = deleteConfirmModal.id;
+                        setDeleteConfirmModal(null);
+                        if (onDeleteBackup) onDeleteBackup(targetId);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{lang === 'fa' ? 'بله، حذف کن' : 'Yes, Delete Backup'}</span>
                     </button>
                   </div>
                 </div>

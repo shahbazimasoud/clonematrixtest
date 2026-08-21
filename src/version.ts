@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.25.3";
+export const PANEL_VERSION = "2.26.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.26.0",
+    date: "2026-08-21",
+    title: "Dedicated Database Backup & Restore Suite with PostgreSQL Remote Dump Integration",
+    changes: [
+      "Fixed duplicate backup execution bug by isolating backup creation triggers from state refresh cycles in App.tsx.",
+      "Engineered PostgreSQL database backup engine using connection string parameters, pg_dump, and gzip compression to generate named database_backup_<timestamp>.sql.gz archives in /opt/matrix-element-Backup/ on the remote server.",
+      "Added dedicated 'Database Restore' tab in Configuration Snapshots & Rollback section with remote listing, database restoration (psql/gunzip), download, and deletion.",
+      "Transformed Archived Backups Catalog into a clean row-by-row list layout, removed redundant restore buttons, and added explicit confirmation dialogs before permanent file deletion.",
+      "Added remote database restore endpoint (/api/matrix/database/restore) and list endpoint (/api/matrix/database/backups) with active server SSH/Agent command routing."
+    ]
+  },
   {
     version: "2.25.3",
     date: "2026-08-21",

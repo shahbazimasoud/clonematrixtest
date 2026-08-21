@@ -16,9 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.25.3** (Released: 2026-08-21)
+## Current Panel Version: **v2.26.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.26.0** - 2026-08-21
+- **Dedicated Database Backup & Restore Suite with PostgreSQL Remote Dump Integration**:
+  - **Single Execution Fix**: Resolved the duplicate backup creation bug by cleanly decoupling backup trigger logic from view state refresh cycles.
+  - **Remote PostgreSQL Dump Automation**: Leveraged connection string / credentials to execute `pg_dump` with gzip compression directly on the target host, writing to `database_backup_<timestamp>.sql.gz` inside `/opt/matrix-element-Backup/`.
+  - **Database Restore Sub-Tab**: Added an interactive sub-tab inside Configuration Snapshots & Rollback specifically for database archives, offering remote listing, restore, download, and delete.
+  - **Row-by-Row Backups Catalog**: Refactored the Archived Backups Catalog from cards to a streamlined row-by-row list, removed extraneous restore buttons from general backup cards, and introduced confirmation dialogs before deletions.
+  - **Remote Database Restore API**: Added `/api/matrix/database/restore` and `/api/matrix/database/backups` powered by active server connection execution with multi-step fallback (pg_restore, psql, gunzip).
 
 #### **v2.25.3** - 2026-08-21
 - **Strict Remote Execution Engine for Matrix & Element Backup Operations**:
