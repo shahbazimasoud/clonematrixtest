@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.36.0";
+export const PANEL_VERSION = "2.36.1";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,15 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.36.1",
+    date: "2026-08-21",
+    title: "Resolved Dashboard Runtime ReferenceError in Date & Time Component",
+    changes: [
+      "Fixed Dashboard Blank/Black Screen: Resolved ReferenceError (isStatsRefreshing is not defined) by referencing the correct isRefreshingStats state in the Date & Time card refresh icon.",
+      "Enhanced Form Accessibility: Added recommended standard autoComplete attributes ('username' and 'current-password') to the authentication login inputs."
+    ]
+  },
   {
     version: "2.36.0",
     date: "2026-08-21",

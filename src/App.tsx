@@ -1588,6 +1588,7 @@ export default function App() {
                       checkLoginSecurityConfig(e.target.value);
                     }}
                     required
+                    autoComplete="username"
                     className="w-full bg-black/40 border border-white/10 focus:border-indigo-500/50 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-100 outline-none transition-all focus:ring-2 focus:ring-indigo-500/15"
                     placeholder={lang === 'fa' ? "مثال: admin" : "e.g. admin"}
                     id="username-input"
@@ -1606,6 +1607,7 @@ export default function App() {
                     onFocus={() => setIsPassFocused(true)}
                     onBlur={() => setIsPassFocused(false)}
                     required
+                    autoComplete="current-password"
                     className="w-full bg-black/40 border border-white/10 focus:border-indigo-500/50 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-100 outline-none transition-all focus:ring-2 focus:ring-indigo-500/15"
                     placeholder="••••••••"
                     id="password-input"
@@ -2768,7 +2770,7 @@ export default function App() {
                               </p>
                             </div>
                           </div>
-                          <RefreshCw className={`w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors shrink-0 ${isStatsRefreshing ? 'animate-spin' : ''}`} />
+                          <RefreshCw className={`w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors shrink-0 ${isRefreshingStats ? 'animate-spin' : ''}`} />
                         </div>
 
                         {/* Date and Time Formatted Display */}

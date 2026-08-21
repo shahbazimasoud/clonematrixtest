@@ -16,9 +16,14 @@
 
 ---
 
-## Current Panel Version: **v2.36.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.36.1** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.36.1** - 2026-08-21
+- **Resolved Dashboard Runtime ReferenceError in Date & Time Component**:
+  - **Fixed Dashboard Blank/Black Screen**: Resolved ReferenceError (`isStatsRefreshing is not defined`) by referencing the correct `isRefreshingStats` state in the Date & Time card refresh icon.
+  - **Enhanced Form Accessibility**: Added recommended standard `autoComplete` attributes (`"username"` and `"current-password"`) to the authentication login inputs.
 
 #### **v2.36.0** - 2026-08-21
 - **Server Date & Time Dashboard Card & Strict Script Generation Isolation**:
