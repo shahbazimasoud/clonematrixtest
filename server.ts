@@ -20630,6 +20630,7 @@ async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise
   const rawPath = (settings.backupPath || "").trim();
   const backupPath = rawPath.length > 0 ? rawPath : `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
   const retentionDays = parseInt(settings.retentionDays, 10) || 30;
+  const retentionSchedule = settings.retentionSchedule || { enabled: true, cron: "0 4 * * *" };
   const dbSchedule = settings.dbSchedule || { enabled: false, cron: "0 2 * * *" };
   const configSchedule = settings.configSchedule || { enabled: false, cron: "0 3 * * *" };
 
@@ -20712,12 +20713,36 @@ fi
     const b64ConfigScript = Buffer.from(configScriptContent).toString("base64");
     await runActiveServerCommand(activeConn, `echo "${b64ConfigScript}" | base64 -d > "${configScriptPath}" && chmod 755 "${configScriptPath}"`);
 
-    // 4. Build Cron configuration for user crontab and /etc/cron.d
+    // 4. Generate and write Automated Retention & Prune Cleanup script
+    const cleanupScriptContent = `#!/bin/bash
+# Matrix Panel Automated Backup Retention & Prune Cleanup Script
+set -e
+BACKUP_DIR="${backupPath}"
+RETENTION_DAYS=${retentionDays}
+mkdir -p "$BACKUP_DIR"
+NOW=$(date +"%Y-%m-%d %H:%M:%S")
+
+echo "[$NOW] Executing Matrix Backup Retention Cleanup in $BACKUP_DIR (Retention Limit: $RETENTION_DAYS days)"
+
+if [ "$RETENTION_DAYS" -gt 0 ]; then
+  find "$BACKUP_DIR" -maxdepth 1 \\( -name "database_backup_*.sql.gz" -o -name "matrix-backup-*.tar.gz" -o -name "*.sql.gz" -o -name "*.tar.gz" \\) -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
+  echo "[$NOW] Retention cleanup completed successfully for backups older than $RETENTION_DAYS days."
+else
+  echo "[$NOW] Retention threshold is disabled (0 days). No expired archives deleted."
+fi
+`;
+
+    const cleanupScriptPath = `${scriptDir}/matrix_auto_cleanup.sh`;
+    const b64CleanupScript = Buffer.from(cleanupScriptContent).toString("base64");
+    await runActiveServerCommand(activeConn, `echo "${b64CleanupScript}" | base64 -d > "${cleanupScriptPath}" && chmod 755 "${cleanupScriptPath}"`);
+
+    // 5. Build Cron configuration for user crontab and /etc/cron.d
     const userCronLines: string[] = [];
     const systemCronLines: string[] = [];
 
     const dbCronClean = (dbSchedule.cron || "0 2 * * *").trim();
     const configCronClean = (configSchedule.cron || "0 3 * * *").trim();
+    const retentionCronClean = (retentionSchedule.cron || "0 4 * * *").trim();
 
     systemCronLines.push("# MATRIX_PANEL_CRON_START - AUTOMATED MATRIX BACKUP SCHEDULER");
     systemCronLines.push("SHELL=/bin/bash");
@@ -20730,6 +20755,10 @@ fi
     if (configSchedule.enabled && configCronClean) {
       userCronLines.push(`${configCronClean} /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
       systemCronLines.push(`${configCronClean} root /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
+    }
+    if (retentionSchedule.enabled && retentionCronClean && retentionDays > 0) {
+      userCronLines.push(`${retentionCronClean} /bin/bash ${cleanupScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_RETENTION_CLEANUP`);
+      systemCronLines.push(`${retentionCronClean} root /bin/bash ${cleanupScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_RETENTION_CLEANUP`);
     }
     systemCronLines.push("# MATRIX_PANEL_CRON_END");
 
@@ -20750,7 +20779,7 @@ fi
       fi
       
       echo "${b64UserCron}" | base64 -d > /tmp/matrix_user_cron.tmp
-      crontab -l 2>/dev/null | grep -v "MATRIX_PANEL_CRON" | grep -v "matrix_auto_db_backup" | grep -v "matrix_auto_config_backup" > /tmp/current_crontab.tmp || true
+      crontab -l 2>/dev/null | grep -v "MATRIX_PANEL_CRON" | grep -v "matrix_auto_db_backup" | grep -v "matrix_auto_config_backup" | grep -v "matrix_auto_cleanup" | grep -v "MATRIX_AUTO_" > /tmp/current_crontab.tmp || true
       if [ -s /tmp/matrix_user_cron.tmp ]; then
         cat /tmp/matrix_user_cron.tmp >> /tmp/current_crontab.tmp
       fi
@@ -20764,7 +20793,7 @@ fi
     try {
       const checkCronCmd = `crontab -l 2>/dev/null || cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
       const cronOut = await runActiveServerCommand(activeConn, checkCronCmd, false);
-      installedCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_"));
+      installedCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_") || l.includes("MATRIX_AUTO_"));
     } catch (_) {}
 
     return {
@@ -20799,9 +20828,14 @@ app.get("/api/backups/settings", authenticateToken, (req, res) => {
     db.backupSettings = {
       backupPath: `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
       retentionDays: 30,
+      retentionSchedule: { enabled: true, cron: "0 4 * * *" },
       dbSchedule: { enabled: false, cron: "0 2 * * *" },
       configSchedule: { enabled: false, cron: "0 3 * * *" }
     };
+    writeDb(db);
+  }
+  if (!db.backupSettings.retentionSchedule) {
+    db.backupSettings.retentionSchedule = { enabled: true, cron: "0 4 * * *" };
     writeDb(db);
   }
   if (!db.backupSettings.backupPath || db.backupSettings.backupPath === "/sandbox/backups" || db.backupSettings.backupPath === REMOTE_BACKUP_BASE_DIR) {
@@ -20817,9 +20851,13 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
   const settings = db.backupSettings || {
     backupPath: `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
     retentionDays: 30,
+    retentionSchedule: { enabled: true, cron: "0 4 * * *" },
     dbSchedule: { enabled: false, cron: "0 2 * * *" },
     configSchedule: { enabled: false, cron: "0 3 * * *" }
   };
+  if (!settings.retentionSchedule) {
+    settings.retentionSchedule = { enabled: true, cron: "0 4 * * *" };
+  }
 
   const activeConn = getActiveConnection();
   const isRemote = activeConn && activeConn.id !== "local";
@@ -20830,12 +20868,13 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
     try {
       const checkCronCmd = `crontab -l 2>/dev/null; cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
       const cronOut = await runActiveServerCommand(activeConn, checkCronCmd, false);
-      serverCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_"));
+      serverCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_") || l.includes("MATRIX_AUTO_"));
     } catch (_) {}
   }
 
-  const isDbInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_db_backup")) : (settings.dbSchedule?.enabled || false);
-  const isConfigInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_config_backup")) : (settings.configSchedule?.enabled || false);
+  const isDbInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_db_backup") || c.includes("MATRIX_AUTO_DB_BACKUP")) : (settings.dbSchedule?.enabled || false);
+  const isConfigInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_config_backup") || c.includes("MATRIX_AUTO_CONFIG_BACKUP")) : (settings.configSchedule?.enabled || false);
+  const isRetentionInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_cleanup") || c.includes("MATRIX_AUTO_RETENTION")) : (settings.retentionSchedule?.enabled || false);
 
   const schedules: any[] = [];
 
@@ -20868,6 +20907,22 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
       retentionDays: settings.retentionDays || 30,
       installedOnServer: isConfigInstalled,
       lastStatus: isRemote ? (settings.configSchedule?.enabled && isConfigInstalled ? "active" : (settings.configSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.configSchedule?.enabled ? "active_local" : "disabled")
+    });
+  }
+
+  if (settings.retentionSchedule?.enabled || isRetentionInstalled) {
+    schedules.push({
+      id: "retention-schedule",
+      title: "Automated Retention & Prune Cleanup",
+      titleFa: "پاکسازی خودکار و نگهداری فایل‌های پشتیبان (Retention)",
+      type: "retention",
+      enabled: settings.retentionSchedule?.enabled || false,
+      cron: settings.retentionSchedule?.cron || "0 4 * * *",
+      targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
+      scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_cleanup.sh`,
+      retentionDays: settings.retentionDays || 30,
+      installedOnServer: isRetentionInstalled,
+      lastStatus: isRemote ? (settings.retentionSchedule?.enabled && isRetentionInstalled ? "active" : (settings.retentionSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.retentionSchedule?.enabled ? "active_local" : "disabled")
     });
   }
 
@@ -21112,6 +21167,10 @@ app.delete("/api/backups/scheduler/cron/:id", authenticateToken, checkPermission
     if (db.backupSettings.configSchedule) {
       db.backupSettings.configSchedule.enabled = false;
     }
+  } else if (id === "retention-schedule" || id === "retention" || id === "cleanup") {
+    if (db.backupSettings.retentionSchedule) {
+      db.backupSettings.retentionSchedule.enabled = false;
+    }
   }
 
   writeDb(db);
@@ -21157,6 +21216,11 @@ app.post("/api/backups/scheduler/cron-update", authenticateToken, checkPermissio
       enabled: Boolean(enabled),
       cron: (cron || "0 3 * * *").trim()
     };
+  } else if (id === "retention-schedule" || id === "retention" || id === "cleanup") {
+    db.backupSettings.retentionSchedule = {
+      enabled: Boolean(enabled),
+      cron: (cron || "0 4 * * *").trim()
+    };
   }
 
   writeDb(db);
@@ -21192,14 +21256,19 @@ app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission([
   const db = readDb();
   if (!db.backupSettings) db.backupSettings = {};
 
-  const cleanCron = (cron || "0 2 * * *").trim();
+  const cleanCron = (cron || (type === "database" ? "0 2 * * *" : type === "retention" ? "0 4 * * *" : "0 3 * * *")).trim();
 
   if (type === "database") {
     db.backupSettings.dbSchedule = {
       enabled: Boolean(enabled),
       cron: cleanCron
     };
-  } else if (type === "config") {
+  } else if (type === "retention" || type === "cleanup") {
+    db.backupSettings.retentionSchedule = {
+      enabled: Boolean(enabled),
+      cron: cleanCron
+    };
+  } else {
     db.backupSettings.configSchedule = {
       enabled: Boolean(enabled),
       cron: cleanCron
@@ -21227,7 +21296,7 @@ app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission([
 
   res.json({
     success: true,
-    message: `New ${type === 'database' ? 'Database' : 'Configuration'} cron schedule successfully created and synced to server.`,
+    message: `New ${type === 'database' ? 'Database' : type === 'retention' ? 'Retention Cleanup' : 'Configuration'} cron schedule successfully created and synced to server.`,
     settings: db.backupSettings,
     syncResult
   });
@@ -21235,7 +21304,7 @@ app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission([
 
 // Endpoint to trigger manual execution of the scheduler backup script on demand
 app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
-  const { type } = req.body; // 'database' | 'config'
+  const { type } = req.body; // 'database' | 'config' | 'retention'
   const activeConn = getActiveConnection();
   const db = readDb();
   const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
@@ -21244,7 +21313,11 @@ app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["
     return res.status(400).json({ error: "No active remote server connected to trigger backup script." });
   }
 
-  const scriptName = type === "database" ? "matrix_auto_db_backup.sh" : "matrix_auto_config_backup.sh";
+  const scriptName = type === "database" 
+    ? "matrix_auto_db_backup.sh" 
+    : type === "retention" || type === "cleanup"
+      ? "matrix_auto_cleanup.sh"
+      : "matrix_auto_config_backup.sh";
   const scriptPath = `${REMOTE_BACKUP_BASE_DIR}/scripts/${scriptName}`;
 
   try {
@@ -21260,7 +21333,7 @@ app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString(),
       username: req.user.username,
-      action: `Trigger Automated ${type === "database" ? "Database" : "Config"} Backup`,
+      action: `Trigger Automated ${type === "database" ? "Database" : type === "retention" || type === "cleanup" ? "Retention Cleanup" : "Config"} Backup`,
       target: scriptName,
       status: "success",
       details: `Executed ${scriptName} on destination server. Total backups in scheduler directory: ${scanned.length}.`
@@ -21269,7 +21342,7 @@ app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["
 
     res.json({
       success: true,
-      message: `Automated ${type === "database" ? "database" : "configuration"} backup script executed successfully.`,
+      message: `Automated ${type === "database" ? "database" : type === "retention" || type === "cleanup" ? "retention cleanup" : "configuration"} script executed successfully.`,
       output,
       backups: scanned
     });
@@ -21279,7 +21352,7 @@ app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["
 });
 
 app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
-  const { backupPath, retentionDays, dbSchedule, configSchedule } = req.body;
+  const { backupPath, retentionDays, retentionSchedule, dbSchedule, configSchedule } = req.body;
   const db = readDb();
   
   if (!db.backupSettings) db.backupSettings = {};
@@ -21287,6 +21360,7 @@ app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "
   const cleanPath = (backupPath || "").trim();
   db.backupSettings.backupPath = cleanPath.length > 0 ? cleanPath : `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
   if (retentionDays !== undefined) db.backupSettings.retentionDays = parseInt(retentionDays) || 30;
+  if (retentionSchedule !== undefined) db.backupSettings.retentionSchedule = retentionSchedule;
   if (dbSchedule !== undefined) db.backupSettings.dbSchedule = dbSchedule;
   if (configSchedule !== undefined) db.backupSettings.configSchedule = configSchedule;
   
