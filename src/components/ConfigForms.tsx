@@ -1473,8 +1473,8 @@ export default function ConfigForms({
   const [isRestoringScheduler, setIsRestoringScheduler] = useState<boolean>(false);
   const [schedulerDeleteModal, setSchedulerDeleteModal] = useState<{ filename: string } | null>(null);
   const [isDeletingScheduler, setIsDeletingScheduler] = useState<boolean>(false);
-  const [triggeringManualCron, setTriggeringManualCron] = useState<'database' | 'config' | 'retention' | null>(null);
-  const [editingCronItem, setEditingCronItem] = useState<{ id: string; title: string; cron: string; enabled: boolean } | null>(null);
+  const [triggeringManualCron, setTriggeringManualCron] = useState<string | null>(null);
+  const [editingCronItem, setEditingCronItem] = useState<{ id: string; title: string; cron: string; enabled: boolean; type?: string; retentionDays?: number } | null>(null);
   const [savingCronEdit, setSavingCronEdit] = useState<boolean>(false);
   const [deleteCronModal, setDeleteCronModal] = useState<{ id: string; title: string } | null>(null);
   const [isDeletingCron, setIsDeletingCron] = useState<boolean>(false);
@@ -1483,11 +1483,13 @@ export default function ConfigForms({
     type: 'database' | 'config' | 'retention';
     cron: string;
     enabled: boolean;
+    retentionDays?: number;
   }>({
     open: false,
     type: 'database',
     cron: '0 2 * * *',
-    enabled: true
+    enabled: true,
+    retentionDays: 30
   });
   const [savingNewCron, setSavingNewCron] = useState<boolean>(false);
 
@@ -1710,9 +1712,9 @@ export default function ConfigForms({
     }
   };
 
-  const handleTriggerManualCron = async (type: 'database' | 'config' | 'retention') => {
+  const handleTriggerManualCron = async (type: string, scheduleId?: string, retentionDays?: number) => {
     if (!authToken) return;
-    setTriggeringManualCron(type);
+    setTriggeringManualCron(scheduleId || type);
     try {
       const res = await fetch('/api/backups/scheduler/trigger', {
         method: 'POST',
@@ -1720,7 +1722,7 @@ export default function ConfigForms({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ type })
+        body: JSON.stringify({ type, scheduleId, retentionDays })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -1774,7 +1776,8 @@ export default function ConfigForms({
         body: JSON.stringify({
           id: editingCronItem.id,
           cron: editingCronItem.cron,
-          enabled: editingCronItem.enabled
+          enabled: editingCronItem.enabled,
+          retentionDays: editingCronItem.retentionDays
         })
       });
       const data = await res.json();
@@ -1806,7 +1809,8 @@ export default function ConfigForms({
         body: JSON.stringify({
           type: newCronModal.type,
           cron: newCronModal.cron,
-          enabled: newCronModal.enabled
+          enabled: newCronModal.enabled,
+          retentionDays: newCronModal.retentionDays || 30
         })
       });
       const data = await res.json();
@@ -6566,7 +6570,7 @@ export default function ConfigForms({
 
             {activeBackupSubTab === 'settings' && (
               <div className="space-y-6 flex-1 overflow-y-auto pr-1">
-                {/* Disk Storage & Retention Configuration */}
+                {/* Disk Storage Configuration */}
                 <div className={`spatial-glass rounded-2xl p-6 border border-white/5 bg-white/5 space-y-4 ${isRtl ? 'text-right' : 'text-left'}`}>
                   <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/5 ${isRtl ? 'sm:flex-row-reverse' : ''}`}>
                     <div className="flex items-center gap-2.5">
@@ -6575,10 +6579,10 @@ export default function ConfigForms({
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-white">
-                          {lang === 'fa' ? 'تنظیمات ذخیره‌سازی و نگهداری دیسک سرور' : 'Disk Storage & Retention Policy'}
+                          {lang === 'fa' ? 'مسیر ذخیره‌سازی فایل‌های پشتیبان روی سرور' : 'Scheduler Backup Storage Path'}
                         </h4>
                         <p className="text-[10px] text-slate-400">
-                          {lang === 'fa' ? 'مسیر پوشه و سقف روزهای نگهداری خودکار فایل‌های پشتیبان روی سرور' : 'Server directory path and automated retention threshold'}
+                          {lang === 'fa' ? 'مسیر پیش‌فرض دایرکتوری برای ذخیره خودکار نسخه‌های پشتیبان دیتابیس و تنظیمات' : 'Default server directory path for storing automated backups'}
                         </p>
                       </div>
                     </div>
@@ -6591,13 +6595,12 @@ export default function ConfigForms({
                         className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         {savingBackupSettings ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                        <span>{lang === 'fa' ? 'ذخیره تنظیمات دیسک' : 'Save Storage Settings'}</span>
+                        <span>{lang === 'fa' ? 'ذخیره مسیر دیسک' : 'Save Storage Path'}</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                    {/* Storage Path */}
+                  <div className="space-y-3 pt-1">
                     <div className="space-y-2">
                       <label className="block text-xs font-semibold text-slate-300">
                         {lang === 'fa' ? 'مسیر ذخیره‌سازی نسخه‌های زمان‌بندی شده روی سرور' : 'Scheduler Backup Storage Path'}
@@ -6624,169 +6627,9 @@ export default function ConfigForms({
                       </div>
                       <p className="text-[10px] text-slate-400 leading-relaxed bg-black/20 p-2.5 rounded-xl border border-white/5">
                         {lang === 'fa' 
-                          ? 'مسیر پیش‌فرض /opt/matrix-element-Backup/scheduler/ می‌باشد و در زمان ذخیره، دایرکتوری در صورت عدم وجود به صورت خودکار روی سرور ساخته می‌شود.' 
-                          : 'Default path is /opt/matrix-element-Backup/scheduler/. The directory will be created automatically on the server if it does not exist.'}
+                          ? 'مسیر پیش‌فرض /opt/matrix-element-Backup/scheduler/ می‌باشد. تمامی زمان‌بندی‌های تعریف شده در بخش زیر از این مسیر استفاده می‌کنند و دوره‌های نگهداری (Retention) نیز بر اساس هر کرون پاکسازی به صورت مجزا قابل تنظیم است.' 
+                          : 'Default path is /opt/matrix-element-Backup/scheduler/. All automated cron jobs use this directory, and retention periods can be configured directly inside each cleanup schedule below.'}
                       </p>
-                    </div>
-
-                    {/* Retention Policy & Automated Cleanup Scheduler */}
-                    <div className="space-y-4 pt-2 border-t border-white/5">
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-slate-300">
-                          {lang === 'fa' ? 'مدت زمان نگهداری فایل‌های پشتیبان (روز)' : 'Retention Limit (Days)'}
-                        </label>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="number"
-                            min="0"
-                            max="365"
-                            value={backupSettings.retentionDays}
-                            onChange={(e) => setBackupSettings(prev => ({ ...prev, retentionDays: parseInt(e.target.value) || 0 }))}
-                            disabled={isReadOnly}
-                            className={`w-32 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500/50 ${isRtl ? 'text-right' : 'text-left'}`}
-                            placeholder="30"
-                          />
-                          <span className="text-xs text-slate-400">
-                            {lang === 'fa' ? 'روز (تعیین آستانه انقضای بکاپ‌های قدیمی)' : 'Days (threshold for pruning older archives)'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 leading-relaxed bg-black/20 p-2.5 rounded-xl border border-white/5">
-                          {lang === 'fa' 
-                            ? 'فایل‌های پشتیبان در دایرکتوری زمان‌بندی که عمر آن‌ها بیشتر از این تعداد روز باشد، طبق زمان‌بندی کرون زیر توسط اسکریپت matrix_auto_cleanup.sh به صورت خودکار پاکسازی می‌شوند.' 
-                            : 'Scheduler backup files older than this threshold will be automatically pruned by the matrix_auto_cleanup.sh script on the destination server.'}
-                        </p>
-                      </div>
-
-                      {/* Automated Retention & Cleanup Cron Schedule */}
-                      <div className="p-4 rounded-xl bg-black/30 border border-white/5 space-y-3.5">
-                        <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id="retention-schedule-enabled"
-                              checked={backupSettings.retentionSchedule?.enabled ?? true}
-                              onChange={(e) => setBackupSettings(prev => ({
-                                ...prev,
-                                retentionSchedule: {
-                                  enabled: e.target.checked,
-                                  cron: prev.retentionSchedule?.cron || '0 4 * * *'
-                                }
-                              }))}
-                              disabled={isReadOnly}
-                              className="rounded bg-black/40 border-white/10 text-amber-500 focus:ring-0 w-4 h-4 cursor-pointer"
-                            />
-                            <label htmlFor="retention-schedule-enabled" className="text-xs font-bold text-slate-200 cursor-pointer flex items-center gap-1.5">
-                              <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>{lang === 'fa' ? 'فعال‌سازی زمان‌بندی کرون پاکسازی خودکار (Retention Schedule)' : 'Enable Automated Retention Cleanup Schedule'}</span>
-                            </label>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCronHelpModal({ open: true, target: 'retention' })}
-                            className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1 hover:underline cursor-pointer"
-                          >
-                            <HelpCircle className="w-3 h-3" />
-                            <span>{lang === 'fa' ? 'راهنمای کرون' : 'Cron Guide'}</span>
-                          </button>
-                        </div>
-
-                        {/* Cron Expression Input */}
-                        <div className="space-y-1.5">
-                          <label className="block text-[11px] font-semibold text-slate-300">
-                            {lang === 'fa' ? 'عبارت زمان‌بندی کرون پاکسازی (Cron Expression):' : 'Retention Cleanup Cron Expression:'}
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={backupSettings.retentionSchedule?.cron || '0 4 * * *'}
-                              onChange={(e) => setBackupSettings(prev => ({
-                                ...prev,
-                                retentionSchedule: {
-                                  enabled: prev.retentionSchedule?.enabled ?? true,
-                                  cron: e.target.value
-                                }
-                              }))}
-                              disabled={isReadOnly || !(backupSettings.retentionSchedule?.enabled ?? true)}
-                              className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-emerald-300 focus:outline-none focus:border-amber-500/50 text-left disabled:opacity-50"
-                              placeholder="0 4 * * *"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleTriggerManualCron('retention')}
-                              disabled={isReadOnly || triggeringManualCron !== null}
-                              className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                              title={lang === 'fa' ? 'اجرای فوری اسکریپت پاکسازی لاگ‌ها و بکاپ‌های قدیمی روی سرور' : 'Trigger retention cleanup script immediately'}
-                            >
-                              {triggeringManualCron === 'retention' ? (
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Play className="w-3.5 h-3.5" />
-                              )}
-                              <span>{lang === 'fa' ? 'اجرای فوری پاکسازی' : 'Run Cleanup Now'}</span>
-                            </button>
-                          </div>
-
-                          {/* Live Human-Readable Cron Preview */}
-                          {(() => {
-                            const cronStr = backupSettings.retentionSchedule?.cron || '0 4 * * *';
-                            const explanation = describeCronExpression(cronStr, lang);
-                            return (
-                              <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2.5 transition-all ${
-                                explanation.isValid
-                                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                                  : explanation.badgeType === 'warning'
-                                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
-                                    : 'bg-red-500/10 border-red-500/20 text-red-300'
-                              }`}>
-                                <Clock className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
-                                  explanation.isValid 
-                                    ? 'text-emerald-400' 
-                                    : explanation.badgeType === 'warning' 
-                                      ? 'text-amber-400' 
-                                      : 'text-red-400'
-                                }`} />
-                                <div className="space-y-0.5 min-w-0">
-                                  <span className="text-[10px] font-bold uppercase tracking-wider block text-slate-400">
-                                    {lang === 'fa' ? 'ترجمه زنده زمان اجرای اسکریپت پاکسازی (Live Meaning):' : 'Live Cleanup Schedule Meaning:'}
-                                  </span>
-                                  <p className="font-semibold text-xs leading-relaxed break-words">
-                                    {explanation.description}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        {/* Quick Presets for Retention */}
-                        <div className="space-y-1.5">
-                          <span className="text-[11px] font-semibold block text-slate-400">
-                            {lang === 'fa' ? 'الگوهای سریع پاکسازی:' : 'Quick Presets:'}
-                          </span>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
-                            {[
-                              { labelFa: 'روزانه ۴:۰۰ صبح', labelEn: 'Daily 4:00 AM', cron: '0 4 * * *' },
-                              { labelFa: 'روزانه نیمه‌شب', labelEn: 'Daily Midnight', cron: '0 0 * * *' },
-                              { labelFa: 'هفتگی یکشنبه ۴:۰۰', labelEn: 'Weekly Sun 4 AM', cron: '0 4 * * 0' },
-                              { labelFa: 'ماهانه روز اول ۴:۰۰', labelEn: 'Monthly 1st 4 AM', cron: '0 4 1 * *' }
-                            ].map((p, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => setBackupSettings(prev => ({
-                                  ...prev,
-                                  retentionSchedule: { enabled: true, cron: p.cron }
-                                }))}
-                                disabled={isReadOnly}
-                                className="p-2 rounded-lg text-left bg-black/30 hover:bg-emerald-500/10 border border-white/5 hover:border-emerald-500/20 text-slate-300 hover:text-emerald-300 transition-all flex items-center justify-between cursor-pointer disabled:opacity-50"
-                              >
-                                <span>{lang === 'fa' ? p.labelFa : p.labelEn}</span>
-                                <span className="font-mono text-[9px] text-slate-500">{p.cron}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -6949,7 +6792,7 @@ export default function ConfigForms({
                               <div className={`flex items-center gap-2 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-end'}`}>
                                 <button
                                   type="button"
-                                  onClick={() => handleTriggerManualCron(isDb ? 'database' : isRetention ? 'retention' : 'config')}
+                                  onClick={() => handleTriggerManualCron(sched.type || (isDb ? 'database' : isRetention ? 'retention' : 'config'), sched.id, sched.retentionDays)}
                                   disabled={isReadOnly || triggeringManualCron !== null}
                                   className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 ${
                                     isRetention 
@@ -6958,7 +6801,7 @@ export default function ConfigForms({
                                   }`}
                                   title={lang === 'fa' ? 'اجرای فوری اسکریپت همین حالا روی سرور' : 'Run script right now'}
                                 >
-                                  {triggeringManualCron === (isDb ? 'database' : isRetention ? 'retention' : 'config') ? (
+                                  {triggeringManualCron === sched.id || triggeringManualCron === (sched.type || (isDb ? 'database' : isRetention ? 'retention' : 'config')) ? (
                                     <RefreshCw className="w-3 h-3 animate-spin" />
                                   ) : (
                                     <Play className="w-3 h-3" />
@@ -6972,7 +6815,9 @@ export default function ConfigForms({
                                     id: sched.id,
                                     title: lang === 'fa' ? sched.titleFa : sched.title,
                                     cron: sched.cron,
-                                    enabled: sched.enabled
+                                    enabled: sched.enabled,
+                                    type: sched.type || (isDb ? 'database' : isRetention ? 'retention' : 'config'),
+                                    retentionDays: sched.retentionDays || 30
                                   })}
                                   disabled={isReadOnly}
                                   className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer"
@@ -7293,6 +7138,33 @@ export default function ConfigForms({
                       </div>
                     </div>
 
+                    {/* Retention Limit input for retention schedules */}
+                    {newCronModal.type === 'retention' && (
+                      <div className="space-y-1.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                        <label className={`block text-xs font-semibold ${isLightMode ? 'text-emerald-950' : 'text-emerald-300'}`}>
+                          {lang === 'fa' ? 'مدت زمان نگهداری فایل‌های پشتیبان (روز):' : 'Retention Limit (Days):'}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={newCronModal.retentionDays || 30}
+                            onChange={(e) => setNewCronModal(prev => ({ ...prev, retentionDays: parseInt(e.target.value) || 30 }))}
+                            className={`w-28 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none ${
+                              isLightMode
+                                ? 'bg-white border border-emerald-300 text-slate-900 focus:border-emerald-500'
+                                : 'bg-black/40 border border-emerald-500/30 text-emerald-200 focus:border-emerald-500'
+                            }`}
+                            placeholder="30"
+                          />
+                          <span className={`text-xs ${isLightMode ? 'text-emerald-800' : 'text-emerald-300/80'}`}>
+                            {lang === 'fa' ? 'روز (بکاپ‌های قدیمی‌تر از این سقف به صورت خودکار حذف می‌شوند)' : 'Days (backups older than this threshold are deleted)'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Cron Expression */}
                     <div className="space-y-1.5">
                       <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
@@ -7458,6 +7330,34 @@ export default function ConfigForms({
                         </label>
                       </div>
                     </div>
+
+                    {/* Retention Limit input for retention schedules */}
+                    {(editingCronItem.type === 'retention' || editingCronItem.id?.includes('retention')) && (
+                      <div className="space-y-1.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                        <label className={`block text-xs font-semibold ${isLightMode ? 'text-emerald-950' : 'text-emerald-300'}`}>
+                          {lang === 'fa' ? 'مدت زمان نگهداری فایل‌های پشتیبان (روز):' : 'Retention Limit (Days):'}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={editingCronItem.retentionDays || 30}
+                            onChange={(e) => setEditingCronItem(prev => prev ? ({ ...prev, retentionDays: parseInt(e.target.value) || 30 }) : null)}
+                            disabled={!editingCronItem.enabled}
+                            className={`w-28 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none disabled:opacity-50 ${
+                              isLightMode
+                                ? 'bg-white border border-emerald-300 text-slate-900 focus:border-emerald-500'
+                                : 'bg-black/40 border border-emerald-500/30 text-emerald-200 focus:border-emerald-500'
+                            }`}
+                            placeholder="30"
+                          />
+                          <span className={`text-xs ${isLightMode ? 'text-emerald-800' : 'text-emerald-300/80'}`}>
+                            {lang === 'fa' ? 'روز (بکاپ‌های قدیمی‌تر از این سقف به صورت خودکار حذف می‌شوند)' : 'Days (backups older than this threshold are deleted)'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-1.5">
                       <label className={`block text-xs font-semibold ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>

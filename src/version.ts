@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.29.0";
+export const PANEL_VERSION = "2.30.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.30.0",
+    date: "2026-08-21",
+    title: "Multi-Cron Architecture, Retention Policy Relocation & Real-Time Manual Trigger Execution",
+    changes: [
+      "Purged redundant Retention Limit (Days) fields from Disk Storage & Retention Policy to unify all scheduling and retention logic inside Active Server Schedules & Daemon Status.",
+      "Fixed cleanup script (matrix_auto_cleanup.sh) on target servers to dynamically receive retention days and directory arguments, ensuring accurate scheduled and manual pruning.",
+      "Overhauled server cron scheduler architecture to dynamically register, update, and manage unlimited cron jobs in crontab instead of the previous 2-job limit.",
+      "Enabled instant manual execution on all Active Server Schedule cards ('Run Now' / 'Cleanup Now') with direct server-side script execution and real-time toast feedback.",
+      "Added dedicated Retention Limit (Days) inputs inside New and Edit Cron modals for retention tasks."
+    ]
+  },
   {
     version: "2.29.0",
     date: "2026-08-21",

@@ -16,9 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.29.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.30.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.30.0** - 2026-08-21
+- **Multi-Cron Architecture, Retention Policy Relocation & Real-Time Manual Trigger Execution**:
+  - **Removed Redundant Retention Fields in Disk Storage Card**: Cleaned up the "Disk Storage & Retention Policy" section into "Scheduler Backup Storage Path", removing duplicate retention days and schedule inputs since retention is now configured per-schedule.
+  - **Dynamic Multi-Cron Registration**: Overhauled `syncRemoteBackupCronJobs` to dynamically register, update, and manage multiple simultaneous cron jobs in server crontab and `/etc/cron.d/matrix-backup-scheduler` without the previous 2-job restriction.
+  - **Fixed Cleanup Script (`matrix_auto_cleanup.sh`)**: Updated the bash cleanup script to dynamically accept retention days and directory path arguments, ensuring obsolete archives and logs are accurately pruned.
+  - **Instant Manual Execution**: Enhanced "Run Now" and "Cleanup Now" buttons across all schedule cards to execute the corresponding script immediately on the target server with real-time feedback.
+  - **Integrated Retention Limit in Cron Modals**: Added intuitive retention limit (days) input fields in both "Add New Cron Schedule" and "Edit Schedule" modals when configuring retention tasks.
 
 #### **v2.29.0** - 2026-08-21
 - **UI Streamlining, Live Human-Readable Cron Preview & Archive Filter Engine**:

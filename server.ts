@@ -20629,10 +20629,45 @@ async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise
 
   const rawPath = (settings.backupPath || "").trim();
   const backupPath = rawPath.length > 0 ? rawPath : `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
-  const retentionDays = parseInt(settings.retentionDays, 10) || 30;
-  const retentionSchedule = settings.retentionSchedule || { enabled: true, cron: "0 4 * * *" };
-  const dbSchedule = settings.dbSchedule || { enabled: false, cron: "0 2 * * *" };
-  const configSchedule = settings.configSchedule || { enabled: false, cron: "0 3 * * *" };
+  const globalRetentionDays = parseInt(settings.retentionDays, 10) || 30;
+
+  // Normalize schedules list from settings.schedules array and legacy fields
+  let schedulesList: any[] = Array.isArray(settings.schedules) ? [...settings.schedules] : [];
+  if (schedulesList.length === 0) {
+    if (settings.dbSchedule && (settings.dbSchedule.enabled || settings.dbSchedule.cron)) {
+      schedulesList.push({
+        id: "db-schedule",
+        title: "Automated Database Backup (PostgreSQL)",
+        titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
+        type: "database",
+        cron: settings.dbSchedule.cron || "0 2 * * *",
+        enabled: settings.dbSchedule.enabled ?? false,
+        retentionDays: globalRetentionDays
+      });
+    }
+    if (settings.configSchedule && (settings.configSchedule.enabled || settings.configSchedule.cron)) {
+      schedulesList.push({
+        id: "config-schedule",
+        title: "Automated Configuration Backup (Matrix & Element)",
+        titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
+        type: "config",
+        cron: settings.configSchedule.cron || "0 3 * * *",
+        enabled: settings.configSchedule.enabled ?? false,
+        retentionDays: globalRetentionDays
+      });
+    }
+    if (settings.retentionSchedule && (settings.retentionSchedule.enabled || settings.retentionSchedule.cron)) {
+      schedulesList.push({
+        id: "retention-schedule",
+        title: "Automated Retention & Prune Cleanup",
+        titleFa: "پاکسازی خودکار و نگهداری فایل‌های پشتیبان (Retention)",
+        type: "retention",
+        cron: settings.retentionSchedule.cron || "0 4 * * *",
+        enabled: settings.retentionSchedule.enabled ?? true,
+        retentionDays: globalRetentionDays
+      });
+    }
+  }
 
   const dbUser = (activeConn.dbUser || "synapse_user").trim();
   const dbPass = (activeConn.dbPass || "").trim();
@@ -20655,11 +20690,13 @@ async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise
 # Matrix Panel Automated Database Backup Cron Script
 set -e
 BACKUP_DIR="${backupPath}"
-RETENTION_DAYS=${retentionDays}
+RETENTION_DAYS=${globalRetentionDays}
 mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 FILENAME="database_backup_\${TIMESTAMP}.sql.gz"
 TARGET="$BACKUP_DIR/\$FILENAME"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting automated database backup -> \$TARGET"
 
 PGPASSWORD='${escapedPass}' pg_dump -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET" || \\
 PGPASSWORD='${escapedPass}' pg_dump -h 127.0.0.1 -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET" || \\
@@ -20668,6 +20705,10 @@ sudo pg_dump -U '${escapedUser}' -d '${escapedDb}' --no-owner --clean --if-exist
 
 if [ -s "$TARGET" ]; then
   chmod 644 "$TARGET"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Database backup completed successfully: \$TARGET ($(du -h "$TARGET" | cut -f1))"
+else
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Error: Database backup produced empty archive!" >&2
+  exit 1
 fi
 
 if [ "$RETENTION_DAYS" -gt 0 ]; then
@@ -20684,11 +20725,13 @@ fi
 # Matrix Panel Automated Configuration Backup Cron Script
 set -e
 BACKUP_DIR="${backupPath}"
-RETENTION_DAYS=${retentionDays}
+RETENTION_DAYS=${globalRetentionDays}
 mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 FILENAME="matrix-backup-\${TIMESTAMP}.tar.gz"
 TARGET="$BACKUP_DIR/\$FILENAME"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting automated configuration backup -> \$TARGET"
 
 DIRS_TO_BACKUP=""
 [ -d "/etc/matrix-synapse" ] && DIRS_TO_BACKUP="$DIRS_TO_BACKUP etc/matrix-synapse"
@@ -20702,6 +20745,9 @@ fi
 
 if [ -s "$TARGET" ]; then
   chmod 644 "$TARGET"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuration backup completed successfully: \$TARGET ($(du -h "$TARGET" | cut -f1))"
+else
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Warning: Configuration archive created or empty."
 fi
 
 if [ "$RETENTION_DAYS" -gt 0 ]; then
@@ -20713,22 +20759,46 @@ fi
     const b64ConfigScript = Buffer.from(configScriptContent).toString("base64");
     await runActiveServerCommand(activeConn, `echo "${b64ConfigScript}" | base64 -d > "${configScriptPath}" && chmod 755 "${configScriptPath}"`);
 
-    // 4. Generate and write Automated Retention & Prune Cleanup script
+    // 4. Generate and write Enhanced Automated Retention & Prune Cleanup script
     const cleanupScriptContent = `#!/bin/bash
 # Matrix Panel Automated Backup Retention & Prune Cleanup Script
 set -e
+
 BACKUP_DIR="${backupPath}"
-RETENTION_DAYS=${retentionDays}
+RETENTION_DAYS=${globalRetentionDays}
+
+# Allow passing retention days via $1 and custom dir via $2
+if [ -n "$1" ] && [ "$1" -eq "$1" ] 2>/dev/null; then
+  RETENTION_DAYS="$1"
+fi
+if [ -n "$2" ] && [ -d "$2" ]; then
+  BACKUP_DIR="$2"
+fi
+
 mkdir -p "$BACKUP_DIR"
 NOW=$(date +"%Y-%m-%d %H:%M:%S")
 
-echo "[$NOW] Executing Matrix Backup Retention Cleanup in $BACKUP_DIR (Retention Limit: $RETENTION_DAYS days)"
+echo "[$NOW] Matrix Backup Retention Cleanup Started"
+echo "Target Storage Directory: $BACKUP_DIR"
+echo "Retention Threshold: $RETENTION_DAYS days"
 
-if [ "$RETENTION_DAYS" -gt 0 ]; then
-  find "$BACKUP_DIR" -maxdepth 1 \\( -name "database_backup_*.sql.gz" -o -name "matrix-backup-*.tar.gz" -o -name "*.sql.gz" -o -name "*.tar.gz" \\) -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
-  echo "[$NOW] Retention cleanup completed successfully for backups older than $RETENTION_DAYS days."
+if [ "$RETENTION_DAYS" -gt 0 ] 2>/dev/null; then
+  DELETED_COUNT=0
+  echo "Scanning for backup archives older than $RETENTION_DAYS days in $BACKUP_DIR..."
+  
+  # Loop over expired archives with robust null-byte separator
+  while IFS= read -r -d '' file; do
+    if [ -f "$file" ]; then
+      FILE_SIZE=$(du -h "$file" | cut -f1)
+      echo "Pruning expired backup archive: $file ($FILE_SIZE)"
+      rm -f "$file"
+      DELETED_COUNT=$((DELETED_COUNT + 1))
+    fi
+  done < <(find "$BACKUP_DIR" -maxdepth 1 \\( -name "*.sql.gz" -o -name "*.tar.gz" -o -name "*.dump" -o -name "*.sql" -o -name "*.tar" -o -name "*.bak" -o -name "database_backup_*" -o -name "matrix-backup-*" \\) -type f -mtime +"$RETENTION_DAYS" -print0 2>/dev/null)
+  
+  echo "[$NOW] Retention cleanup completed successfully. Total expired archives pruned: $DELETED_COUNT"
 else
-  echo "[$NOW] Retention threshold is disabled (0 days). No expired archives deleted."
+  echo "[$NOW] Retention threshold is 0 or disabled. No expired archives were deleted."
 fi
 `;
 
@@ -20736,30 +20806,35 @@ fi
     const b64CleanupScript = Buffer.from(cleanupScriptContent).toString("base64");
     await runActiveServerCommand(activeConn, `echo "${b64CleanupScript}" | base64 -d > "${cleanupScriptPath}" && chmod 755 "${cleanupScriptPath}"`);
 
-    // 5. Build Cron configuration for user crontab and /etc/cron.d
+    // 5. Build Cron configuration supporting multiple arbitrary schedules
     const userCronLines: string[] = [];
     const systemCronLines: string[] = [];
-
-    const dbCronClean = (dbSchedule.cron || "0 2 * * *").trim();
-    const configCronClean = (configSchedule.cron || "0 3 * * *").trim();
-    const retentionCronClean = (retentionSchedule.cron || "0 4 * * *").trim();
 
     systemCronLines.push("# MATRIX_PANEL_CRON_START - AUTOMATED MATRIX BACKUP SCHEDULER");
     systemCronLines.push("SHELL=/bin/bash");
     systemCronLines.push("PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin");
 
-    if (dbSchedule.enabled && dbCronClean) {
-      userCronLines.push(`${dbCronClean} /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_DB_BACKUP`);
-      systemCronLines.push(`${dbCronClean} root /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_DB_BACKUP`);
+    for (const sched of schedulesList) {
+      if (!sched.enabled) continue;
+      const cleanCron = (sched.cron || "").trim();
+      if (!cleanCron) continue;
+
+      const schedId = sched.id || `sched-${Math.random().toString(36).substring(2, 8)}`;
+      const sType = sched.type || "database";
+
+      if (sType === "database") {
+        userCronLines.push(`${cleanCron} /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CRON_${schedId}`);
+        systemCronLines.push(`${cleanCron} root /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CRON_${schedId}`);
+      } else if (sType === "retention" || sType === "cleanup") {
+        const sRetDays = parseInt(sched.retentionDays, 10) || globalRetentionDays;
+        userCronLines.push(`${cleanCron} /bin/bash ${cleanupScriptPath} ${sRetDays} >/dev/null 2>&1 # MATRIX_AUTO_CRON_${schedId}`);
+        systemCronLines.push(`${cleanCron} root /bin/bash ${cleanupScriptPath} ${sRetDays} >/dev/null 2>&1 # MATRIX_AUTO_CRON_${schedId}`);
+      } else {
+        userCronLines.push(`${cleanCron} /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CRON_${schedId}`);
+        systemCronLines.push(`${cleanCron} root /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CRON_${schedId}`);
+      }
     }
-    if (configSchedule.enabled && configCronClean) {
-      userCronLines.push(`${configCronClean} /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
-      systemCronLines.push(`${configCronClean} root /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
-    }
-    if (retentionSchedule.enabled && retentionCronClean && retentionDays > 0) {
-      userCronLines.push(`${retentionCronClean} /bin/bash ${cleanupScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_RETENTION_CLEANUP`);
-      systemCronLines.push(`${retentionCronClean} root /bin/bash ${cleanupScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_RETENTION_CLEANUP`);
-    }
+
     systemCronLines.push("# MATRIX_PANEL_CRON_END");
 
     const systemCronText = systemCronLines.join("\n") + "\n";
@@ -20798,7 +20873,7 @@ fi
 
     return {
       success: true,
-      details: `Crontab successfully updated on remote server (${installedCrons.length} active schedule(s)).`,
+      details: `Crontab successfully updated on remote server (${installedCrons.length} active schedule(s) installed).`,
       installedCrons
     };
   } catch (err: any) {
@@ -20848,22 +20923,84 @@ app.get("/api/backups/settings", authenticateToken, (req, res) => {
 // Endpoint to fetch active server backup schedules (cron jobs) with live remote crontab introspection
 app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => {
   const db = readDb();
-  const settings = db.backupSettings || {
-    backupPath: `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
-    retentionDays: 30,
-    retentionSchedule: { enabled: true, cron: "0 4 * * *" },
-    dbSchedule: { enabled: false, cron: "0 2 * * *" },
-    configSchedule: { enabled: false, cron: "0 3 * * *" }
-  };
-  if (!settings.retentionSchedule) {
-    settings.retentionSchedule = { enabled: true, cron: "0 4 * * *" };
+  if (!db.backupSettings) {
+    db.backupSettings = {
+      backupPath: `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
+      retentionDays: 30,
+      schedules: [
+        {
+          id: "db-schedule",
+          title: "Automated Database Backup (PostgreSQL)",
+          titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
+          type: "database",
+          cron: "0 2 * * *",
+          enabled: false,
+          retentionDays: 30
+        },
+        {
+          id: "config-schedule",
+          title: "Automated Configuration Backup (Matrix & Element)",
+          titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
+          type: "config",
+          cron: "0 3 * * *",
+          enabled: false,
+          retentionDays: 30
+        },
+        {
+          id: "retention-schedule",
+          title: "Automated Retention & Prune Cleanup",
+          titleFa: "پاکسازی خودکار و نگهداری فایل‌های پشتیبان (Retention)",
+          type: "retention",
+          cron: "0 4 * * *",
+          enabled: true,
+          retentionDays: 30
+        }
+      ]
+    };
+    writeDb(db);
+  }
+
+  const settings = db.backupSettings;
+  const globalRetentionDays = parseInt(settings.retentionDays, 10) || 30;
+
+  // Initialize or migrate schedules list
+  if (!Array.isArray(settings.schedules) || settings.schedules.length === 0) {
+    settings.schedules = [
+      {
+        id: "db-schedule",
+        title: "Automated Database Backup (PostgreSQL)",
+        titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
+        type: "database",
+        cron: settings.dbSchedule?.cron || "0 2 * * *",
+        enabled: settings.dbSchedule?.enabled ?? false,
+        retentionDays: globalRetentionDays
+      },
+      {
+        id: "config-schedule",
+        title: "Automated Configuration Backup (Matrix & Element)",
+        titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
+        type: "config",
+        cron: settings.configSchedule?.cron || "0 3 * * *",
+        enabled: settings.configSchedule?.enabled ?? false,
+        retentionDays: globalRetentionDays
+      },
+      {
+        id: "retention-schedule",
+        title: "Automated Retention & Prune Cleanup",
+        titleFa: "پاکسازی خودکار و نگهداری فایل‌های پشتیبان (Retention)",
+        type: "retention",
+        cron: settings.retentionSchedule?.cron || "0 4 * * *",
+        enabled: settings.retentionSchedule?.enabled ?? true,
+        retentionDays: globalRetentionDays
+      }
+    ];
+    writeDb(db);
   }
 
   const activeConn = getActiveConnection();
   const isRemote = activeConn && activeConn.id !== "local";
 
   let serverCrons: string[] = [];
-
   if (isRemote) {
     try {
       const checkCronCmd = `crontab -l 2>/dev/null; cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
@@ -20872,66 +21009,33 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
     } catch (_) {}
   }
 
-  const isDbInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_db_backup") || c.includes("MATRIX_AUTO_DB_BACKUP")) : (settings.dbSchedule?.enabled || false);
-  const isConfigInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_config_backup") || c.includes("MATRIX_AUTO_CONFIG_BACKUP")) : (settings.configSchedule?.enabled || false);
-  const isRetentionInstalled = isRemote ? serverCrons.some(c => c.includes("matrix_auto_cleanup") || c.includes("MATRIX_AUTO_RETENTION")) : (settings.retentionSchedule?.enabled || false);
+  const schedules = settings.schedules.map((s: any) => {
+    const schedId = s.id || `sched-${s.type}`;
+    const isInstalled = isRemote 
+      ? serverCrons.some(c => c.includes(`MATRIX_AUTO_CRON_${schedId}`) || (schedId === "db-schedule" && c.includes("matrix_auto_db_backup")) || (schedId === "config-schedule" && c.includes("matrix_auto_config_backup")) || (schedId === "retention-schedule" && c.includes("matrix_auto_cleanup")))
+      : Boolean(s.enabled);
 
-  const schedules: any[] = [];
-
-  if (settings.dbSchedule?.enabled || isDbInstalled) {
-    schedules.push({
-      id: "db-schedule",
-      title: "Automated Database Backup (PostgreSQL)",
-      titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
-      type: "database",
-      enabled: settings.dbSchedule?.enabled || false,
-      cron: settings.dbSchedule?.cron || "0 2 * * *",
+    return {
+      id: schedId,
+      title: s.title || (s.type === 'database' ? 'Automated Database Backup' : s.type === 'retention' ? 'Automated Retention Cleanup' : 'Automated Config Backup'),
+      titleFa: s.titleFa || (s.type === 'database' ? 'پشتیبان‌گیری خودکار پایگاه داده' : s.type === 'retention' ? 'پاکسازی خودکار و نگهداری فایل‌ها' : 'پشتیبان‌گیری خودکار تنظیمات'),
+      type: s.type || 'database',
+      enabled: Boolean(s.enabled),
+      cron: (s.cron || '0 2 * * *').trim(),
       targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
-      scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_db_backup.sh`,
-      retentionDays: settings.retentionDays || 30,
-      installedOnServer: isDbInstalled,
-      lastStatus: isRemote ? (settings.dbSchedule?.enabled && isDbInstalled ? "active" : (settings.dbSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.dbSchedule?.enabled ? "active_local" : "disabled")
-    });
-  }
-
-  if (settings.configSchedule?.enabled || isConfigInstalled) {
-    schedules.push({
-      id: "config-schedule",
-      title: "Automated Configuration Backup (Matrix & Element)",
-      titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
-      type: "config",
-      enabled: settings.configSchedule?.enabled || false,
-      cron: settings.configSchedule?.cron || "0 3 * * *",
-      targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
-      scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_config_backup.sh`,
-      retentionDays: settings.retentionDays || 30,
-      installedOnServer: isConfigInstalled,
-      lastStatus: isRemote ? (settings.configSchedule?.enabled && isConfigInstalled ? "active" : (settings.configSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.configSchedule?.enabled ? "active_local" : "disabled")
-    });
-  }
-
-  if (settings.retentionSchedule?.enabled || isRetentionInstalled) {
-    schedules.push({
-      id: "retention-schedule",
-      title: "Automated Retention & Prune Cleanup",
-      titleFa: "پاکسازی خودکار و نگهداری فایل‌های پشتیبان (Retention)",
-      type: "retention",
-      enabled: settings.retentionSchedule?.enabled || false,
-      cron: settings.retentionSchedule?.cron || "0 4 * * *",
-      targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
-      scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_cleanup.sh`,
-      retentionDays: settings.retentionDays || 30,
-      installedOnServer: isRetentionInstalled,
-      lastStatus: isRemote ? (settings.retentionSchedule?.enabled && isRetentionInstalled ? "active" : (settings.retentionSchedule?.enabled ? "pending_sync" : "disabled")) : (settings.retentionSchedule?.enabled ? "active_local" : "disabled")
-    });
-  }
+      scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/${s.type === 'database' ? 'matrix_auto_db_backup.sh' : s.type === 'retention' ? 'matrix_auto_cleanup.sh' : 'matrix_auto_config_backup.sh'}`,
+      retentionDays: parseInt(s.retentionDays, 10) || globalRetentionDays,
+      installedOnServer: isInstalled,
+      lastStatus: isRemote ? (s.enabled && isInstalled ? "active" : (s.enabled ? "pending_sync" : "disabled")) : (s.enabled ? "active_local" : "disabled")
+    };
+  });
 
   res.json({
     success: true,
     serverConnected: isRemote,
     serverName: activeConn?.name || activeConn?.host || "No Remote Server",
     backupPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
-    retentionDays: settings.retentionDays || 30,
+    retentionDays: globalRetentionDays,
     schedules,
     rawCrontabEntries: serverCrons
   });
@@ -21158,19 +21262,21 @@ app.delete("/api/backups/scheduler/cron/:id", authenticateToken, checkPermission
   const { id } = req.params;
   const db = readDb();
   if (!db.backupSettings) db.backupSettings = {};
+  if (!Array.isArray(db.backupSettings.schedules)) {
+    db.backupSettings.schedules = [];
+  }
 
+  // Remove matching schedule or disable it
+  const initialCount = db.backupSettings.schedules.length;
+  db.backupSettings.schedules = db.backupSettings.schedules.filter((s: any) => s.id !== id);
+
+  // Also maintain backward-compatible flags if legacy ids
   if (id === "db-schedule" || id === "database") {
-    if (db.backupSettings.dbSchedule) {
-      db.backupSettings.dbSchedule.enabled = false;
-    }
+    if (db.backupSettings.dbSchedule) db.backupSettings.dbSchedule.enabled = false;
   } else if (id === "config-schedule" || id === "config") {
-    if (db.backupSettings.configSchedule) {
-      db.backupSettings.configSchedule.enabled = false;
-    }
+    if (db.backupSettings.configSchedule) db.backupSettings.configSchedule.enabled = false;
   } else if (id === "retention-schedule" || id === "retention" || id === "cleanup") {
-    if (db.backupSettings.retentionSchedule) {
-      db.backupSettings.retentionSchedule.enabled = false;
-    }
+    if (db.backupSettings.retentionSchedule) db.backupSettings.retentionSchedule.enabled = false;
   }
 
   writeDb(db);
@@ -21188,7 +21294,7 @@ app.delete("/api/backups/scheduler/cron/:id", authenticateToken, checkPermission
     action: "Delete/Disable Backup Cron Schedule",
     target: id,
     status: syncResult.success ? "success" : "warning",
-    details: `Disabled backup schedule ${id} and synchronized server crontab.`
+    details: `Removed backup schedule ${id} and synchronized server crontab.`
   });
   writeDb(db);
 
@@ -21202,25 +21308,44 @@ app.delete("/api/backups/scheduler/cron/:id", authenticateToken, checkPermission
 
 // Endpoint to update a specific cron schedule directly (e.g. from the Active Schedules card)
 app.post("/api/backups/scheduler/cron-update", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
-  const { id, enabled, cron } = req.body;
+  const { id, enabled, cron, retentionDays } = req.body;
   const db = readDb();
   if (!db.backupSettings) db.backupSettings = {};
+  if (!Array.isArray(db.backupSettings.schedules)) {
+    db.backupSettings.schedules = [];
+  }
 
+  const cleanCron = (cron || "0 2 * * *").trim();
+  const existingIdx = db.backupSettings.schedules.findIndex((s: any) => s.id === id);
+
+  if (existingIdx >= 0) {
+    db.backupSettings.schedules[existingIdx].enabled = Boolean(enabled);
+    db.backupSettings.schedules[existingIdx].cron = cleanCron;
+    if (retentionDays !== undefined) {
+      db.backupSettings.schedules[existingIdx].retentionDays = parseInt(retentionDays, 10) || 30;
+    }
+  } else {
+    // If not found in array, add it
+    const type = id.includes("retention") || id.includes("cleanup") ? "retention" : (id.includes("config") ? "config" : "database");
+    db.backupSettings.schedules.push({
+      id: id || `sched-${Date.now()}`,
+      title: type === 'database' ? 'Automated Database Backup' : type === 'retention' ? 'Automated Retention Cleanup' : 'Automated Config Backup',
+      titleFa: type === 'database' ? 'پشتیبان‌گیری خودکار پایگاه داده' : type === 'retention' ? 'پاکسازی خودکار و نگهداری فایل‌ها' : 'پشتیبان‌گیری خودکار تنظیمات',
+      type,
+      enabled: Boolean(enabled),
+      cron: cleanCron,
+      retentionDays: parseInt(retentionDays, 10) || 30
+    });
+  }
+
+  // Also sync legacy single properties for backwards compatibility
   if (id === "db-schedule" || id === "database") {
-    db.backupSettings.dbSchedule = {
-      enabled: Boolean(enabled),
-      cron: (cron || "0 2 * * *").trim()
-    };
+    db.backupSettings.dbSchedule = { enabled: Boolean(enabled), cron: cleanCron };
   } else if (id === "config-schedule" || id === "config") {
-    db.backupSettings.configSchedule = {
-      enabled: Boolean(enabled),
-      cron: (cron || "0 3 * * *").trim()
-    };
+    db.backupSettings.configSchedule = { enabled: Boolean(enabled), cron: cleanCron };
   } else if (id === "retention-schedule" || id === "retention" || id === "cleanup") {
-    db.backupSettings.retentionSchedule = {
-      enabled: Boolean(enabled),
-      cron: (cron || "0 4 * * *").trim()
-    };
+    db.backupSettings.retentionSchedule = { enabled: Boolean(enabled), cron: cleanCron };
+    if (retentionDays !== undefined) db.backupSettings.retentionDays = parseInt(retentionDays, 10) || 30;
   }
 
   writeDb(db);
@@ -21238,7 +21363,7 @@ app.post("/api/backups/scheduler/cron-update", authenticateToken, checkPermissio
     action: "Update Backup Cron Schedule",
     target: id,
     status: syncResult.success ? "success" : "warning",
-    details: `Updated backup schedule ${id} to cron '${cron}', enabled: ${enabled}.`
+    details: `Updated backup schedule ${id} to cron '${cleanCron}', enabled: ${enabled}.`
   });
   writeDb(db);
 
@@ -21250,29 +21375,43 @@ app.post("/api/backups/scheduler/cron-update", authenticateToken, checkPermissio
   });
 });
 
-// Endpoint to create a new cron schedule
+// Endpoint to create a new cron schedule (supports unlimited concurrent schedules)
 app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
-  const { type, cron, enabled = true } = req.body;
+  const { type, cron, enabled = true, retentionDays, title, titleFa } = req.body;
   const db = readDb();
   if (!db.backupSettings) db.backupSettings = {};
+  if (!Array.isArray(db.backupSettings.schedules)) {
+    db.backupSettings.schedules = [];
+  }
 
-  const cleanCron = (cron || (type === "database" ? "0 2 * * *" : type === "retention" ? "0 4 * * *" : "0 3 * * *")).trim();
+  const cleanType = (type === "database" || type === "retention" || type === "config") ? type : "database";
+  const cleanCron = (cron || (cleanType === "database" ? "0 2 * * *" : cleanType === "retention" ? "0 4 * * *" : "0 3 * * *")).trim();
+  const schedId = `sched-${cleanType}-${Date.now().toString(36)}`;
+  const cleanRetentionDays = parseInt(retentionDays, 10) || (parseInt(db.backupSettings.retentionDays, 10) || 30);
 
-  if (type === "database") {
-    db.backupSettings.dbSchedule = {
-      enabled: Boolean(enabled),
-      cron: cleanCron
-    };
-  } else if (type === "retention" || type === "cleanup") {
-    db.backupSettings.retentionSchedule = {
-      enabled: Boolean(enabled),
-      cron: cleanCron
-    };
+  const defaultTitle = cleanType === 'database' ? 'Automated Database Backup' : cleanType === 'retention' ? 'Automated Retention Cleanup' : 'Automated Config Backup';
+  const defaultTitleFa = cleanType === 'database' ? 'پشتیبان‌گیری خودکار پایگاه داده' : cleanType === 'retention' ? 'پاکسازی خودکار و نگهداری فایل‌ها' : 'پشتیبان‌گیری خودکار تنظیمات';
+
+  const newScheduleItem = {
+    id: schedId,
+    title: title || defaultTitle,
+    titleFa: titleFa || defaultTitleFa,
+    type: cleanType,
+    cron: cleanCron,
+    enabled: Boolean(enabled),
+    retentionDays: cleanRetentionDays
+  };
+
+  db.backupSettings.schedules.push(newScheduleItem);
+
+  // Sync legacy keys
+  if (cleanType === "database") {
+    db.backupSettings.dbSchedule = { enabled: Boolean(enabled), cron: cleanCron };
+  } else if (cleanType === "retention") {
+    db.backupSettings.retentionSchedule = { enabled: Boolean(enabled), cron: cleanCron };
+    db.backupSettings.retentionDays = cleanRetentionDays;
   } else {
-    db.backupSettings.configSchedule = {
-      enabled: Boolean(enabled),
-      cron: cleanCron
-    };
+    db.backupSettings.configSchedule = { enabled: Boolean(enabled), cron: cleanCron };
   }
 
   writeDb(db);
@@ -21288,15 +21427,16 @@ app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission([
     timestamp: new Date().toISOString(),
     username: req.user.username,
     action: "Create New Backup Cron Schedule",
-    target: type,
+    target: cleanType,
     status: syncResult.success ? "success" : "warning",
-    details: `Created new ${type} backup schedule with cron '${cleanCron}', enabled: ${enabled}.`
+    details: `Created new ${cleanType} backup schedule (${schedId}) with cron '${cleanCron}', enabled: ${enabled}.`
   });
   writeDb(db);
 
   res.json({
     success: true,
-    message: `New ${type === 'database' ? 'Database' : type === 'retention' ? 'Retention Cleanup' : 'Configuration'} cron schedule successfully created and synced to server.`,
+    message: `New ${cleanType === 'database' ? 'Database' : cleanType === 'retention' ? 'Retention Cleanup' : 'Configuration'} cron schedule successfully created and synced to server.`,
+    schedule: newScheduleItem,
     settings: db.backupSettings,
     syncResult
   });
@@ -21304,7 +21444,7 @@ app.post("/api/backups/scheduler/cron-new", authenticateToken, checkPermission([
 
 // Endpoint to trigger manual execution of the scheduler backup script on demand
 app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
-  const { type } = req.body; // 'database' | 'config' | 'retention'
+  const { type, id, retentionDays } = req.body; // 'database' | 'config' | 'retention'
   const activeConn = getActiveConnection();
   const db = readDb();
   const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
@@ -21315,7 +21455,7 @@ app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["
 
   const scriptName = type === "database" 
     ? "matrix_auto_db_backup.sh" 
-    : type === "retention" || type === "cleanup"
+    : (type === "retention" || type === "cleanup")
       ? "matrix_auto_cleanup.sh"
       : "matrix_auto_config_backup.sh";
   const scriptPath = `${REMOTE_BACKUP_BASE_DIR}/scripts/${scriptName}`;
@@ -21324,29 +21464,33 @@ app.post("/api/backups/scheduler/trigger", authenticateToken, checkPermission(["
     // Ensure scripts exist by running sync first
     await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
 
-    const execCmd = `/bin/bash "${scriptPath}"`;
-    const output = await runActiveServerCommand(activeConn, execCmd, true);
+    let execCmd = `/bin/bash "${scriptPath}"`;
+    if ((type === "retention" || type === "cleanup") && retentionDays) {
+      execCmd = `/bin/bash "${scriptPath}" ${parseInt(retentionDays, 10) || 30}`;
+    }
 
+    const output = await runActiveServerCommand(activeConn, execCmd, true);
     const scanned = await scanSchedulerBackups(activeConn, backupPath);
 
     db.auditLogs.unshift({
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString(),
       username: req.user.username,
-      action: `Trigger Automated ${type === "database" ? "Database" : type === "retention" || type === "cleanup" ? "Retention Cleanup" : "Config"} Backup`,
+      action: `Trigger Automated ${type === "database" ? "Database" : (type === "retention" || type === "cleanup") ? "Retention Cleanup" : "Config"} Backup`,
       target: scriptName,
       status: "success",
-      details: `Executed ${scriptName} on destination server. Total backups in scheduler directory: ${scanned.length}.`
+      details: `Executed ${scriptName} on destination server. Output: ${output ? output.substring(0, 200) : 'Completed'}`
     });
     writeDb(db);
 
     res.json({
       success: true,
-      message: `Automated ${type === "database" ? "database" : type === "retention" || type === "cleanup" ? "retention cleanup" : "configuration"} script executed successfully.`,
+      message: `Automated ${type === "database" ? "database backup" : (type === "retention" || type === "cleanup") ? "retention cleanup" : "configuration backup"} script executed successfully on server.`,
       output,
       backups: scanned
     });
   } catch (err: any) {
+    console.error("Trigger scheduler backup error:", err);
     res.status(500).json({ error: "Failed to execute backup script on server: " + err.message });
   }
 });
