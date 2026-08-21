@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.26.0";
+export const PANEL_VERSION = "2.26.1";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.26.1",
+    date: "2026-08-21",
+    title: "Remote Backup Online Validation Fix & Live Filesystem Directory Scanning",
+    changes: [
+      "Fixed backup trigger failure caused by stale connection status checks by removing artificial status blockers and executing live verification directly on the remote server.",
+      "Ensured both Configuration Snapshots (automatic/manual) and Archived Backups Catalog reliably scan and synchronize with /opt/matrix-element-Backup on the remote server.",
+      "Added remote server scan and refresh action to the Archived Backups Catalog toolbar in ConfigForms."
+    ]
+  },
   {
     version: "2.26.0",
     date: "2026-08-21",

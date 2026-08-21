@@ -20420,9 +20420,6 @@ async function runActiveServerCommand(activeConn: any, cmd: string, useSudo: boo
   if (!activeConn || activeConn.id === "local") {
     throw new Error("No active remote destination server connected. Please connect to a Matrix server via SSH or Agent before executing this operation.");
   }
-  if (activeConn.status === "disconnected" || activeConn.status === "error" || activeConn.status === "failed") {
-    throw new Error(`Active connection '${activeConn.name || activeConn.host}' is disconnected (status: ${activeConn.status}). Please reconnect before executing remote backup operations.`);
-  }
 
   const sudoPrefix = (useSudo && activeConn.username && activeConn.username !== "root") ? "sudo " : "";
   const fullCmd = `${sudoPrefix}${cmd}`;
@@ -20600,13 +20597,6 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
     return res.status(400).json({
       success: false,
       error: "No active remote destination server connected. Please connect to a Matrix destination server (via SSH or Agent) before creating backups."
-    });
-  }
-
-  if (activeConn.status !== "online") {
-    return res.status(400).json({
-      success: false,
-      error: `Active connection '${activeConn.name || activeConn.host}' is not online (status: ${activeConn.status}). Please connect to the remote server before performing backup.`
     });
   }
 

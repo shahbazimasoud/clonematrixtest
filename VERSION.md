@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.26.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.26.1** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.26.1** - 2026-08-21
+- **Remote Backup Online Validation Fix & Live Filesystem Directory Scanning**:
+  - **Connection Validation Fix**: Resolved the backup blocking error where active connections with stale or un-polled status strings caused backups to fail (`Active connection is not online`). Backups now execute live validation directly on the remote server via SSH / Agent.
+  - **Unified Remote Directory Scanning**: Confirmed and unified live scanning of `/opt/matrix-element-Backup/` across Configuration Snapshots, Database Restore, and Archived Backups Catalog.
+  - **Live Scan Server Action**: Added explicit "Scan Server" refresh triggers for the Archived Backups Catalog toolbar to allow on-demand directory sync without page reloads.
 
 #### **v2.26.0** - 2026-08-21
 - **Dedicated Database Backup & Restore Suite with PostgreSQL Remote Dump Integration**:

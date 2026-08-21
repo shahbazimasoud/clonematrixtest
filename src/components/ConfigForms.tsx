@@ -6017,7 +6017,17 @@ export default function ConfigForms({
                       )}
                     </div>
 
-                    <div>
+                    <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={() => { fetchBackups(); fetchDbBackups(); }}
+                        disabled={loadingBackups || loadingDbBackups}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 text-xs transition-all cursor-pointer flex items-center gap-1.5"
+                        title={lang === 'fa' ? 'اسکن و بازخوانی مجدد از سرور' : 'Scan & Refresh Backups from Server'}
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${loadingBackups || loadingDbBackups ? 'animate-spin' : ''}`} />
+                        <span className="text-[11px] font-semibold">{lang === 'fa' ? 'اسکن مسیر سرور' : 'Scan Server'}</span>
+                      </button>
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{lang === 'fa' ? 'آرشیو نسخه‌های پشتیبان موجود' : 'Archived Backups Catalog'}</h4>
                     </div>
                   </div>
