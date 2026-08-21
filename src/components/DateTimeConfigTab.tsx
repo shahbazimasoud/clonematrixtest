@@ -164,6 +164,19 @@ export default function DateTimeConfigTab({
   const [executionLogs, setExecutionLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState<boolean>(false);
 
+  // Safe JSON response parser
+  const safeParseResponse = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+        return { success: false, error: `Server returned non-JSON response (Status ${res.status}: ${res.statusText})` };
+      }
+      return { success: false, error: text || `HTTP ${res.status}` };
+    }
+  };
+
   // Fetch Server Date and Time
   const fetchDateTime = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -173,8 +186,8 @@ export default function DateTimeConfigTab({
           'Authorization': `Bearer ${authToken}`
         }
       });
-      const data = await res.json();
-      if (data.success) {
+      const data = await safeParseResponse(res);
+      if (data && data.success) {
         setServerInfo(data);
         if (!inputDate || !silent) {
           setInputDate(data.date || '');
@@ -280,7 +293,7 @@ export default function DateTimeConfigTab({
         })
       });
 
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (res.ok && data.success) {
         if (Array.isArray(data.executionSteps)) {
           setExecutionLogs(data.executionSteps);
@@ -331,7 +344,7 @@ export default function DateTimeConfigTab({
         })
       });
 
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (res.ok && data.success) {
         if (Array.isArray(data.executionSteps)) {
           setExecutionLogs(data.executionSteps);
@@ -377,7 +390,7 @@ export default function DateTimeConfigTab({
         })
       });
 
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (res.ok && data.success) {
         if (Array.isArray(data.executionSteps)) {
           setExecutionLogs(data.executionSteps);

@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.37.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.37.1** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.37.1** - 2026-08-21
+- **Backend API Implementation for Date, Time, Timezone & NTP System Operations**:
+  - **Added System Datetime Endpoints**: Implemented `GET /api/system/datetime`, `POST /api/system/datetime/set-time`, `POST /api/system/datetime/set-timezone`, and `POST /api/system/datetime/sync-ntp` in `server.ts` with complete `timedatectl`, `date`, `hwclock`, and SSH remote/local execution handling.
+  - **Resolved Non-JSON Response Error**: Resolved the `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` error by establishing proper API backend routing and integrating graceful fallback response parsing.
+  - **Live Execution Feedback & Auditing**: Detailed step-by-step console logging and system audit tracking for all manual time changes, timezone changes, and NTP synchronization events.
 
 #### **v2.37.0** - 2026-08-21
 - **Dedicated Server Date, Time & Timezone Configuration Tab and Dashboard Direct Navigation**:

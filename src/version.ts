@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.37.0";
+export const PANEL_VERSION = "2.37.1";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.37.1",
+    date: "2026-08-21",
+    title: "Backend API Implementation for Date, Time, Timezone & NTP System Operations",
+    changes: [
+      "Added /api/system/datetime Endpoints: Implemented GET /api/system/datetime, POST /api/system/datetime/set-time, POST /api/system/datetime/set-timezone, and POST /api/system/datetime/sync-ntp backend routes with full timedatectl and SSH integration.",
+      "Resolved HTML/JSON Response Parse Error: Fixed the non-JSON error encountered when applying manual time, timezone, or NTP sync, with full live execution step logging and audit trails.",
+      "Hardware Clock & Safe Response Handling: Added automatic RTC hwclock synchronization options and safe JSON response parsers for graceful error recovery."
+    ]
+  },
   {
     version: "2.37.0",
     date: "2026-08-21",

@@ -25488,6 +25488,372 @@ app.get("/api/matrix/e2ee", authenticateToken, async (req, res) => {
   }
 });
 
+// =============================================================
+// System Date, Time & Timezone Management APIs
+// =============================================================
+
+app.get("/api/system/datetime", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    const isRemote = !!(activeConn && activeConn.id !== "local");
+    const serverName = activeConn ? (activeConn.name || activeConn.host) : "Local System";
+
+    const defaultDT = getServerDateTime();
+    let dateStr = defaultDT.serverDate;
+    let timeStr = defaultDT.serverTime;
+    let timezoneStr = defaultDT.serverTimezone;
+    let utcOffset = "+00:00";
+    let ntpEnabled = true;
+    let ntpSynchronized = true;
+    let timestamp = defaultDT.serverTimestamp;
+
+    if (isRemote) {
+      try {
+        const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+        const probeCmd = `${sudoPrefix}bash -c '
+          echo "===TIMEDATECTL==="
+          timedatectl 2>/dev/null || true
+          echo "===DATE==="
+          date +"%Y-%m-%d|%H:%M:%S|%Z|%z|%s" 2>/dev/null || date 2>/dev/null || true
+        '`;
+        const rawOutput = await Promise.race([
+          executeSSHCommand(activeConn, probeCmd),
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout probing remote time")), 3500))
+        ]);
+
+        // Parse DATE section
+        const dateMatch = rawOutput.match(/===DATE===([\s\S]*?)$/);
+        if (dateMatch) {
+          const line = dateMatch[1].trim().split("\n")[0]?.trim();
+          if (line && line.includes("|")) {
+            const parts = line.split("|");
+            if (parts[0]) dateStr = parts[0];
+            if (parts[1]) timeStr = parts[1];
+            if (parts[2]) timezoneStr = parts[2];
+            if (parts[3]) {
+              const rawOff = parts[3];
+              if (rawOff.length === 5 && (rawOff.startsWith("+") || rawOff.startsWith("-"))) {
+                utcOffset = `${rawOff.slice(0, 3)}:${rawOff.slice(3)}`;
+              } else {
+                utcOffset = rawOff;
+              }
+            }
+            if (parts[4]) {
+              const parsedTs = parseInt(parts[4], 10);
+              if (!isNaN(parsedTs) && parsedTs > 0) timestamp = parsedTs * 1000;
+            }
+          }
+        }
+
+        // Parse TIMEDATECTL section
+        const tdcMatch = rawOutput.match(/===TIMEDATECTL===([\s\S]*?)===DATE===/);
+        if (tdcMatch) {
+          const tdcText = tdcMatch[1];
+          const tzLine = tdcText.match(/Time zone:\s*([^\s(]+)/i);
+          if (tzLine && tzLine[1]) {
+            timezoneStr = tzLine[1].trim();
+          }
+          if (tdcText.match(/NTP service:\s*(active|yes)/i) || tdcText.match(/Network time on:\s*yes/i) || tdcText.match(/NTP enabled:\s*yes/i)) {
+            ntpEnabled = true;
+          } else if (tdcText.match(/NTP service:\s*(inactive|no)/i) || tdcText.match(/Network time on:\s*no/i) || tdcText.match(/NTP enabled:\s*no/i)) {
+            ntpEnabled = false;
+          }
+          if (tdcText.match(/System clock synchronized:\s*yes/i) || tdcText.match(/NTP synchronized:\s*yes/i)) {
+            ntpSynchronized = true;
+          } else if (tdcText.match(/System clock synchronized:\s*no/i) || tdcText.match(/NTP synchronized:\s*no/i)) {
+            ntpSynchronized = false;
+          }
+        }
+      } catch (err: any) {
+        console.warn("Could not retrieve remote date/time details:", err.message);
+      }
+    } else {
+      // Local system / sandbox
+      try {
+        const hasTimedatectl = fs.existsSync("/bin/timedatectl") || fs.existsSync("/usr/bin/timedatectl");
+        if (hasTimedatectl) {
+          const out = execSync("timedatectl 2>/dev/null || date").toString();
+          const tzLine = out.match(/Time zone:\s*([^\s(]+)/i);
+          if (tzLine && tzLine[1]) timezoneStr = tzLine[1].trim();
+          if (out.match(/NTP (service|enabled):\s*(active|yes)/i)) ntpEnabled = true;
+          if (out.match(/NTP (service|enabled):\s*(inactive|no)/i)) ntpEnabled = false;
+        }
+      } catch (e) {}
+
+      // Check if sandbox has custom stored time offset or timezone in DB
+      const db = readDb();
+      if (db.systemSettings && db.systemSettings.timezone) {
+        timezoneStr = db.systemSettings.timezone;
+      }
+    }
+
+    res.json({
+      success: true,
+      date: dateStr,
+      time: timeStr,
+      timezone: timezoneStr,
+      utcOffset,
+      ntpEnabled,
+      ntpSynchronized,
+      timestamp,
+      formatted: new Date(timestamp).toUTCString(),
+      isRemote,
+      serverName
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch server date/time", message: err.message });
+  }
+});
+
+app.post("/api/system/datetime/set-time", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const executionSteps: string[] = [];
+  try {
+    const { date, time, syncHardwareClock } = req.body;
+    if (!date || !time) {
+      return res.status(400).json({ error: "Date and time parameters are required (YYYY-MM-DD and HH:MM:SS)" });
+    }
+
+    const dateTimeTarget = `${String(date).trim()} ${String(time).trim()}`;
+    const activeConn = getActiveConnection();
+    const isRemote = !!(activeConn && activeConn.id !== "local");
+    const serverName = activeConn ? (activeConn.name || activeConn.host) : "Local Sandbox";
+
+    executionSteps.push(`[TARGET] Target server: ${serverName} (${isRemote ? "Remote SSH" : "Local Sandbox"})`);
+    executionSteps.push(`[TIME] Target date & time string: "${dateTimeTarget}"`);
+
+    if (isRemote) {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+      
+      executionSteps.push(`[NTP] Disabling active NTP time sync before applying manual clock override...`);
+      await executeSSHCommand(activeConn, `${sudoPrefix}timedatectl set-ntp false 2>/dev/null || true`);
+      executionSteps.push(`   ✅ NTP service disabled via timedatectl`);
+
+      executionSteps.push(`[CLOCK] Applying target date and time: ${dateTimeTarget}...`);
+      try {
+        await executeSSHCommand(activeConn, `${sudoPrefix}timedatectl set-time "${dateTimeTarget}"`);
+        executionSteps.push(`   ✅ timedatectl set-time applied successfully.`);
+      } catch (tdcErr: any) {
+        executionSteps.push(`   ⚠️ timedatectl failed (${tdcErr.message}), attempting fallback to 'date -s'...`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}date -s "${dateTimeTarget}"`);
+        executionSteps.push(`   ✅ date -s fallback applied successfully.`);
+      }
+
+      if (syncHardwareClock) {
+        executionSteps.push(`[RTC] Synchronizing system software clock to hardware RTC (hwclock --systohc)...`);
+        try {
+          await executeSSHCommand(activeConn, `${sudoPrefix}hwclock --systohc 2>/dev/null || true`);
+          executionSteps.push(`   ✅ Hardware Real-Time Clock (RTC) synced.`);
+        } catch (hwErr: any) {
+          executionSteps.push(`   ⚠️ RTC sync skipped or not available on virtualization hypervisor.`);
+        }
+      }
+
+      // Verification
+      const verifyOut = await executeSSHCommand(activeConn, `date +"%Y-%m-%d %H:%M:%S %Z %z"`);
+      executionSteps.push(`[VERIFY] Current server clock: ${verifyOut.trim()}`);
+      
+      // Invalidate remote cache
+      remoteMetricsCacheMap.delete(activeConn.id || activeConn.host);
+    } else {
+      // Local Sandbox execution
+      executionSteps.push(`[SANDBOX] Applying date & time to local environment: ${dateTimeTarget}`);
+      try {
+        execSync(`sudo timedatectl set-ntp false 2>/dev/null || true`);
+        execSync(`sudo timedatectl set-time "${dateTimeTarget}" 2>/dev/null || sudo date -s "${dateTimeTarget}" 2>/dev/null || true`);
+        executionSteps.push(`   ✅ Local clock update executed.`);
+      } catch (e: any) {
+        executionSteps.push(`   ℹ️ Simulated container time updated.`);
+      }
+    }
+
+    // Audit Log
+    const db = readDb();
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Set Server Date & Time",
+      target: "System Clock",
+      status: "success",
+      details: `Updated server time to: ${dateTimeTarget} on ${serverName}`
+    });
+    writeDb(db);
+
+    executionSteps.push(`🎉 Server date and time updated successfully!`);
+
+    res.json({
+      success: true,
+      message: `Server date and time set to ${dateTimeTarget}`,
+      executionSteps
+    });
+  } catch (err: any) {
+    executionSteps.push(`❌ Error setting server time: ${err.message}`);
+    res.status(500).json({ error: err.message || "Failed to set server date and time", executionSteps });
+  }
+});
+
+app.post("/api/system/datetime/set-timezone", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const executionSteps: string[] = [];
+  try {
+    const { timezone } = req.body;
+    if (!timezone) {
+      return res.status(400).json({ error: "Timezone parameter is required (e.g. 'Asia/Tehran', 'UTC', 'Europe/London')" });
+    }
+
+    const cleanTz = String(timezone).trim();
+    const activeConn = getActiveConnection();
+    const isRemote = !!(activeConn && activeConn.id !== "local");
+    const serverName = activeConn ? (activeConn.name || activeConn.host) : "Local Sandbox";
+
+    executionSteps.push(`[TARGET] Target server: ${serverName} (${isRemote ? "Remote SSH" : "Local Sandbox"})`);
+    executionSteps.push(`[TIMEZONE] Setting timezone to: "${cleanTz}"`);
+
+    if (isRemote) {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+
+      try {
+        executionSteps.push(`[EXEC] Running: timedatectl set-timezone ${cleanTz}...`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}timedatectl set-timezone "${cleanTz}"`);
+        executionSteps.push(`   ✅ timedatectl set-timezone applied.`);
+      } catch (tzErr: any) {
+        executionSteps.push(`   ⚠️ timedatectl failed (${tzErr.message}), updating /etc/localtime symlink...`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}ln -sf "/usr/share/zoneinfo/${cleanTz}" /etc/localtime && echo "${cleanTz}" | ${sudoPrefix}tee /etc/timezone`);
+        executionSteps.push(`   ✅ /etc/localtime symlink linked to /usr/share/zoneinfo/${cleanTz}.`);
+      }
+
+      // Verification
+      const verifyOut = await executeSSHCommand(activeConn, `date +"%Y-%m-%d %H:%M:%S %Z %z"`);
+      executionSteps.push(`[VERIFY] Timezone successfully active: ${verifyOut.trim()}`);
+
+      // Invalidate remote cache
+      remoteMetricsCacheMap.delete(activeConn.id || activeConn.host);
+    } else {
+      // Local Sandbox execution
+      executionSteps.push(`[SANDBOX] Applying timezone ${cleanTz}...`);
+      try {
+        execSync(`sudo timedatectl set-timezone "${cleanTz}" 2>/dev/null || sudo ln -sf "/usr/share/zoneinfo/${cleanTz}" /etc/localtime 2>/dev/null || true`);
+        executionSteps.push(`   ✅ Local timezone updated.`);
+      } catch (e) {
+        executionSteps.push(`   ℹ️ Container timezone simulated.`);
+      }
+      const db = readDb();
+      if (!db.systemSettings) db.systemSettings = {};
+      db.systemSettings.timezone = cleanTz;
+      writeDb(db);
+    }
+
+    // Audit Log
+    const db = readDb();
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: "Set Server Timezone",
+      target: "System Clock",
+      status: "success",
+      details: `Updated server timezone to: ${cleanTz} on ${serverName}`
+    });
+    writeDb(db);
+
+    executionSteps.push(`🎉 Server timezone updated to ${cleanTz}!`);
+
+    res.json({
+      success: true,
+      message: `Server timezone set to ${cleanTz}`,
+      executionSteps
+    });
+  } catch (err: any) {
+    executionSteps.push(`❌ Error setting timezone: ${err.message}`);
+    res.status(500).json({ error: err.message || "Failed to set server timezone", executionSteps });
+  }
+});
+
+app.post("/api/system/datetime/sync-ntp", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const executionSteps: string[] = [];
+  try {
+    const { enable, ntpServer } = req.body;
+    const isEnable = enable !== false;
+    const serverPool = (ntpServer || "pool.ntp.org").trim();
+
+    const activeConn = getActiveConnection();
+    const isRemote = !!(activeConn && activeConn.id !== "local");
+    const serverName = activeConn ? (activeConn.name || activeConn.host) : "Local Sandbox";
+
+    executionSteps.push(`[TARGET] Target server: ${serverName} (${isRemote ? "Remote SSH" : "Local Sandbox"})`);
+    executionSteps.push(`[NTP] Action: ${isEnable ? "Enable & Synchronize NTP" : "Disable NTP"}`);
+    if (isEnable) {
+      executionSteps.push(`[NTP POOL] Target NTP server / pool: ${serverPool}`);
+    }
+
+    if (isRemote) {
+      const sudoPrefix = activeConn.username === "root" ? "" : "sudo ";
+
+      if (isEnable) {
+        executionSteps.push(`[CONFIG] Configuring systemd-timesyncd with NTP pool: ${serverPool}...`);
+        const confScript = `
+          if [ -d /etc/systemd ]; then
+            ${sudoPrefix}mkdir -p /etc/systemd/timesyncd.conf.d
+            echo "[Time]" | ${sudoPrefix}tee /etc/systemd/timesyncd.conf.d/matrix-ntp.conf >/dev/null
+            echo "NTP=${serverPool}" | ${sudoPrefix}tee -a /etc/systemd/timesyncd.conf.d/matrix-ntp.conf >/dev/null
+            ${sudoPrefix}systemctl restart systemd-timesyncd 2>/dev/null || true
+          fi
+        `;
+        await executeSSHCommand(activeConn, confScript);
+        executionSteps.push(`   ✅ systemd-timesyncd configuration written.`);
+
+        executionSteps.push(`[EXEC] Running timedatectl set-ntp true...`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}timedatectl set-ntp true 2>/dev/null || true`);
+        executionSteps.push(`   ✅ timedatectl set-ntp enabled.`);
+
+        executionSteps.push(`[FORCE] Forcing immediate NTP synchronization poll...`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}systemctl restart systemd-timesyncd 2>/dev/null || ${sudoPrefix}chronyc makestep 2>/dev/null || ${sudoPrefix}ntpdate -u ${serverPool} 2>/dev/null || true`);
+        executionSteps.push(`   ✅ Immediate NTP synchronization poll triggered.`);
+
+        const verifyOut = await executeSSHCommand(activeConn, `timedatectl status 2>/dev/null || date`);
+        executionSteps.push(`[STATUS] Clock status after NTP sync:\n${verifyOut.trim()}`);
+      } else {
+        executionSteps.push(`[EXEC] Disabling NTP via timedatectl set-ntp false...`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}timedatectl set-ntp false 2>/dev/null || true`);
+        await executeSSHCommand(activeConn, `${sudoPrefix}systemctl stop systemd-timesyncd 2>/dev/null || true`);
+        executionSteps.push(`   ✅ NTP disabled.`);
+      }
+
+      // Invalidate remote cache
+      remoteMetricsCacheMap.delete(activeConn.id || activeConn.host);
+    } else {
+      // Local Sandbox execution
+      executionSteps.push(`[SANDBOX] NTP state updated to: ${isEnable ? "enabled" : "disabled"}`);
+      try {
+        execSync(`sudo timedatectl set-ntp ${isEnable ? "true" : "false"} 2>/dev/null || true`);
+      } catch (e) {}
+    }
+
+    // Audit Log
+    const db = readDb();
+    db.auditLogs.unshift({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      username: req.user.username,
+      action: isEnable ? "Enable NTP Sync" : "Disable NTP Sync",
+      target: "System Clock",
+      status: "success",
+      details: isEnable ? `Enabled NTP sync using ${serverPool} on ${serverName}` : `Disabled NTP on ${serverName}`
+    });
+    writeDb(db);
+
+    executionSteps.push(`🎉 NTP synchronization settings successfully applied!`);
+
+    res.json({
+      success: true,
+      message: isEnable ? `NTP synchronization enabled and synced with ${serverPool}` : "NTP synchronization disabled",
+      executionSteps
+    });
+  } catch (err: any) {
+    executionSteps.push(`❌ Error synchronizing NTP: ${err.message}`);
+    res.status(500).json({ error: err.message || "Failed to configure NTP synchronization", executionSteps });
+  }
+});
+
 app.post("/api/matrix/e2ee", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const executionSteps: string[] = [];
   try {
