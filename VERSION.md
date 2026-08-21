@@ -16,9 +16,16 @@
 
 ---
 
-## Current Panel Version: **v2.31.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.32.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.32.0** - 2026-08-21
+- **Bulk Archive Management, Directory Storage Metrics & Enhanced Cleanup Execution**:
+  - **Batch Selection & Operations for Scheduler Archives**: Implemented individual checkbox selection, "Select All", bulk JSON batch download, batch delete modal, and a "Purge All" action for the Automated Scheduler Backup Archives.
+  - **Batch Delete for Repository Catalog**: Added batch delete support to the main Archived Backups Catalog alongside its bulk download features.
+  - **Real-Time Directory Storage Size Badges**: Added live storage size and file count monitoring indicators across both the Backup Repository (`/opt/matrix-element-Backup`) and Scheduler Storage (`/opt/matrix-element-Backup/scheduler/`) sections.
+  - **Enhanced Cleanup Execution & Auto-Refresh**: Streamlined the manual 'Cleanup Now' script trigger to automatically synchronize directory storage metrics and catalog views upon completion.
 
 #### **v2.31.0** - 2026-08-21
 - **Retention Isolation, Instant Cleanup Script Execution & Archive Filter Resolution**:

@@ -1500,7 +1500,11 @@ export default function ConfigForms({
 
     const list = schedulerBackupsList.map(item => {
       const fn = (item.filename || '').toLowerCase();
-      const isDb = item.isDatabase === true || item.type === 'database' || fn.startsWith('database_backup') || fn.includes('database') || fn.includes('db-') || fn.includes('-db') || fn.includes('synapse-db') || fn.includes('postgres') || fn.endsWith('.sql.gz') || fn.endsWith('.sql') || fn.endsWith('.dump');
+      const isDb = item.isDatabase === true || item.type === 'database' || 
+                   fn.startsWith('database_backup') || fn.startsWith('db-') || fn.startsWith('db_') ||
+                   fn.includes('database') || fn.includes('postgres') || fn.includes('synapse-db') ||
+                   fn.includes('synapse_db') || fn.includes('-db-') || fn.includes('_db_') ||
+                   fn.endsWith('.sql.gz') || fn.endsWith('.sql') || fn.endsWith('.dump');
       const isCfg = !isDb;
       
       if (isDb) dbCount++;
@@ -1514,10 +1518,13 @@ export default function ConfigForms({
     });
 
     const filtered = list.filter(item => {
-      if (schedulerBackupFilter === 'database' && !item.isDatabase) return false;
-      if (schedulerBackupFilter === 'config' && !item.isConfig) return false;
+      if (schedulerBackupFilter === 'database') {
+        if (!item.isDatabase) return false;
+      } else if (schedulerBackupFilter === 'config') {
+        if (!item.isConfig) return false;
+      }
 
-      if (schedulerSearchQuery.trim()) {
+      if (schedulerSearchQuery && schedulerSearchQuery.trim()) {
         const q = schedulerSearchQuery.trim().toLowerCase();
         return (item.filename || '').toLowerCase().includes(q);
       }
@@ -1533,10 +1540,45 @@ export default function ConfigForms({
 
   const [includeSSL, setIncludeSSL] = useState(false);
   const [selectedBackupIds, setSelectedBackupIds] = useState<string[]>([]);
+  const [selectedSchedulerBackupNames, setSelectedSchedulerBackupNames] = useState<string[]>([]);
+  const [schedulerBatchDeleteModal, setSchedulerBatchDeleteModal] = useState<{ open: boolean; filenames: string[]; isAll?: boolean } | null>(null);
+  const [isDeletingBatchScheduler, setIsDeletingBatchScheduler] = useState<boolean>(false);
+  const [repositoryBatchDeleteModal, setRepositoryBatchDeleteModal] = useState<{ open: boolean; ids: string[]; isAll?: boolean } | null>(null);
+  const [isDeletingBatchRepository, setIsDeletingBatchRepository] = useState<boolean>(false);
+
+  const [storageStats, setStorageStats] = useState<{
+    repository?: { formattedSize: string; totalBytes: number; fileCount: number; path: string };
+    scheduler?: { formattedSize: string; totalBytes: number; fileCount: number; path: string };
+  } | null>(null);
+  const [loadingStorageStats, setLoadingStorageStats] = useState<boolean>(false);
+
   const [isTriggeringBackup, setIsTriggeringBackup] = useState<boolean>(false);
   const [showRestoreModal, setShowRestoreModal] = useState<BackupItem | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [activeBackupSubTab, setActiveBackupSubTab] = useState<'list' | 'settings'>('list');
+
+  const fetchStorageStats = async () => {
+    if (!authToken) return;
+    setLoadingStorageStats(true);
+    try {
+      const res = await fetch('/api/backups/storage-stats', {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setStorageStats({
+            repository: data.repository,
+            scheduler: data.scheduler
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching storage stats', err);
+    } finally {
+      setLoadingStorageStats(false);
+    }
+  };
 
   const fetchBackupSettings = async () => {
     if (!authToken) return;
@@ -1584,6 +1626,17 @@ export default function ConfigForms({
       if (res.ok) {
         const data = await res.json();
         setSchedulerBackupsList(data.backups || []);
+        if (data.directorySize) {
+          setStorageStats(prev => ({
+            ...prev,
+            scheduler: {
+              formattedSize: data.directorySize,
+              totalBytes: data.directorySizeBytes || 0,
+              fileCount: data.totalCount || (data.backups?.length || 0),
+              path: data.backupPath || '/opt/matrix-element-Backup/scheduler/'
+            }
+          }));
+        }
       }
     } catch (err) {
       console.error('Error fetching scheduler backups', err);
@@ -1599,8 +1652,119 @@ export default function ConfigForms({
       fetchDbBackups();
       fetchServerSchedules();
       fetchSchedulerBackups();
+      fetchStorageStats();
     }
   }, [activeTab, authToken]);
+
+  const handleToggleSelectSchedulerBackup = (filename: string) => {
+    setSelectedSchedulerBackupNames(prev =>
+      prev.includes(filename) ? prev.filter(f => f !== filename) : [...prev, filename]
+    );
+  };
+
+  const handleToggleSelectAllScheduler = () => {
+    const currentFilenames = filteredSchedulerBackups.map(b => b.filename);
+    if (currentFilenames.length > 0 && currentFilenames.every(fn => selectedSchedulerBackupNames.includes(fn))) {
+      setSelectedSchedulerBackupNames([]);
+    } else {
+      setSelectedSchedulerBackupNames(currentFilenames);
+    }
+  };
+
+  const downloadBulkSchedulerBackups = () => {
+    if (selectedSchedulerBackupNames.length === 0 || !authToken) return;
+    
+    fetch('/api/backups/scheduler/download-bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ filenames: selectedSchedulerBackupNames })
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Download failed');
+      return res.blob();
+    })
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'matrix-scheduler-bulk-backups.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (showToast) showToast('success', lang === 'fa' ? 'فایل‌های پشتیبان زمان‌بندی به صورت گروهی دانلود شدند' : 'Scheduler backups downloaded successfully');
+    })
+    .catch(() => {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در دانلود گروهی فایل‌ها' : 'Error downloading bulk backups');
+    });
+  };
+
+  const handleSchedulerBatchDeleteConfirm = async () => {
+    if (!schedulerBatchDeleteModal || !authToken) return;
+    setIsDeletingBatchScheduler(true);
+    try {
+      const res = await fetch('/api/backups/scheduler/delete-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          filenames: schedulerBatchDeleteModal.filenames,
+          all: schedulerBatchDeleteModal.isAll === true
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', data.message || (lang === 'fa' ? 'فایل‌های انتخابی با موفقیت حذف شدند' : 'Selected backups deleted successfully'));
+        setSelectedSchedulerBackupNames([]);
+        setSchedulerBatchDeleteModal(null);
+        if (data.backups) setSchedulerBackupsList(data.backups);
+        else fetchSchedulerBackups();
+        fetchStorageStats();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در حذف فایل‌ها' : 'Error deleting files'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error communicating with server');
+    } finally {
+      setIsDeletingBatchScheduler(false);
+    }
+  };
+
+  const handleRepositoryBatchDeleteConfirm = async () => {
+    if (!repositoryBatchDeleteModal || !authToken) return;
+    setIsDeletingBatchRepository(true);
+    try {
+      const res = await fetch('/api/backups/delete-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          ids: repositoryBatchDeleteModal.ids,
+          all: repositoryBatchDeleteModal.isAll === true
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (showToast) showToast('success', data.message || (lang === 'fa' ? 'فایل‌های انتخابی با موفقیت حذف شدند' : 'Selected catalog backups deleted successfully'));
+        setSelectedBackupIds([]);
+        setRepositoryBatchDeleteModal(null);
+        fetchBackups();
+        fetchStorageStats();
+      } else {
+        if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در حذف فایل‌ها' : 'Error deleting backups'));
+      }
+    } catch (err) {
+      if (showToast) showToast('error', lang === 'fa' ? 'خطا در ارتباط با سرور' : 'Error connecting to server');
+    } finally {
+      setIsDeletingBatchRepository(false);
+    }
+  };
 
   const saveBackupSettings = async () => {
     setSavingBackupSettings(true);
@@ -1730,6 +1894,7 @@ export default function ConfigForms({
         if (showToast) showToast('success', data.message || (lang === 'fa' ? `اسکریپت خودکار ${type === 'database' ? 'دیتابیس' : type === 'retention' ? 'پاکسازی فایل‌های منقضی' : 'تنظیمات'} با موفقیت روی سرور اجرا شد` : `Automated ${type} script triggered successfully`));
         if (data.backups) setSchedulerBackupsList(data.backups);
         else fetchSchedulerBackups();
+        fetchStorageStats();
       } else {
         if (showToast) showToast('error', data.error || (lang === 'fa' ? 'خطا در اجرای اسکریپت خودکار' : 'Error triggering script on server'));
       }
@@ -6344,7 +6509,7 @@ export default function ConfigForms({
                 {/* Backups List & Bulk Actions — Row-by-Row Layout (No Restore Button here) */}
                 <div className="space-y-3">
                   <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/30 p-4 rounded-2xl border border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
-                    <div className={`flex items-center gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center gap-2 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
                       <button
                         type="button"
                         onClick={handleToggleSelectAll}
@@ -6372,20 +6537,50 @@ export default function ConfigForms({
                           <span>{lang === 'fa' ? `دانلود گروهی (${selectedBackupIds.length})` : `Bulk Download (${selectedBackupIds.length})`}</span>
                         </button>
                       )}
+
+                      {selectedBackupIds.length > 0 && !isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => setRepositoryBatchDeleteModal({ open: true, ids: selectedBackupIds, isAll: false })}
+                          className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>{lang === 'fa' ? `حذف گروهی (${selectedBackupIds.length})` : `Bulk Delete (${selectedBackupIds.length})`}</span>
+                        </button>
+                      )}
+
+                      {backups && backups.length > 0 && !isReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => setRepositoryBatchDeleteModal({ open: true, ids: backups.map(b => b.id), isAll: true })}
+                          className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                          title={lang === 'fa' ? 'حذف تمامی فایل‌های موجود در پوشه بکاپ سرور' : 'Purge all backup files in directory'}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>{lang === 'fa' ? 'حذف همه فایل‌های دایرکتوری' : 'Purge All Files'}</span>
+                        </button>
+                      )}
                     </div>
 
-                    <div className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}>
+                    <div className={`flex items-center gap-2 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
                       <button
                         type="button"
-                        onClick={() => { fetchBackups(); fetchDbBackups(); }}
-                        disabled={loadingBackups || loadingDbBackups}
+                        onClick={() => { fetchBackups(); fetchDbBackups(); fetchStorageStats(); }}
+                        disabled={loadingBackups || loadingDbBackups || loadingStorageStats}
                         className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 text-xs transition-all cursor-pointer flex items-center gap-1.5"
                         title={lang === 'fa' ? 'اسکن و بازخوانی مجدد از سرور' : 'Scan & Refresh Backups from Server'}
                       >
-                        <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${loadingBackups || loadingDbBackups ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${loadingBackups || loadingDbBackups || loadingStorageStats ? 'animate-spin' : ''}`} />
                         <span className="text-[11px] font-semibold">{lang === 'fa' ? 'اسکن مسیر سرور' : 'Scan Server'}</span>
                       </button>
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{lang === 'fa' ? 'آرشیو نسخه‌های پشتیبان موجود' : 'Archived Backups Catalog'}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{lang === 'fa' ? 'آرشیو نسخه‌های پشتیبان موجود' : 'Archived Backups Catalog'}</h4>
+                        {storageStats?.repository?.formattedSize && (
+                          <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded-full text-[10px] font-mono font-bold" title={storageStats.repository.path}>
+                            {lang === 'fa' ? 'حجم دایرکتوری:' : 'Dir Size:'} {storageStats.repository.formattedSize}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -6860,12 +7055,14 @@ export default function ConfigForms({
                     <div className="flex items-center gap-2.5">
                       <FolderOpen className="w-4 h-4 text-amber-400" />
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="text-sm font-bold text-white">
                             {lang === 'fa' ? 'فایل‌های پشتیبان پوشه زمان‌بندی خودکار سرور' : 'Automated Scheduler Backup Archives'}
                           </h4>
                           <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full text-[10px] font-mono font-bold">
-                            {schedulerBackupsList.length} {lang === 'fa' ? 'فایل' : 'files'}
+                            {storageStats?.scheduler?.formattedSize 
+                              ? `${storageStats.scheduler.formattedSize} (${schedulerBackupsList.length} ${lang === 'fa' ? 'فایل' : 'files'})` 
+                              : `${schedulerBackupsList.length} ${lang === 'fa' ? 'فایل' : 'files'}`}
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-400 select-all font-mono mt-0.5">
@@ -6915,7 +7112,7 @@ export default function ConfigForms({
                       {/* Refresh Button */}
                       <button
                         type="button"
-                        onClick={fetchSchedulerBackups}
+                        onClick={() => { fetchSchedulerBackups(); fetchStorageStats(); }}
                         disabled={loadingSchedulerBackups}
                         className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-medium border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                         title={lang === 'fa' ? 'اسکن مجدد فایل‌های پوشه زمان‌بندی' : 'Rescan scheduler storage directory'}
@@ -6925,6 +7122,64 @@ export default function ConfigForms({
                       </button>
                     </div>
                   </div>
+
+                  {/* Bulk Actions Control Bar */}
+                  {filteredSchedulerBackups.length > 0 && (
+                    <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/20 p-3 rounded-xl border border-white/5 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                      <div className={`flex items-center gap-2 flex-wrap ${isRtl ? 'flex-row-reverse' : ''}`}>
+                        <button
+                          type="button"
+                          onClick={handleToggleSelectAllScheduler}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        >
+                          {filteredSchedulerBackups.length > 0 && filteredSchedulerBackups.every(b => selectedSchedulerBackupNames.includes(b.filename)) ? (
+                            <CheckSquare className="w-4 h-4 text-amber-500" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-500" />
+                          )}
+                          <span>{lang === 'fa' ? `انتخاب همه (${filteredSchedulerBackups.length})` : `Select All (${filteredSchedulerBackups.length})`}</span>
+                        </button>
+
+                        {selectedSchedulerBackupNames.length > 0 && (
+                          <div className="h-4 w-px bg-white/10" />
+                        )}
+
+                        {selectedSchedulerBackupNames.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={downloadBulkSchedulerBackups}
+                            className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>{lang === 'fa' ? `دانلود گروهی (${selectedSchedulerBackupNames.length})` : `Bulk Download (${selectedSchedulerBackupNames.length})`}</span>
+                          </button>
+                        )}
+
+                        {selectedSchedulerBackupNames.length > 0 && !isReadOnly && (
+                          <button
+                            type="button"
+                            onClick={() => setSchedulerBatchDeleteModal({ open: true, filenames: selectedSchedulerBackupNames, isAll: false })}
+                            className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-md"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>{lang === 'fa' ? `حذف گروهی (${selectedSchedulerBackupNames.length})` : `Bulk Delete (${selectedSchedulerBackupNames.length})`}</span>
+                          </button>
+                        )}
+
+                        {schedulerBackupsList.length > 0 && !isReadOnly && (
+                          <button
+                            type="button"
+                            onClick={() => setSchedulerBatchDeleteModal({ open: true, filenames: schedulerBackupsList.map(b => b.filename), isAll: true })}
+                            className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                            title={lang === 'fa' ? 'حذف تمامی فایل‌های موجود در پوشه زمان‌بندی سرور' : 'Purge all backup files in scheduler directory'}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>{lang === 'fa' ? 'حذف همه فایل‌های دایرکتوری' : 'Purge All Files'}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Backups List Table */}
                   {loadingSchedulerBackups && schedulerBackupsList.length === 0 ? (
@@ -6954,12 +7209,28 @@ export default function ConfigForms({
                     <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
                       {filteredSchedulerBackups.map((backup) => {
                         const isDb = backup.isDatabase;
+                        const isSelected = selectedSchedulerBackupNames.includes(backup.filename);
                         return (
                           <div
                             key={backup.id || backup.filename}
-                            className={`bg-black/30 hover:bg-black/40 border border-white/5 rounded-xl p-3 flex items-center justify-between transition-all gap-3 ${isRtl ? 'flex-row-reverse' : ''}`}
+                            className={`border rounded-xl p-3 flex items-center justify-between transition-all gap-3 ${
+                              isSelected 
+                                ? 'bg-amber-500/[0.04] border-amber-500/40 shadow-sm' 
+                                : 'bg-black/30 hover:bg-black/40 border-white/5'
+                            } ${isRtl ? 'flex-row-reverse' : ''}`}
                           >
                             <div className={`flex items-center gap-3 min-w-0 ${isRtl ? 'flex-row-reverse text-right' : 'text-left'}`}>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleSelectSchedulerBackup(backup.filename)}
+                                className="text-slate-500 hover:text-white transition-colors cursor-pointer flex-shrink-0"
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-4.5 h-4.5 text-amber-500" />
+                                ) : (
+                                  <Square className="w-4.5 h-4.5" />
+                                )}
+                              </button>
                               <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
                                 isDb 
                                   ? 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400' 
@@ -6968,7 +7239,7 @@ export default function ConfigForms({
                                 {isDb ? <Database className="w-4 h-4" /> : <FileJson className="w-4 h-4" />}
                               </div>
                               <div className="min-w-0">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs font-mono font-bold text-white truncate max-w-xs sm:max-w-md md:max-w-lg select-all" title={backup.filename}>
                                     {backup.filename}
                                   </span>
@@ -6977,7 +7248,7 @@ export default function ConfigForms({
                                       ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' 
                                       : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                                   }`}>
-                                    {isDb ? 'Database (PostgreSQL)' : 'Config (.tar.gz)'}
+                                    {isDb ? (lang === 'fa' ? 'دیتابیس' : 'Database (PostgreSQL)') : (lang === 'fa' ? 'تنظیمات' : 'Config (.tar.gz)')}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1">

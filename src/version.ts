@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.31.0";
+export const PANEL_VERSION = "2.32.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,17 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.32.0",
+    date: "2026-08-21",
+    title: "Bulk Archive Management, Directory Storage Metrics & Enhanced Cleanup Execution",
+    changes: [
+      "Added multi-select bulk operations (checkbox selection, select all, batch download, batch delete, and full directory purge) to Automated Scheduler Backup Archives.",
+      "Added batch delete functionality to the main Archived Backups Catalog to match bulk management features.",
+      "Integrated real-time directory storage size and file count metrics badge to both Backup Repository and Scheduler Storage tabs.",
+      "Ensured automatic storage metric and catalog synchronization upon execution of manual backup and retention cleanup scripts."
+    ]
+  },
   {
     version: "2.31.0",
     date: "2026-08-21",

@@ -20526,6 +20526,61 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
   return foundBackups;
 }
 
+// Helper function to calculate directory storage size on remote host or local sandbox
+async function getDirectoryStorageInfo(activeConn: any, dirPath: string): Promise<{ totalBytes: number; formattedSize: string; fileCount: number; path: string }> {
+  let totalBytes = 0;
+  let fileCount = 0;
+  const cleanPath = (dirPath || "").trim();
+
+  if (activeConn && activeConn.id !== "local") {
+    try {
+      const cmd = `
+        TARGET="${cleanPath}"
+        mkdir -p "$TARGET" 2>/dev/null || true
+        if [ -d "$TARGET" ]; then
+          BYTES=$(du -sb "$TARGET" 2>/dev/null | cut -f1 || du -sk "$TARGET" 2>/dev/null | awk '{print $1 * 1024}' || echo "0")
+          COUNT=$(find "$TARGET" -maxdepth 1 -type f 2>/dev/null | wc -l || echo "0")
+          echo "$BYTES:$COUNT"
+        else
+          echo "0:0"
+        fi
+      `.trim();
+      const stdout = await runActiveServerCommand(activeConn, cmd, true);
+      const parts = stdout.trim().split(":");
+      if (parts.length >= 2) {
+        totalBytes = parseInt(parts[0], 10) || 0;
+        fileCount = parseInt(parts[1], 10) || 0;
+      }
+    } catch (_) {}
+  } else {
+    try {
+      const isSched = cleanPath.includes("scheduler");
+      const localDir = isSched 
+        ? path.join(process.cwd(), "sandbox", "backups", "scheduler")
+        : path.join(process.cwd(), "sandbox", "backups");
+      if (fs.existsSync(localDir)) {
+        const files = fs.readdirSync(localDir);
+        for (const file of files) {
+          try {
+            const st = fs.statSync(path.join(localDir, file));
+            if (st.isFile()) {
+              totalBytes += st.size;
+              fileCount++;
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  return {
+    path: cleanPath,
+    totalBytes,
+    formattedSize: formatBytes(totalBytes),
+    fileCount
+  };
+}
+
 // Helper function to scan backup files specifically in the Scheduler storage path
 async function scanSchedulerBackups(activeConn: any, customPath?: string): Promise<any[]> {
   const db = readDb();
@@ -20772,7 +20827,7 @@ RETENTION_DAYS=${globalRetentionDays}
 if [ -n "$1" ] && [ "$1" -eq "$1" ] 2>/dev/null; then
   RETENTION_DAYS="$1"
 fi
-if [ -n "$2" ] && [ -d "$2" ]; then
+if [ -n "$2" ]; then
   BACKUP_DIR="$2"
 fi
 
@@ -20787,7 +20842,7 @@ DELETED_COUNT=0
 
 if [ "$RETENTION_DAYS" -eq 0 ] 2>/dev/null; then
   echo "Pruning ALL backup files in $BACKUP_DIR (Retention = 0)..."
-  for f in "$BACKUP_DIR"/*.sql.gz "$BACKUP_DIR"/*.tar.gz "$BACKUP_DIR"/*.sql "$BACKUP_DIR"/*.dump "$BACKUP_DIR"/*.tar "$BACKUP_DIR"/*.bak "$BACKUP_DIR"/database_backup_* "$BACKUP_DIR"/matrix-backup-*; do
+  for f in "$BACKUP_DIR"/*.sql.gz "$BACKUP_DIR"/*.tar.gz "$BACKUP_DIR"/*.sql "$BACKUP_DIR"/*.dump "$BACKUP_DIR"/*.tar "$BACKUP_DIR"/*.bak "$BACKUP_DIR"/database_backup_* "$BACKUP_DIR"/matrix-backup-* "$BACKUP_DIR"/matrix_backup_* "$BACKUP_DIR"/backup-*; do
     if [ -f "$f" ]; then
       F_SIZE=$(du -h "$f" 2>/dev/null | cut -f1)
       echo "Pruning backup archive: $f ($F_SIZE)"
@@ -20806,7 +20861,7 @@ elif [ "$RETENTION_DAYS" -gt 0 ] 2>/dev/null; then
       DELETED_COUNT=$((DELETED_COUNT + 1))
     fi
   done <<EOF
-$(find "$BACKUP_DIR" -maxdepth 1 \\( -name "*.sql.gz" -o -name "*.tar.gz" -o -name "*.dump" -o -name "*.sql" -o -name "*.tar" -o -name "*.bak" -o -name "database_backup_*" -o -name "matrix-backup-*" \\) -type f -mtime +"$RETENTION_DAYS" 2>/dev/null)
+$(find "$BACKUP_DIR" -maxdepth 1 \\( -name "*.sql.gz" -o -name "*.tar.gz" -o -name "*.dump" -o -name "*.sql" -o -name "*.tar" -o -name "*.bak" -o -name "database_backup_*" -o -name "matrix-backup-*" -o -name "matrix_backup_*" -o -name "backup-*" \\) -type f -mtime +"$RETENTION_DAYS" 2>/dev/null)
 EOF
 
 fi
@@ -21057,21 +21112,203 @@ app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => 
   });
 });
 
+// Endpoint to get storage stats for both Repository and Scheduler directories
+app.get("/api/backups/storage-stats", authenticateToken, async (req, res) => {
+  try {
+    const activeConn = getActiveConnection();
+    const db = readDb();
+    const repoPath = REMOTE_BACKUP_BASE_DIR;
+    const schedulerPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+
+    const [repoStorage, schedulerStorage] = await Promise.all([
+      getDirectoryStorageInfo(activeConn, repoPath),
+      getDirectoryStorageInfo(activeConn, schedulerPath)
+    ]);
+
+    res.json({
+      success: true,
+      repository: repoStorage,
+      scheduler: schedulerStorage
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Endpoint to list backup files strictly located in the Scheduler Backup Storage Path
 app.get("/api/backups/scheduler/files", authenticateToken, async (req, res) => {
   try {
     const activeConn = getActiveConnection();
     const db = readDb();
-    const backupPath = db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
-    const backups = await scanSchedulerBackups(activeConn, backupPath);
+    const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+    const [backups, storageInfo] = await Promise.all([
+      scanSchedulerBackups(activeConn, backupPath),
+      getDirectoryStorageInfo(activeConn, backupPath)
+    ]);
+
     res.json({
       success: true,
       backupPath,
       totalCount: backups.length,
+      directorySize: storageInfo.formattedSize,
+      directorySizeBytes: storageInfo.totalBytes,
+      fileCount: storageInfo.fileCount,
       backups
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, backups: [] });
+  }
+});
+
+// Endpoint for Batch Deletion of Scheduler Backups (Selected or All in path)
+app.post("/api/backups/scheduler/delete-batch", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { filenames, all } = req.body;
+  const db = readDb();
+  const activeConn = getActiveConnection();
+  const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+  const isRemote = activeConn && activeConn.id !== "local";
+
+  let deletedCount = 0;
+
+  if (all === true) {
+    if (isRemote) {
+      try {
+        const purgeCmd = `
+          TARGET="${backupPath}"
+          if [ -d "$TARGET" ] && [ "$TARGET" != "/" ] && [ "$TARGET" != "/opt" ]; then
+            find "$TARGET" -maxdepth 1 -type f -exec rm -f {} + 2>/dev/null || true
+          fi
+        `.trim();
+        await runActiveServerCommand(activeConn, purgeCmd, true);
+      } catch (err: any) {
+        return res.status(500).json({ success: false, error: "Failed to purge scheduler directory: " + err.message });
+      }
+    } else {
+      try {
+        const localDir = path.join(process.cwd(), "sandbox", "backups", "scheduler");
+        if (fs.existsSync(localDir)) {
+          const files = fs.readdirSync(localDir);
+          for (const f of files) {
+            try { fs.unlinkSync(path.join(localDir, f)); } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }
+    deletedCount = -1;
+  } else if (Array.isArray(filenames) && filenames.length > 0) {
+    const validFilenames = filenames
+      .map(f => String(f || "").replace(/[^a-zA-Z0-9._-]/g, ""))
+      .filter(f => f && f !== "." && f !== "..");
+
+    if (validFilenames.length === 0) {
+      return res.status(400).json({ success: false, error: "No valid backup filenames specified." });
+    }
+
+    if (isRemote) {
+      try {
+        const fileListStr = validFilenames.map(f => `"${backupPath}/${f}"`).join(" ");
+        const delCmd = `rm -f ${fileListStr}`;
+        await runActiveServerCommand(activeConn, delCmd, true);
+        deletedCount = validFilenames.length;
+      } catch (err: any) {
+        return res.status(500).json({ success: false, error: "Failed to delete files: " + err.message });
+      }
+    } else {
+      const localDir = path.join(process.cwd(), "sandbox", "backups", "scheduler");
+      for (const f of validFilenames) {
+        try {
+          const p = path.join(localDir, f);
+          if (fs.existsSync(p)) {
+            fs.unlinkSync(p);
+            deletedCount++;
+          }
+        } catch (_) {}
+      }
+    }
+  } else {
+    return res.status(400).json({ success: false, error: "Missing filenames or all flag." });
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Batch Delete Scheduler Backups",
+    target: all ? "ALL_SCHEDULER_BACKUPS" : `${filenames?.length || 0} files`,
+    status: "success",
+    details: all ? `Purged all scheduler backups in ${backupPath}` : `Deleted ${deletedCount} selected scheduler backup files from ${backupPath}.`
+  });
+  writeDb(db);
+
+  const updatedBackups = await scanSchedulerBackups(activeConn, backupPath);
+  const storageInfo = await getDirectoryStorageInfo(activeConn, backupPath);
+
+  res.json({
+    success: true,
+    message: all ? "All scheduler backup files deleted successfully." : `${deletedCount} scheduler backup file(s) deleted successfully.`,
+    deletedCount,
+    directorySize: storageInfo.formattedSize,
+    totalCount: updatedBackups.length,
+    backups: updatedBackups
+  });
+});
+
+// Endpoint to download bulk scheduler backups as a bundled json archive
+app.post("/api/backups/scheduler/download-bulk", authenticateToken, async (req, res) => {
+  const { filenames } = req.body;
+  if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
+    return res.status(400).json({ error: "Filenames array is required" });
+  }
+
+  const db = readDb();
+  const activeConn = getActiveConnection();
+  const backupPath = (db.backupSettings?.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`).trim();
+
+  try {
+    const compoundPackage: any = {
+      packageTimestamp: new Date().toISOString(),
+      source: "scheduler",
+      backupPath,
+      backups: []
+    };
+
+    for (const rawName of filenames) {
+      const cleanName = String(rawName || "").replace(/[^a-zA-Z0-9._-]/g, "");
+      if (!cleanName || cleanName === "." || cleanName === "..") continue;
+      const targetFile = `${backupPath}/${cleanName}`;
+
+      if (activeConn && activeConn.id !== "local") {
+        try {
+          const readCmd = `base64 -w 0 "${targetFile}" 2>/dev/null || cat "${targetFile}" | base64`;
+          const b64 = await runActiveServerCommand(activeConn, readCmd, true);
+          if (b64 && b64.trim()) {
+            compoundPackage.backups.push({
+              filename: cleanName,
+              timestamp: new Date().toISOString(),
+              contentBase64: b64.trim()
+            });
+          }
+        } catch (_) {}
+      } else {
+        try {
+          const localFile = path.join(process.cwd(), "sandbox", "backups", "scheduler", cleanName);
+          if (fs.existsSync(localFile)) {
+            const buf = fs.readFileSync(localFile);
+            compoundPackage.backups.push({
+              filename: cleanName,
+              timestamp: new Date().toISOString(),
+              contentBase64: buf.toString("base64")
+            });
+          }
+        } catch (_) {}
+      }
+    }
+
+    res.setHeader("Content-Disposition", "attachment; filename=matrix-scheduler-bulk-backups.json");
+    res.setHeader("Content-Type", "application/json");
+    res.send(JSON.stringify(compoundPackage, null, 2));
+  } catch (err: any) {
+    res.status(500).json({ error: "Bulk download failed: " + err.message });
   }
 });
 
@@ -21885,6 +22122,98 @@ app.post("/api/backups/create", authenticateToken, checkPermission(["Owner", "Su
     console.error(`[BACKUP] FAILED: ${err.message}`);
     res.status(500).json({ success: false, error: "Failed to create backup: " + err.message });
   }
+});
+
+// Delete backup from /opt/matrix-element-Backup on remote destination server
+app.post("/api/backups/delete-batch", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
+  const { ids, all } = req.body;
+  const db = readDb();
+  const activeConn = getActiveConnection();
+  const repoPath = REMOTE_BACKUP_BASE_DIR;
+  const isRemote = activeConn && activeConn.id !== "local";
+
+  let deletedCount = 0;
+
+  if (all === true) {
+    if (isRemote) {
+      try {
+        const purgeCmd = `
+          TARGET="${repoPath}"
+          if [ -d "$TARGET" ] && [ "$TARGET" != "/" ] && [ "$TARGET" != "/opt" ]; then
+            find "$TARGET" -maxdepth 1 -type f -exec rm -f {} + 2>/dev/null || true
+          fi
+        `.trim();
+        await runActiveServerCommand(activeConn, purgeCmd, true);
+      } catch (err: any) {
+        return res.status(500).json({ success: false, error: "Failed to purge backup repository: " + err.message });
+      }
+    } else {
+      try {
+        const localDir = path.join(process.cwd(), "sandbox", "backups");
+        if (fs.existsSync(localDir)) {
+          const files = fs.readdirSync(localDir);
+          for (const f of files) {
+            try {
+              const p = path.join(localDir, f);
+              if (fs.statSync(p).isFile()) fs.unlinkSync(p);
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }
+    db.backups = [];
+    deletedCount = -1;
+  } else if (Array.isArray(ids) && ids.length > 0) {
+    const existing = db.backups || [];
+    const matched = existing.filter((b: any) => ids.includes(b.id) || ids.includes(b.filename));
+
+    if (isRemote) {
+      const filesToDelete = matched.map((b: any) => b.path || `${repoPath}/${b.filename}`).filter(Boolean);
+      if (filesToDelete.length > 0) {
+        try {
+          const fileArgs = filesToDelete.map(p => `"${p}"`).join(" ");
+          await runActiveServerCommand(activeConn, `rm -rf ${fileArgs}`, true);
+        } catch (err: any) {
+          console.warn("[BACKUP] Warning deleting files on remote:", err);
+        }
+      }
+    } else {
+      const localDir = path.join(process.cwd(), "sandbox", "backups");
+      for (const b of matched) {
+        try {
+          const p = path.join(localDir, b.filename);
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        } catch (_) {}
+      }
+    }
+
+    db.backups = existing.filter((b: any) => !ids.includes(b.id) && !ids.includes(b.filename));
+    deletedCount = matched.length;
+  } else {
+    return res.status(400).json({ success: false, error: "Missing ids or all flag." });
+  }
+
+  db.auditLogs.unshift({
+    id: `log-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    username: req.user.username,
+    action: "Batch Delete Repository Backups",
+    target: all ? "ALL_REPOSITORY_BACKUPS" : `${ids?.length || 0} items`,
+    status: "success",
+    details: all ? `Purged all repository backups in ${repoPath}` : `Deleted ${deletedCount} selected repository backup items.`
+  });
+  writeDb(db);
+
+  const updatedBackups = await scanServerBackups(activeConn);
+  const storageInfo = await getDirectoryStorageInfo(activeConn, repoPath);
+
+  res.json({
+    success: true,
+    message: all ? "All repository backups deleted successfully." : `${deletedCount} backup(s) deleted successfully.`,
+    deletedCount,
+    directorySize: storageInfo.formattedSize,
+    backups: updatedBackups
+  });
 });
 
 // Delete backup from /opt/matrix-element-Backup on remote destination server
