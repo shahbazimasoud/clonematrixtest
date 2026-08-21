@@ -16,9 +16,17 @@
 
 ---
 
-## Current Panel Version: **v2.26.1** (Released: 2026-08-21)
+## Current Panel Version: **v2.27.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.27.0** - 2026-08-21
+- **Automated Backup Daemon & Remote Server Crontab Synchronizer**:
+  - **Zero Mock Data in Backups Catalog**: Completely eradicated hardcoded/mock backup entries from database initialization, schemas, and fallbacks. The catalog exclusively reflects actual physical scans of `/opt/matrix-element-Backup` on the connected server.
+  - **Default Scheduler Path & Remote Provisioning**: Set default storage path to `/opt/matrix-element-Backup/scheduler/`. If custom or default paths do not exist on the remote server, they are automatically provisioned with proper permissions when saving scheduler settings.
+  - **Remote Crontab Daemon Sync**: Saving scheduler settings compiles dedicated backup bash scripts (`matrix_auto_db_backup.sh` and `matrix_auto_config_backup.sh`) in `/opt/matrix-element-Backup/scripts/` and seamlessly installs or updates crontab entries in `/etc/cron.d/matrix-backup-scheduler` and user crontabs with retention auto-pruning.
+  - **Active Server Schedules Dashboard**: Added a real-time status card section under Scheduler Config displaying registered database and configuration backup cron jobs and their crontab installation status.
+  - **Interactive Cron Syntax & Preset Guide**: Added an accessible modal with visual breakdown of the 5 cron fields and 1-click apply presets for daily, hourly, weekly, and custom intervals.
 
 #### **v2.26.1** - 2026-08-21
 - **Remote Backup Online Validation Fix & Live Filesystem Directory Scanning**:

@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.26.1";
+export const PANEL_VERSION = "2.27.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,18 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.27.0",
+    date: "2026-08-21",
+    title: "Automated Backup Daemon & Remote Server Crontab Synchronizer",
+    changes: [
+      "Removed all mock backup seeds from database initialization and fallbacks to ensure the Archived Backups Catalog purely displays real filesystem scan results from /opt/matrix-element-Backup.",
+      "Configured default Disk Storage Settings path to /opt/matrix-element-Backup/scheduler/ with automatic server directory provisioning upon saving settings.",
+      "Engineered automated remote Crontab management for Database and Configuration backups with standalone bash execution scripts and auto-retention pruning.",
+      "Added Active Server Schedules & Daemon Status section to view registered cron jobs and sync state with remote server crontab.",
+      "Built interactive Cron Syntax & Schedule Presets Guide modal with 1-click apply for standard scheduling intervals."
+    ]
+  },
   {
     version: "2.26.1",
     date: "2026-08-21",

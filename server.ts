@@ -20435,19 +20435,20 @@ function getBackupDirectory() {
   const db = readDb();
   if (!db.backupSettings) {
     db.backupSettings = {
-      backupPath: REMOTE_BACKUP_BASE_DIR,
+      backupPath: `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
       retentionDays: 30,
       dbSchedule: { enabled: false, cron: "0 2 * * *" },
       configSchedule: { enabled: false, cron: "0 3 * * *" }
     };
     writeDb(db);
   }
-  return REMOTE_BACKUP_BASE_DIR;
+  return db.backupSettings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
 }
 
 async function scanServerBackups(activeConn?: any): Promise<any[]> {
   const db = readDb();
-  const backupDirName = REMOTE_BACKUP_BASE_DIR;
+  const baseDir = REMOTE_BACKUP_BASE_DIR;
+  const schedulerDir = db.backupSettings?.backupPath ? db.backupSettings.backupPath.trim() : `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
   const foundBackups: any[] = [];
   const existingMap = new Map<string, any>();
   
@@ -20458,17 +20459,17 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
     });
   }
 
-  // Strictly require active remote connection; do NOT scan local sandbox filesystem
+  // Strictly require active remote connection; do NOT return any mock or local sandbox data
   if (!activeConn || activeConn.id === "local") {
-    return Array.isArray(db.backups) ? db.backups : [];
+    return [];
   }
 
-  // Scan target backup directory on the active remote destination server
+  // Scan target backup directory and any scheduler subdirectory on the active remote destination server
   try {
     const scanCmd = `
-      mkdir -p "${backupDirName}" 2>/dev/null || true
-      if [ -d "${backupDirName}" ]; then
-        ls -la --time-style=+%s "${backupDirName}" 2>/dev/null || ls -la "${backupDirName}"
+      mkdir -p "${baseDir}" "${schedulerDir}" 2>/dev/null || true
+      if [ -d "${baseDir}" ]; then
+        find "${baseDir}" -maxdepth 2 -type f -exec ls -la --time-style=+%s {} + 2>/dev/null || ls -la "${baseDir}"
       fi
     `.trim();
 
@@ -20478,9 +20479,12 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
       const parts = line.trim().split(/\s+/);
       if (parts.length >= 7 && !line.startsWith("total")) {
         const isDir = line.startsWith("d");
-        const filename = parts[parts.length - 1];
-        if (!filename || filename === "." || filename === ".." || filename.startsWith(".")) continue;
+        const fullPath = parts[parts.length - 1];
+        if (!fullPath || fullPath === "." || fullPath === ".." || fullPath.startsWith(".")) continue;
         
+        const filename = fullPath.split("/").pop() || fullPath;
+        if (!filename || filename.startsWith(".")) continue;
+
         if (filename.includes("backup") || filename.endsWith(".tar.gz") || filename.endsWith(".json") || filename.endsWith(".sql.gz") || filename.endsWith(".sql") || filename.startsWith("snapshot-") || filename.includes(".bak_")) {
           const rawSize = parseInt(parts[4], 10) || 0;
           const rawTs = parseInt(parts[5], 10);
@@ -20500,7 +20504,7 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
             foundBackups.push({
               id: existing?.id || `bak-${Buffer.from(filename).toString("hex").substring(0, 12)}`,
               filename,
-              path: `${backupDirName}/${filename}`,
+              path: fullPath.startsWith("/") ? fullPath : `${baseDir}/${filename}`,
               size: isDir ? "Snapshot Directory" : (existing?.size || formatBytes(rawSize)),
               timestamp: existing?.timestamp || timestamp,
               hasSSL: existing?.hasSSL || filename.includes("ssl") || false,
@@ -20515,22 +20519,149 @@ async function scanServerBackups(activeConn?: any): Promise<any[]> {
     console.warn("[BACKUP] Scan warning on active connection:", scanErr);
   }
 
-  // Reconcile with db.backups keeping only valid remote records
-  if (Array.isArray(db.backups)) {
-    for (const b of db.backups) {
-      if (!foundBackups.some(f => f.filename === b.filename || f.id === b.id)) {
-        if (b.path?.startsWith(REMOTE_BACKUP_BASE_DIR)) {
-          foundBackups.push(b);
-        }
-      }
-    }
-  }
-
   foundBackups.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   db.backups = foundBackups;
   writeDb(db);
 
   return foundBackups;
+}
+
+// Function to synchronize remote server crontab for automated backups
+async function syncRemoteBackupCronJobs(activeConn: any, settings: any): Promise<{ success: boolean; details: string; installedCrons: string[] }> {
+  if (!activeConn || activeConn.id === "local") {
+    return { success: false, details: "No active remote server connected", installedCrons: [] };
+  }
+
+  const rawPath = (settings.backupPath || "").trim();
+  const backupPath = rawPath.length > 0 ? rawPath : `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
+  const retentionDays = parseInt(settings.retentionDays, 10) || 30;
+  const dbSchedule = settings.dbSchedule || { enabled: false, cron: "0 2 * * *" };
+  const configSchedule = settings.configSchedule || { enabled: false, cron: "0 3 * * *" };
+
+  const dbUser = (activeConn.dbUser || "synapse_user").trim();
+  const dbPass = (activeConn.dbPass || "").trim();
+  const dbName = (activeConn.dbName || "synapse").trim();
+  const dbHost = (activeConn.dbHost || "localhost").trim();
+  const dbPort = activeConn.dbPort || 5432;
+
+  const escapedPass = dbPass.replace(/'/g, "'\\''");
+  const escapedUser = dbUser.replace(/'/g, "'\\''");
+  const escapedDb = dbName.replace(/'/g, "'\\''");
+  const escapedHost = dbHost.replace(/'/g, "'\\''");
+  const scriptDir = `${REMOTE_BACKUP_BASE_DIR}/scripts`;
+
+  try {
+    // 1. Ensure target storage and script directories exist
+    await runActiveServerCommand(activeConn, `mkdir -p "${backupPath}" "${scriptDir}" && chmod 755 "${backupPath}" "${scriptDir}"`);
+
+    // 2. Generate and write Database automated backup script
+    const dbScriptContent = `#!/bin/bash
+# Matrix Panel Automated Database Backup Cron Script
+set -e
+BACKUP_DIR="${backupPath}"
+RETENTION_DAYS=${retentionDays}
+mkdir -p "$BACKUP_DIR"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+FILENAME="database_backup_\${TIMESTAMP}.sql.gz"
+TARGET="$BACKUP_DIR/\$FILENAME"
+
+PGPASSWORD='${escapedPass}' pg_dump -h '${escapedHost}' -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET" || \\
+PGPASSWORD='${escapedPass}' pg_dump -h 127.0.0.1 -p '${dbPort}' -U '${escapedUser}' -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET" || \\
+sudo -u postgres pg_dump -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET" || \\
+sudo pg_dump -U '${escapedUser}' -d '${escapedDb}' --no-owner --clean --if-exists 2>/dev/null | gzip -9 > "$TARGET"
+
+if [ "$RETENTION_DAYS" -gt 0 ]; then
+  find "$BACKUP_DIR" -maxdepth 1 -name "database_backup_*.sql.gz" -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
+fi
+`;
+
+    const dbScriptPath = `${scriptDir}/matrix_auto_db_backup.sh`;
+    const b64DbScript = Buffer.from(dbScriptContent).toString("base64");
+    await runActiveServerCommand(activeConn, `echo "${b64DbScript}" | base64 -d > "${dbScriptPath}" && chmod +x "${dbScriptPath}"`);
+
+    // 3. Generate and write Configuration automated backup script
+    const configScriptContent = `#!/bin/bash
+# Matrix Panel Automated Configuration Backup Cron Script
+set -e
+BACKUP_DIR="${backupPath}"
+RETENTION_DAYS=${retentionDays}
+mkdir -p "$BACKUP_DIR"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+FILENAME="matrix-backup-\${TIMESTAMP}.tar.gz"
+TARGET="$BACKUP_DIR/\$FILENAME"
+
+DIRS_TO_BACKUP=""
+[ -d "/etc/matrix-synapse" ] && DIRS_TO_BACKUP="$DIRS_TO_BACKUP etc/matrix-synapse"
+[ -d "/var/www/element" ] && DIRS_TO_BACKUP="$DIRS_TO_BACKUP var/www/element"
+[ -f "/etc/matrix-stack.conf" ] && DIRS_TO_BACKUP="$DIRS_TO_BACKUP etc/matrix-stack.conf"
+[ -d "/etc/nginx" ] && DIRS_TO_BACKUP="$DIRS_TO_BACKUP etc/nginx"
+
+if [ -n "$DIRS_TO_BACKUP" ]; then
+  cd / && tar -czf "$TARGET" $DIRS_TO_BACKUP 2>/dev/null || true
+fi
+
+if [ "$RETENTION_DAYS" -gt 0 ]; then
+  find "$BACKUP_DIR" -maxdepth 1 -name "matrix-backup-*.tar.gz" -type f -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
+fi
+`;
+
+    const configScriptPath = `${scriptDir}/matrix_auto_config_backup.sh`;
+    const b64ConfigScript = Buffer.from(configScriptContent).toString("base64");
+    await runActiveServerCommand(activeConn, `echo "${b64ConfigScript}" | base64 -d > "${configScriptPath}" && chmod +x "${configScriptPath}"`);
+
+    // 4. Build Cron configuration
+    const cronLines: string[] = [];
+    cronLines.push("# MATRIX_PANEL_CRON_START - AUTOMATED MATRIX BACKUP SCHEDULER");
+    cronLines.push("SHELL=/bin/bash");
+    cronLines.push("PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin");
+
+    if (dbSchedule.enabled && dbSchedule.cron) {
+      cronLines.push(`${dbSchedule.cron.trim()} /bin/bash ${dbScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_DB_BACKUP`);
+    }
+    if (configSchedule.enabled && configSchedule.cron) {
+      cronLines.push(`${configSchedule.cron.trim()} /bin/bash ${configScriptPath} >/dev/null 2>&1 # MATRIX_AUTO_CONFIG_BACKUP`);
+    }
+    cronLines.push("# MATRIX_PANEL_CRON_END");
+
+    const cronText = cronLines.join("\n") + "\n";
+    const b64Cron = Buffer.from(cronText).toString("base64");
+
+    const cronApplyCmd = `
+      echo "${b64Cron}" | base64 -d > /tmp/matrix_cron.tmp
+      if [ -d "/etc/cron.d" ]; then
+        cp /tmp/matrix_cron.tmp /etc/cron.d/matrix-backup-scheduler 2>/dev/null && chmod 644 /etc/cron.d/matrix-backup-scheduler || true
+      fi
+      
+      crontab -l 2>/dev/null | grep -v "MATRIX_PANEL_CRON" | grep -v "matrix_auto_db_backup" | grep -v "matrix_auto_config_backup" > /tmp/current_crontab.tmp || true
+      if [ -s /tmp/matrix_cron.tmp ]; then
+        cat /tmp/matrix_cron.tmp >> /tmp/current_crontab.tmp
+      fi
+      crontab /tmp/current_crontab.tmp 2>/dev/null || true
+      rm -f /tmp/matrix_cron.tmp /tmp/current_crontab.tmp
+    `;
+
+    await runActiveServerCommand(activeConn, cronApplyCmd);
+
+    let installedCrons: string[] = [];
+    try {
+      const checkCronCmd = `crontab -l 2>/dev/null || cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
+      const cronOut = await runActiveServerCommand(activeConn, checkCronCmd);
+      installedCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_"));
+    } catch (_) {}
+
+    return {
+      success: true,
+      details: `Crontab successfully updated on remote server. ${installedCrons.length} cron schedule(s) active.`,
+      installedCrons
+    };
+  } catch (err: any) {
+    console.error("[BACKUP CRON] Failed to synchronize remote cron jobs:", err);
+    return {
+      success: false,
+      details: err.message || "Failed to configure crontab on remote server",
+      installedCrons: []
+    };
+  }
 }
 
 // Backups API - Scan and return all backups from /opt/matrix-element-Backup
@@ -20540,8 +20671,7 @@ app.get("/api/backups", authenticateToken, async (req, res) => {
     const backups = await scanServerBackups(activeConn);
     res.json(backups);
   } catch (err: any) {
-    const db = readDb();
-    res.json(db.backups || []);
+    res.json([]);
   }
 });
 
@@ -20549,40 +20679,121 @@ app.get("/api/backups/settings", authenticateToken, (req, res) => {
   const db = readDb();
   if (!db.backupSettings) {
     db.backupSettings = {
-      backupPath: REMOTE_BACKUP_BASE_DIR,
+      backupPath: `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
       retentionDays: 30,
       dbSchedule: { enabled: false, cron: "0 2 * * *" },
       configSchedule: { enabled: false, cron: "0 3 * * *" }
     };
     writeDb(db);
   }
+  if (!db.backupSettings.backupPath || db.backupSettings.backupPath === "/sandbox/backups" || db.backupSettings.backupPath === REMOTE_BACKUP_BASE_DIR) {
+    db.backupSettings.backupPath = `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
+    writeDb(db);
+  }
   res.json(db.backupSettings);
 });
 
-app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "Super Admin"]), (req, res) => {
+// Endpoint to fetch active server backup schedules (cron jobs)
+app.get("/api/backups/server-schedules", authenticateToken, async (req, res) => {
+  const db = readDb();
+  const settings = db.backupSettings || {
+    backupPath: `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
+    retentionDays: 30,
+    dbSchedule: { enabled: false, cron: "0 2 * * *" },
+    configSchedule: { enabled: false, cron: "0 3 * * *" }
+  };
+
+  const activeConn = getActiveConnection();
+  const isRemote = activeConn && activeConn.id !== "local";
+
+  let serverCrons: string[] = [];
+  let isInstalled = false;
+
+  if (isRemote) {
+    try {
+      const checkCronCmd = `crontab -l 2>/dev/null || cat /etc/cron.d/matrix-backup-scheduler 2>/dev/null || true`;
+      const cronOut = await runActiveServerCommand(activeConn, checkCronCmd, false);
+      serverCrons = cronOut.split("\n").filter(l => l.includes("matrix_auto_"));
+      isInstalled = serverCrons.length > 0;
+    } catch (_) {}
+  }
+
+  const schedules = [
+    {
+      id: "db-schedule",
+      title: "Automated Database Backup (PostgreSQL)",
+      titleFa: "پشتیبان‌گیری خودکار پایگاه داده (PostgreSQL)",
+      type: "database",
+      enabled: settings.dbSchedule?.enabled || false,
+      cron: settings.dbSchedule?.cron || "0 2 * * *",
+      targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
+      scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_db_backup.sh`,
+      retentionDays: settings.retentionDays || 30,
+      installedOnServer: isRemote ? serverCrons.some(c => c.includes("matrix_auto_db_backup")) : false,
+      lastStatus: isRemote ? (settings.dbSchedule?.enabled ? "active" : "disabled") : "no_server"
+    },
+    {
+      id: "config-schedule",
+      title: "Automated Configuration Backup (Matrix & Element)",
+      titleFa: "پشتیبان‌گیری خودکار تنظیمات سرور و کلاینت المنت",
+      type: "config",
+      enabled: settings.configSchedule?.enabled || false,
+      cron: settings.configSchedule?.cron || "0 3 * * *",
+      targetPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
+      scriptPath: `${REMOTE_BACKUP_BASE_DIR}/scripts/matrix_auto_config_backup.sh`,
+      retentionDays: settings.retentionDays || 30,
+      installedOnServer: isRemote ? serverCrons.some(c => c.includes("matrix_auto_config_backup")) : false,
+      lastStatus: isRemote ? (settings.configSchedule?.enabled ? "active" : "disabled") : "no_server"
+    }
+  ];
+
+  res.json({
+    success: true,
+    serverConnected: isRemote,
+    serverName: activeConn?.name || activeConn?.host || "No Remote Server",
+    backupPath: settings.backupPath || `${REMOTE_BACKUP_BASE_DIR}/scheduler/`,
+    retentionDays: settings.retentionDays || 30,
+    schedules,
+    rawCrontabEntries: serverCrons
+  });
+});
+
+app.post("/api/backups/settings", authenticateToken, checkPermission(["Owner", "Super Admin"]), async (req, res) => {
   const { backupPath, retentionDays, dbSchedule, configSchedule } = req.body;
   const db = readDb();
   
   if (!db.backupSettings) db.backupSettings = {};
-  if (backupPath !== undefined) db.backupSettings.backupPath = backupPath;
+  
+  const cleanPath = (backupPath || "").trim();
+  db.backupSettings.backupPath = cleanPath.length > 0 ? cleanPath : `${REMOTE_BACKUP_BASE_DIR}/scheduler/`;
   if (retentionDays !== undefined) db.backupSettings.retentionDays = parseInt(retentionDays) || 30;
   if (dbSchedule !== undefined) db.backupSettings.dbSchedule = dbSchedule;
   if (configSchedule !== undefined) db.backupSettings.configSchedule = configSchedule;
   
   writeDb(db);
 
+  let cronResult: any = { success: true, details: "Settings stored in panel database." };
+  const activeConn = getActiveConnection();
+  if (activeConn && activeConn.id !== "local") {
+    cronResult = await syncRemoteBackupCronJobs(activeConn, db.backupSettings);
+  }
+
   db.auditLogs.unshift({
     id: `log-${Date.now()}`,
     timestamp: new Date().toISOString(),
     username: req.user.username,
-    action: "Update Backup Settings",
-    target: "Backup System",
-    status: "success",
-    details: `Updated backup path to: ${db.backupSettings.backupPath}, retention to: ${db.backupSettings.retentionDays} days.`
+    action: "Update Backup Scheduler Settings",
+    target: "Backup Scheduler",
+    status: cronResult.success ? "success" : "warning",
+    details: `Updated backup path to: ${db.backupSettings.backupPath}, retention to: ${db.backupSettings.retentionDays} days. ${cronResult.details}`
   });
   writeDb(db);
 
-  res.json({ success: true, settings: db.backupSettings });
+  res.json({ 
+    success: true, 
+    settings: db.backupSettings,
+    cronResult 
+  });
 });
 
 // Create Configuration / Database Backup in /opt/matrix-element-Backup on remote destination server

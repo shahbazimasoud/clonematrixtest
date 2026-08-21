@@ -266,10 +266,7 @@ export function initializeSandbox() {
       { id: "log-1", timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), username: "system", action: "Server Booted", target: "Server", status: "success", details: "Matrix Stack Manager Web Panel initiated successfully." },
       { id: "log-2", timestamp: new Date(Date.now() - 3600000).toISOString(), username: "admin", action: "Configure LDAP", target: "LDAP Auth", status: "success", details: "Tested LDAP connection and saved changes." }
     ],
-    backups: [
-      { id: "bak-1", filename: "matrix-backup-20260710-120000.tar.gz", size: "142.8 MB", timestamp: "2026-07-10T12:00:00.000Z", hasSSL: true },
-      { id: "bak-2", filename: "matrix-backup-20260711-120000.tar.gz", size: "143.2 MB", timestamp: "2026-07-11T12:00:00.000Z", hasSSL: true }
-    ],
+    backups: [],
     undoHistory: [
       { id: "undo-1", timestamp: new Date(Date.now() - 3600000).toISOString(), description: "Update LDAP Settings", files: ["/etc/matrix-stack-ldap.conf", "/etc/matrix-synapse/homeserver.yaml"] }
     ],
@@ -446,10 +443,7 @@ export function readDb(): any {
   }
 
   if (!data.backups || !Array.isArray(data.backups)) {
-    data.backups = [
-      { id: "bak-1", filename: "matrix-backup-20260710-120000.tar.gz", size: "142.8 MB", timestamp: "2026-07-10T12:00:00.000Z", hasSSL: true },
-      { id: "bak-2", filename: "matrix-backup-20260711-120000.tar.gz", size: "143.2 MB", timestamp: "2026-07-11T12:00:00.000Z", hasSSL: true }
-    ];
+    data.backups = [];
     updated = true;
   }
 
