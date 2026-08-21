@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.36.1** (Released: 2026-08-21)
+## Current Panel Version: **v2.37.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.37.0** - 2026-08-21
+- **Dedicated Server Date, Time & Timezone Configuration Tab and Dashboard Direct Navigation**:
+  - **Dedicated Date & Time Settings Tab**: Integrated the comprehensive `DateTimeConfigTab` in the homeserver configuration workspace allowing administrators to view current clock status, set server date/time manually, select from all worldwide timezones with instant search, and configure NTP auto-synchronization.
+  - **Interactive Dashboard Navigation**: Configured the dashboard's "Date & Time" spatial monitoring card so clicking it immediately opens the Date & Time settings tab under the configuration view.
+  - **Multilingual Support**: Fully localized in English, Persian (فارسی), Spanish, Arabic, German, and Russian with light and dark mode adaptations.
 
 #### **v2.36.1** - 2026-08-21
 - **Resolved Dashboard Runtime ReferenceError in Date & Time Component**:

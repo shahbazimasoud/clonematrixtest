@@ -616,6 +616,7 @@ export default function App() {
 
   // Navigation and terminal/command execution states
   const [activeView, setActiveView] = useState('dashboard');
+  const [configInitialTab, setConfigInitialTab] = useState<'homeserver' | 'datetime' | 'network' | 'serverNotices' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'wallpaper' | 'backups' | 'video' | 'security' | 'api' | 'certificates' | undefined>(undefined);
   const [ketesaAdminTab, setKetesaAdminTab] = useState<'users' | 'rooms' | 'media' | 'tokens' | 'installer'>('users');
   const [showInstallWizard, setShowInstallWizard] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
@@ -2751,8 +2752,11 @@ export default function App() {
                     </div>
                   ) : (
                     <div 
-                      onClick={() => handleRefreshStats()}
-                      title={lang === 'fa' ? 'کلیک جهت همگام‌سازی فوری زمان و آمار سرور' : 'Click to refresh server time and metrics'}
+                      onClick={() => {
+                        setConfigInitialTab('datetime');
+                        setActiveView('config');
+                      }}
+                      title={lang === 'fa' ? 'کلیک جهت رفتن به تنظیمات زمان، تاریخ و منطقه زمانی سرور' : 'Click to configure server date, time & timezone'}
                       className="spatial-glass rounded-3xl p-5 border border-white/10 hover:border-cyan-500/30 hover:bg-white/5 transition-all cursor-pointer group relative overflow-hidden flex flex-col justify-between"
                     >
                       <div>
@@ -3000,6 +3004,7 @@ export default function App() {
             {/* VIEW 2: HOMESERVER CONFIGURATION */}
             {activeView === 'config' && (
               <ConfigForms
+                initialTab={configInitialTab}
                 config={config}
                 ldap={ldap}
                 workers={workers}

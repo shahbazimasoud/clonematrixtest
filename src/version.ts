@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.36.1";
+export const PANEL_VERSION = "2.37.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.37.0",
+    date: "2026-08-21",
+    title: "Dedicated Server Date, Time & Timezone Configuration Tab and Dashboard Navigation",
+    changes: [
+      "Dedicated Date & Time Settings Tab: Created an extensive, modern Spatial Glass configuration tab under Homeserver settings for managing server date, time, timezone (searchable comprehensive worldwide list), and NTP synchronization.",
+      "Manual & NTP Time Adjustment: Added options to set server date and time manually or synchronize instantly with global NTP pools (pool.ntp.org, time.google.com, time.cloudflare.com) with automatic timedatectl configuration.",
+      "Interactive Dashboard Card Link: Clicking the 'Date & Time' monitoring card on the main dashboard routes directly to the new Date & Time configuration view in the settings panel."
+    ]
+  },
   {
     version: "2.36.1",
     date: "2026-08-21",

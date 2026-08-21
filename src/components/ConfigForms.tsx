@@ -64,6 +64,7 @@ import {
 } from 'lucide-react';
 import { MatrixConfig, LDAPConfig, MatrixUser, BackupItem } from '../types';
 import WallpaperTab from './WallpaperTab';
+import DateTimeConfigTab from './DateTimeConfigTab';
 import { describeCronExpression } from '../lib/cronExplainer';
 
 interface ConfigFormsProps {
@@ -92,6 +93,7 @@ interface ConfigFormsProps {
   isLightMode?: boolean;
   lang?: 'fa' | 'en' | 'es' | 'ar' | 'de' | 'ru';
   activeConnectionId?: string;
+  initialTab?: TabType;
 }
 
 const configFormTranslations = {
@@ -265,7 +267,7 @@ const configFormTranslations = {
   }
 };
 
-type TabType = 'homeserver' | 'network' | 'serverNotices' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'wallpaper' | 'backups' | 'video' | 'security' | 'api' | 'certificates';
+type TabType = 'homeserver' | 'datetime' | 'network' | 'serverNotices' | 'ldap' | 'workers' | 'policies' | 'smtp' | 'client' | 'wallpaper' | 'backups' | 'video' | 'security' | 'api' | 'certificates';
 
 export default function ConfigForms({ 
   config, 
@@ -287,7 +289,8 @@ export default function ConfigForms({
   onExecuteCommand,
   isLightMode = false,
   lang = 'en',
-  activeConnectionId
+  activeConnectionId,
+  initialTab
 }: ConfigFormsProps) {
   const t = configFormTranslations[lang] || configFormTranslations.en;
   const isRtl = lang === 'fa' || lang === 'ar';
@@ -307,7 +310,13 @@ export default function ConfigForms({
     if (lang === 'ru') return ru || en;
     return en;
   };
-  const [activeTab, setActiveTab] = useState<TabType>('homeserver');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab || 'homeserver');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [isSaving, setIsSaving] = useState(false);
   
   // 1. Homeserver Config State
@@ -3008,6 +3017,19 @@ export default function ConfigForms({
         >
           <Settings className="w-5 h-5 text-indigo-400" />
           <span>{t.serverParams}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('datetime')}
+          className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all text-left ${
+            activeTab === 'datetime' 
+              ? 'bg-white/10 text-white border border-white/10 shadow-[0_0_12px_rgba(6,182,212,0.15)]' 
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+          id="tab-datetime"
+        >
+          <Clock className="w-5 h-5 text-cyan-400" />
+          <span>{loc('زمان، تاریخ و Timezone', 'Date, Time & Timezone', 'Fecha, Hora y Zona Horaria', 'الوقت والتاريخ والمنطقة الزمنية', 'Datum, Uhrzeit & Zeitzone', 'Дата, время и часовой пояс')}</span>
         </button>
 
         <button
@@ -9413,6 +9435,19 @@ export default function ConfigForms({
               </button>
             </form>
           </div>
+        )}
+
+        {/* VIEW: DATE & TIME SETTINGS */}
+        {activeTab === 'datetime' && (
+          <DateTimeConfigTab
+            authToken={authToken}
+            userRole={userRole}
+            showToast={showToast}
+            lang={lang}
+            isLightMode={isLightMode}
+            activeConnectionId={activeConnectionId}
+            onExecuteCommand={onExecuteCommand}
+          />
         )}
       </div>
 
