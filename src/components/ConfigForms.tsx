@@ -1882,7 +1882,7 @@ export default function ConfigForms({
     }
   };
 
-  const handleTriggerManualCron = async (type: string, scheduleId?: string, retentionDays?: number) => {
+  const handleTriggerManualCron = async (type: string, scheduleId?: string, retentionDays?: number, targetPath?: string) => {
     if (!authToken) return;
     setTriggeringManualCron(scheduleId || type);
     try {
@@ -1892,7 +1892,7 @@ export default function ConfigForms({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ type, scheduleId, retentionDays })
+        body: JSON.stringify({ type, scheduleId, retentionDays, targetPath })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -6985,7 +6985,7 @@ export default function ConfigForms({
                               <div className={`flex items-center gap-2 pt-3 border-t border-white/5 ${isRtl ? 'flex-row-reverse justify-start' : 'justify-end'}`}>
                                 <button
                                   type="button"
-                                  onClick={() => handleTriggerManualCron(sched.type || (isDb ? 'database' : isRetention ? 'retention' : 'config'), sched.id, sched.retentionDays)}
+                                  onClick={() => handleTriggerManualCron(sched.type || (isDb ? 'database' : isRetention ? 'retention' : 'config'), sched.id, sched.retentionDays, sched.targetPath)}
                                   disabled={isReadOnly || triggeringManualCron !== null}
                                   className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 ${
                                     isRetention 

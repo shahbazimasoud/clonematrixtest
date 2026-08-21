@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-export const PANEL_VERSION = "2.34.0";
+export const PANEL_VERSION = "2.35.0";
 export const PANEL_BUILD_DATE = "2026-08-21";
 export const PANEL_NAME = "Raven Matrix Admin Panel";
 export const PANEL_CODENAME = "Raven Spatial";
@@ -40,6 +40,16 @@ export function getUpdateVersionString(currentVersion: string, latestRemoteVersi
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "2.35.0",
+    date: "2026-08-21",
+    title: "Granular Single-Script Generation & Targeted 'Run Now' Execution",
+    changes: [
+      "Targeted Script Generation: Creating or triggering any cron schedule now generates ONLY its specific script (database, config, or retention cleanup) on the remote server.",
+      "Fixed 'Run Now' Behavior: Triggering a manual execution runs only the targeted schedule script without regenerating or overwriting unrelated scripts in /opt/matrix-element-Backup/scripts/.",
+      "Custom Configuration Handling: Individual schedule cards pass their specific retention days and target storage paths directly to the execution script."
+    ]
+  },
   {
     version: "2.34.0",
     date: "2026-08-21",

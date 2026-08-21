@@ -16,9 +16,15 @@
 
 ---
 
-## Current Panel Version: **v2.34.0** (Released: 2026-08-21)
+## Current Panel Version: **v2.35.0** (Released: 2026-08-21)
 
 ### Changelog History
+
+#### **v2.35.0** - 2026-08-21
+- **Granular Single-Script Generation & Targeted 'Run Now' Execution**:
+  - **Single Script Generation**: Creating or updating any automated cron schedule now strictly writes and configures ONLY the script associated with that active schedule type (`matrix_auto_db_backup.sh`, `matrix_auto_config_backup.sh`, or `matrix_auto_cleanup.sh`), avoiding the generation of unconfigured or inactive scripts.
+  - **Fixed "Run Now" Script Isolation**: Triggering a manual execution via the "Run Now" / "اجرای فوری" button checks, creates, and executes ONLY its corresponding script using the exact parameters (retention days, backup target path, and credentials) of that schedule card, without triggering full script synchronizations or creating unrelated scripts.
+  - **Modular Script Generators**: Refactored the scheduler backend into independent script generators (`ensureSingleSchedulerScript`, `getDbBackupScriptContent`, `getConfigBackupScriptContent`, and `getRetentionCleanupScriptContent`) ensuring total execution safety and script isolation.
 
 #### **v2.34.0** - 2026-08-21
 - **Script Directory Protection & Instant Backup List Rescan**:
